@@ -24,18 +24,24 @@ async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
     
     # Cria usuário admin padrão se não existir
+    # Credenciais podem ser configuradas via variáveis de ambiente
+    import os
+    admin_username = os.getenv("ADMIN_USERNAME", "admin")
+    admin_password = os.getenv("ADMIN_PASSWORD", "admin123")
+    admin_email = os.getenv("ADMIN_EMAIL", "admin@example.com")
+    
     db = SessionLocal()
     try:
-        admin = crud.get_user_by_username(db, "admin")
+        admin = crud.get_user_by_username(db, admin_username)
         if not admin:
             crud.create_user(
                 db,
-                username="admin",
-                email="admin@example.com",
-                password="admin123",
+                username=admin_username,
+                email=admin_email,
+                password=admin_password,
                 role="admin"
             )
-            print("Usuário admin criado: admin / admin123")
+            print(f"Usuário admin criado. Configure ADMIN_PASSWORD em produção!")
     finally:
         db.close()
     

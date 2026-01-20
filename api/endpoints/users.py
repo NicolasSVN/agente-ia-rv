@@ -39,6 +39,8 @@ class UserResponse(BaseModel):
     email: str
     phone: Optional[str]
     role: str
+    
+    model_config = {"from_attributes": True}
 
 
 def get_current_admin(request: Request, db: Session = Depends(get_db)):
