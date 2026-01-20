@@ -10,7 +10,7 @@ from contextlib import asynccontextmanager
 
 from database.database import engine, Base, SessionLocal
 from database import crud
-from api.endpoints import auth, users, tickets, whatsapp_webhook, integrations
+from api.endpoints import auth, users, tickets, whatsapp_webhook, integrations, analytics
 from core.security import decode_token
 
 
@@ -44,6 +44,7 @@ async def lifespan(app: FastAPI):
             print(f"Usuário admin criado. Configure ADMIN_PASSWORD em produção!")
         
         crud.init_default_integrations(db)
+        crud.init_default_categories(db)
     finally:
         db.close()
     
@@ -72,6 +73,7 @@ app.include_router(users.router)
 app.include_router(tickets.router)
 app.include_router(whatsapp_webhook.router)
 app.include_router(integrations.router)
+app.include_router(analytics.router)
 
 
 # ========== Rotas de Páginas HTML ==========
@@ -146,6 +148,27 @@ async def integrations_page(request: Request):
         return RedirectResponse(url="/login?error=permission")
     
     return templates.TemplateResponse("integrations.html", {"request": request})
+
+
+@app.get("/analytics", response_class=HTMLResponse)
+async def analytics_page(request: Request):
+    """
+    Dashboard de analytics com indicadores de controle.
+    Requer autenticação como admin ou broker.
+    """
+    token = request.cookies.get("access_token")
+    
+    if not token:
+        return RedirectResponse(url="/login")
+    
+    payload = decode_token(token)
+    if not payload:
+        return RedirectResponse(url="/login")
+    
+    if payload.get("role") not in ["admin", "broker"]:
+        return RedirectResponse(url="/login?error=permission")
+    
+    return templates.TemplateResponse("analytics.html", {"request": request})
 
 
 # ========== Health Check ==========

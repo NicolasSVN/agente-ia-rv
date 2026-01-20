@@ -1,8 +1,8 @@
 """
 Modelos SQLAlchemy para o banco de dados.
-Define as tabelas User e Ticket.
+Define as tabelas User, Ticket, Interaction, TicketCategory e Integration.
 """
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Text, Enum
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Text, Boolean
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from database.database import Base
@@ -21,6 +21,44 @@ class TicketStatus(str, enum.Enum):
     OPEN = "Aberto"
     IN_PROGRESS = "Em Andamento"
     CLOSED = "Concluído"
+
+
+class TicketCategory(Base):
+    """
+    Categorias de tickets para classificação de dúvidas.
+    Permite análise por tipo de demanda.
+    """
+    __tablename__ = "ticket_categories"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(100), unique=True, nullable=False)
+    description = Column(String(255), nullable=True)
+    color = Column(String(7), default="#6366f1")
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    
+    tickets = relationship("Ticket", back_populates="category")
+
+
+class Interaction(Base):
+    """
+    Registro de interações/atendimentos.
+    Cada mensagem ou contato gera uma interação.
+    """
+    __tablename__ = "interactions"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    ticket_id = Column(Integer, ForeignKey("tickets.id"), nullable=True)
+    client_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    broker_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    client_phone = Column(String(20), nullable=True)
+    channel = Column(String(50), default="whatsapp")
+    direction = Column(String(20), default="inbound")
+    message_preview = Column(String(255), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    
+    ticket = relationship("Ticket", back_populates="interactions")
+    client = relationship("User", foreign_keys=[client_id])
+    broker = relationship("User", foreign_keys=[broker_id])
 
 
 class User(Base):
@@ -64,11 +102,23 @@ class Ticket(Base):
     broker_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     broker = relationship("User", back_populates="assigned_tickets", foreign_keys=[broker_id])
     
+    # Categoria do ticket para análise
+    category_id = Column(Integer, ForeignKey("ticket_categories.id"), nullable=True)
+    category = relationship("TicketCategory", back_populates="tickets")
+    
     # Número do WhatsApp do cliente (caso não tenha cadastro)
     client_phone = Column(String(20), nullable=True)
     
+    # Flag de interesse identificado
+    interest_identified = Column(Boolean, default=False)
+    interest_identified_at = Column(DateTime(timezone=True), nullable=True)
+    
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    resolved_at = Column(DateTime(timezone=True), nullable=True)
+    
+    # Interações relacionadas
+    interactions = relationship("Interaction", back_populates="ticket")
 
 
 class IntegrationType(str, enum.Enum):

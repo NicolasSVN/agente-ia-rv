@@ -1,9 +1,14 @@
 """
-Funções CRUD (Create, Read, Update, Delete) para usuários e tickets.
+Funções CRUD (Create, Read, Update, Delete) para usuários, tickets e analytics.
 """
 from sqlalchemy.orm import Session
+from sqlalchemy import func as sql_func, distinct
 from typing import List, Optional
-from database.models import User, Ticket, TicketStatus, Integration, IntegrationSetting
+from datetime import datetime, date
+from database.models import (
+    User, Ticket, TicketStatus, Integration, IntegrationSetting,
+    TicketCategory, Interaction, UserRole
+)
 from core.security import get_password_hash, verify_password
 
 
@@ -141,11 +146,13 @@ def create_ticket(
 
 
 def update_ticket_status(db: Session, ticket_id: int, status: str) -> Optional[Ticket]:
-    """Atualiza o status de um ticket."""
+    """Atualiza o status de um ticket e registra resolved_at se concluído."""
     db_ticket = get_ticket(db, ticket_id)
     if not db_ticket:
         return None
     db_ticket.status = status
+    if status == TicketStatus.CLOSED.value and not db_ticket.resolved_at:
+        db_ticket.resolved_at = datetime.utcnow()
     db.commit()
     db.refresh(db_ticket)
     return db_ticket
@@ -368,3 +375,251 @@ def init_default_integrations(db: Session):
                     is_secret=setting.get("is_secret", False),
                     description=setting.get("description")
                 )
+
+
+# ========== CRUD de Categorias ==========
+
+def get_category(db: Session, category_id: int) -> Optional[TicketCategory]:
+    """Busca uma categoria pelo ID."""
+    return db.query(TicketCategory).filter(TicketCategory.id == category_id).first()
+
+
+def get_category_by_name(db: Session, name: str) -> Optional[TicketCategory]:
+    """Busca uma categoria pelo nome."""
+    return db.query(TicketCategory).filter(TicketCategory.name == name).first()
+
+
+def get_categories(db: Session) -> List[TicketCategory]:
+    """Lista todas as categorias."""
+    return db.query(TicketCategory).all()
+
+
+def create_category(db: Session, name: str, description: str = None, color: str = "#6366f1") -> TicketCategory:
+    """Cria uma nova categoria."""
+    db_category = TicketCategory(name=name, description=description, color=color)
+    db.add(db_category)
+    db.commit()
+    db.refresh(db_category)
+    return db_category
+
+
+def init_default_categories(db: Session):
+    """Inicializa categorias padrão."""
+    default_categories = [
+        {"name": "Investimentos", "description": "Dúvidas sobre investimentos", "color": "#10b981"},
+        {"name": "Conta", "description": "Problemas com conta", "color": "#3b82f6"},
+        {"name": "Transferências", "description": "Transferências e PIX", "color": "#8b5cf6"},
+        {"name": "Produtos", "description": "Informações sobre produtos", "color": "#f59e0b"},
+        {"name": "Suporte Técnico", "description": "Problemas técnicos", "color": "#ef4444"},
+        {"name": "Outros", "description": "Outros assuntos", "color": "#6b7280"},
+    ]
+    for cat_data in default_categories:
+        if not get_category_by_name(db, cat_data["name"]):
+            create_category(db, **cat_data)
+
+
+# ========== CRUD de Interações ==========
+
+def create_interaction(
+    db: Session,
+    ticket_id: int = None,
+    client_id: int = None,
+    broker_id: int = None,
+    client_phone: str = None,
+    channel: str = "whatsapp",
+    direction: str = "inbound",
+    message_preview: str = None
+) -> Interaction:
+    """Registra uma nova interação."""
+    db_interaction = Interaction(
+        ticket_id=ticket_id,
+        client_id=client_id,
+        broker_id=broker_id,
+        client_phone=client_phone,
+        channel=channel,
+        direction=direction,
+        message_preview=message_preview[:255] if message_preview else None
+    )
+    db.add(db_interaction)
+    db.commit()
+    db.refresh(db_interaction)
+    return db_interaction
+
+
+def get_interactions(
+    db: Session,
+    start_date: date = None,
+    end_date: date = None
+) -> List[Interaction]:
+    """Lista interações com filtro de data."""
+    query = db.query(Interaction)
+    if start_date:
+        query = query.filter(Interaction.created_at >= datetime.combine(start_date, datetime.min.time()))
+    if end_date:
+        query = query.filter(Interaction.created_at <= datetime.combine(end_date, datetime.max.time()))
+    return query.all()
+
+
+# ========== Analytics ==========
+
+def get_analytics_summary(db: Session, start_date: date = None, end_date: date = None) -> dict:
+    """
+    Retorna métricas agregadas para o dashboard.
+    """
+    start_dt = datetime.combine(start_date, datetime.min.time()) if start_date else None
+    end_dt = datetime.combine(end_date, datetime.max.time()) if end_date else None
+    
+    def date_filter(query, date_column):
+        if start_dt:
+            query = query.filter(date_column >= start_dt)
+        if end_dt:
+            query = query.filter(date_column <= end_dt)
+        return query
+    
+    # 1. Quantidade de atendimentos (interações)
+    interactions_query = db.query(sql_func.count(Interaction.id))
+    interactions_query = date_filter(interactions_query, Interaction.created_at)
+    total_atendimentos = interactions_query.scalar() or 0
+    
+    # 2. Tickets abertos
+    open_tickets_query = db.query(sql_func.count(Ticket.id)).filter(
+        Ticket.status.in_([TicketStatus.OPEN.value, TicketStatus.IN_PROGRESS.value])
+    )
+    open_tickets_query = date_filter(open_tickets_query, Ticket.created_at)
+    chamados_abertos = open_tickets_query.scalar() or 0
+    
+    # 3. Tickets concluídos
+    closed_tickets_query = db.query(sql_func.count(Ticket.id)).filter(
+        Ticket.status == TicketStatus.CLOSED.value
+    )
+    closed_tickets_query = date_filter(closed_tickets_query, Ticket.resolved_at)
+    chamados_concluidos = closed_tickets_query.scalar() or 0
+    
+    # 4. Assessores ativos (brokers com tickets atribuídos no período)
+    active_brokers_query = db.query(sql_func.count(distinct(Ticket.broker_id))).filter(
+        Ticket.broker_id.isnot(None)
+    )
+    active_brokers_query = date_filter(active_brokers_query, Ticket.created_at)
+    assessores_ativos = active_brokers_query.scalar() or 0
+    
+    # 5. Clientes contactados (únicos por telefone ou ID)
+    clients_by_id = db.query(sql_func.count(distinct(Interaction.client_id))).filter(
+        Interaction.client_id.isnot(None)
+    )
+    clients_by_id = date_filter(clients_by_id, Interaction.created_at)
+    
+    clients_by_phone = db.query(sql_func.count(distinct(Interaction.client_phone))).filter(
+        Interaction.client_phone.isnot(None),
+        Interaction.client_id.is_(None)
+    )
+    clients_by_phone = date_filter(clients_by_phone, Interaction.created_at)
+    
+    clientes_contactados = (clients_by_id.scalar() or 0) + (clients_by_phone.scalar() or 0)
+    
+    # 6. Clientes com interesse identificado
+    interest_query = db.query(sql_func.count(distinct(Ticket.client_id))).filter(
+        Ticket.interest_identified == True
+    )
+    interest_query = date_filter(interest_query, Ticket.interest_identified_at)
+    clientes_com_interesse = interest_query.scalar() or 0
+    
+    return {
+        "total_atendimentos": total_atendimentos,
+        "chamados_abertos": chamados_abertos,
+        "chamados_concluidos": chamados_concluidos,
+        "assessores_ativos": assessores_ativos,
+        "clientes_contactados": clientes_contactados,
+        "clientes_com_interesse": clientes_com_interesse,
+    }
+
+
+def get_resolution_time_by_broker(db: Session, start_date: date = None, end_date: date = None) -> List[dict]:
+    """
+    Calcula o tempo médio de resolução por assessor.
+    """
+    start_dt = datetime.combine(start_date, datetime.min.time()) if start_date else None
+    end_dt = datetime.combine(end_date, datetime.max.time()) if end_date else None
+    
+    query = db.query(
+        Ticket.broker_id,
+        User.username,
+        sql_func.count(Ticket.id).label('total_tickets'),
+        sql_func.avg(
+            sql_func.julianday(Ticket.resolved_at) - sql_func.julianday(Ticket.created_at)
+        ).label('avg_days')
+    ).join(User, Ticket.broker_id == User.id).filter(
+        Ticket.resolved_at.isnot(None),
+        Ticket.broker_id.isnot(None)
+    ).group_by(Ticket.broker_id, User.username)
+    
+    if start_dt:
+        query = query.filter(Ticket.resolved_at >= start_dt)
+    if end_dt:
+        query = query.filter(Ticket.resolved_at <= end_dt)
+    
+    results = query.all()
+    
+    return [
+        {
+            "broker_id": r.broker_id,
+            "broker_name": r.username,
+            "total_tickets": r.total_tickets,
+            "avg_resolution_hours": round((r.avg_days or 0) * 24, 1)
+        }
+        for r in results
+    ]
+
+
+def get_tickets_by_category(db: Session, start_date: date = None, end_date: date = None) -> List[dict]:
+    """
+    Conta tickets por categoria.
+    """
+    start_dt = datetime.combine(start_date, datetime.min.time()) if start_date else None
+    end_dt = datetime.combine(end_date, datetime.max.time()) if end_date else None
+    
+    query = db.query(
+        TicketCategory.id,
+        TicketCategory.name,
+        TicketCategory.color,
+        sql_func.count(Ticket.id).label('count')
+    ).outerjoin(Ticket, Ticket.category_id == TicketCategory.id)
+    
+    if start_dt:
+        query = query.filter((Ticket.created_at >= start_dt) | (Ticket.created_at.is_(None)))
+    if end_dt:
+        query = query.filter((Ticket.created_at <= end_dt) | (Ticket.created_at.is_(None)))
+    
+    query = query.group_by(TicketCategory.id, TicketCategory.name, TicketCategory.color)
+    
+    results = query.all()
+    
+    # Adiciona tickets sem categoria
+    uncategorized_query = db.query(sql_func.count(Ticket.id)).filter(
+        Ticket.category_id.is_(None)
+    )
+    if start_dt:
+        uncategorized_query = uncategorized_query.filter(Ticket.created_at >= start_dt)
+    if end_dt:
+        uncategorized_query = uncategorized_query.filter(Ticket.created_at <= end_dt)
+    
+    uncategorized_count = uncategorized_query.scalar() or 0
+    
+    category_list = [
+        {
+            "category_id": r.id,
+            "category_name": r.name,
+            "color": r.color,
+            "count": r.count
+        }
+        for r in results
+    ]
+    
+    if uncategorized_count > 0:
+        category_list.append({
+            "category_id": None,
+            "category_name": "Sem Categoria",
+            "color": "#9ca3af",
+            "count": uncategorized_count
+        })
+    
+    return category_list

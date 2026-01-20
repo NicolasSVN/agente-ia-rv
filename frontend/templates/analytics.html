@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - Assessor IA</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            min-height: 100vh;
+            color: #e0e0e0;
+        }
+
+        .navbar {
+            background: rgba(26, 26, 46, 0.95);
+            padding: 1rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid rgba(99, 102, 241, 0.3);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .navbar h1 {
+            color: #6366f1;
+            font-size: 1.5rem;
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 1.5rem;
+            align-items: center;
+        }
+
+        .nav-links a {
+            color: #a0a0a0;
+            text-decoration: none;
+            transition: color 0.3s;
+            font-size: 0.95rem;
+        }
+
+        .nav-links a:hover, .nav-links a.active {
+            color: #6366f1;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        .page-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2rem;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+
+        .page-header h2 {
+            color: #fff;
+            font-size: 1.8rem;
+        }
+
+        .date-filters {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .date-filters label {
+            color: #a0a0a0;
+            font-size: 0.9rem;
+        }
+
+        .date-filters input[type="date"] {
+            padding: 0.5rem 1rem;
+            border: 1px solid rgba(99, 102, 241, 0.3);
+            border-radius: 8px;
+            background: rgba(30, 30, 50, 0.8);
+            color: #fff;
+            font-size: 0.9rem;
+        }
+
+        .date-filters button {
+            padding: 0.5rem 1.5rem;
+            background: #6366f1;
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: background 0.3s;
+        }
+
+        .date-filters button:hover {
+            background: #4f46e5;
+        }
+
+        .quick-filters {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .quick-filter {
+            padding: 0.4rem 0.8rem;
+            background: rgba(99, 102, 241, 0.2);
+            color: #6366f1;
+            border: 1px solid rgba(99, 102, 241, 0.3);
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.8rem;
+            transition: all 0.3s;
+        }
+
+        .quick-filter:hover, .quick-filter.active {
+            background: #6366f1;
+            color: #fff;
+        }
+
+        .kpi-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .kpi-card {
+            background: rgba(30, 30, 50, 0.8);
+            border-radius: 16px;
+            padding: 1.5rem;
+            border: 1px solid rgba(99, 102, 241, 0.2);
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+
+        .kpi-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 30px rgba(99, 102, 241, 0.2);
+        }
+
+        .kpi-icon {
+            width: 50px;
+            height: 50px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 1rem;
+            font-size: 1.5rem;
+        }
+
+        .kpi-value {
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: #fff;
+            margin-bottom: 0.5rem;
+        }
+
+        .kpi-label {
+            color: #a0a0a0;
+            font-size: 0.9rem;
+        }
+
+        .charts-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 1.5rem;
+        }
+
+        .chart-card {
+            background: rgba(30, 30, 50, 0.8);
+            border-radius: 16px;
+            padding: 1.5rem;
+            border: 1px solid rgba(99, 102, 241, 0.2);
+        }
+
+        .chart-card h3 {
+            color: #fff;
+            margin-bottom: 1.5rem;
+            font-size: 1.1rem;
+        }
+
+        .category-bar {
+            display: flex;
+            align-items: center;
+            margin-bottom: 1rem;
+            gap: 1rem;
+        }
+
+        .category-name {
+            width: 120px;
+            font-size: 0.85rem;
+            color: #a0a0a0;
+        }
+
+        .category-bar-container {
+            flex: 1;
+            height: 24px;
+            background: rgba(99, 102, 241, 0.1);
+            border-radius: 12px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .category-bar-fill {
+            height: 100%;
+            border-radius: 12px;
+            transition: width 0.5s ease;
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            padding-right: 8px;
+            min-width: fit-content;
+        }
+
+        .category-count {
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: #fff;
+        }
+
+        .broker-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .broker-table th,
+        .broker-table td {
+            padding: 1rem;
+            text-align: left;
+            border-bottom: 1px solid rgba(99, 102, 241, 0.2);
+        }
+
+        .broker-table th {
+            color: #6366f1;
+            font-weight: 600;
+            font-size: 0.85rem;
+            text-transform: uppercase;
+        }
+
+        .broker-table td {
+            color: #e0e0e0;
+        }
+
+        .broker-table tr:hover {
+            background: rgba(99, 102, 241, 0.1);
+        }
+
+        .time-badge {
+            display: inline-block;
+            padding: 0.3rem 0.8rem;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: 500;
+        }
+
+        .time-good {
+            background: rgba(16, 185, 129, 0.2);
+            color: #10b981;
+        }
+
+        .time-medium {
+            background: rgba(245, 158, 11, 0.2);
+            color: #f59e0b;
+        }
+
+        .time-bad {
+            background: rgba(239, 68, 68, 0.2);
+            color: #ef4444;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 3rem;
+            color: #a0a0a0;
+        }
+
+        .empty-state p {
+            margin-bottom: 0.5rem;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 2rem;
+            color: #6366f1;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 1rem;
+            }
+            
+            .kpi-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            
+            .charts-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .page-header {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar">
+        <h1>Assessor IA</h1>
+        <div class="nav-links">
+            <a href="/kanban">Kanban</a>
+            <a href="/analytics" class="active">Dashboard</a>
+            <a href="/admin">Usuarios</a>
+            <a href="/integrations">Integracoes</a>
+            <a href="/login" id="logoutLink">Sair</a>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="page-header">
+            <h2>Painel de Gestao</h2>
+            <div class="date-filters">
+                <div class="quick-filters">
+                    <button class="quick-filter" data-period="7">7 dias</button>
+                    <button class="quick-filter" data-period="30">30 dias</button>
+                    <button class="quick-filter" data-period="90">90 dias</button>
+                    <button class="quick-filter active" data-period="all">Todos</button>
+                </div>
+                <label>De:</label>
+                <input type="date" id="startDate">
+                <label>Ate:</label>
+                <input type="date" id="endDate">
+                <button onclick="loadAllData()">Filtrar</button>
+            </div>
+        </div>
+
+        <div class="kpi-grid" id="kpiGrid">
+            <div class="loading">Carregando indicadores...</div>
+        </div>
+
+        <div class="charts-grid">
+            <div class="chart-card">
+                <h3>Volume de Duvidas por Categoria</h3>
+                <div id="categoriesChart">
+                    <div class="loading">Carregando...</div>
+                </div>
+            </div>
+
+            <div class="chart-card">
+                <h3>Tempo Medio de Resolucao por Assessor</h3>
+                <div id="resolutionTable">
+                    <div class="loading">Carregando...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = '/api/analytics';
+        
+        function getDateParams() {
+            const startDate = document.getElementById('startDate').value;
+            const endDate = document.getElementById('endDate').value;
+            const params = new URLSearchParams();
+            if (startDate) params.append('start_date', startDate);
+            if (endDate) params.append('end_date', endDate);
+            return params.toString() ? '?' + params.toString() : '';
+        }
+
+        async function loadSummary() {
+            try {
+                const response = await fetch(`${API_BASE}/summary${getDateParams()}`, {
+                    credentials: 'include'
+                });
+                
+                if (!response.ok) throw new Error('Erro ao carregar dados');
+                
+                const data = await response.json();
+                renderKPIs(data);
+            } catch (error) {
+                console.error('Erro:', error);
+                document.getElementById('kpiGrid').innerHTML = `
+                    <div class="empty-state">
+                        <p>Erro ao carregar indicadores</p>
+                    </div>
+                `;
+            }
+        }
+
+        function renderKPIs(data) {
+            const kpis = [
+                { key: 'total_atendimentos', label: 'Total de Atendimentos', icon: '💬', color: '#6366f1' },
+                { key: 'chamados_abertos', label: 'Chamados Abertos', icon: '📋', color: '#f59e0b' },
+                { key: 'chamados_concluidos', label: 'Chamados Concluidos', icon: '✅', color: '#10b981' },
+                { key: 'assessores_ativos', label: 'Assessores Ativos', icon: '👥', color: '#8b5cf6' },
+                { key: 'clientes_contactados', label: 'Clientes Contactados', icon: '📞', color: '#3b82f6' },
+                { key: 'clientes_com_interesse', label: 'Clientes com Interesse', icon: '⭐', color: '#ec4899' },
+            ];
+
+            const html = kpis.map(kpi => `
+                <div class="kpi-card">
+                    <div class="kpi-icon" style="background: ${kpi.color}20;">
+                        ${kpi.icon}
+                    </div>
+                    <div class="kpi-value">${data[kpi.key] || 0}</div>
+                    <div class="kpi-label">${kpi.label}</div>
+                </div>
+            `).join('');
+
+            document.getElementById('kpiGrid').innerHTML = html;
+        }
+
+        async function loadCategories() {
+            try {
+                const response = await fetch(`${API_BASE}/tickets-by-category${getDateParams()}`, {
+                    credentials: 'include'
+                });
+                
+                if (!response.ok) throw new Error('Erro ao carregar categorias');
+                
+                const data = await response.json();
+                renderCategories(data.categories);
+            } catch (error) {
+                console.error('Erro:', error);
+                document.getElementById('categoriesChart').innerHTML = `
+                    <div class="empty-state">
+                        <p>Erro ao carregar categorias</p>
+                    </div>
+                `;
+            }
+        }
+
+        function renderCategories(categories) {
+            if (!categories || categories.length === 0) {
+                document.getElementById('categoriesChart').innerHTML = `
+                    <div class="empty-state">
+                        <p>Nenhuma categoria encontrada</p>
+                        <p style="font-size: 0.85rem;">As categorias serao exibidas quando houver tickets classificados</p>
+                    </div>
+                `;
+                return;
+            }
+
+            const maxCount = Math.max(...categories.map(c => c.count), 1);
+            
+            const html = categories.map(cat => {
+                const width = Math.max((cat.count / maxCount) * 100, 10);
+                return `
+                    <div class="category-bar">
+                        <span class="category-name">${cat.category_name}</span>
+                        <div class="category-bar-container">
+                            <div class="category-bar-fill" style="width: ${width}%; background: ${cat.color};">
+                                <span class="category-count">${cat.count}</span>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            document.getElementById('categoriesChart').innerHTML = html;
+        }
+
+        async function loadResolutionTime() {
+            try {
+                const response = await fetch(`${API_BASE}/resolution-time${getDateParams()}`, {
+                    credentials: 'include'
+                });
+                
+                if (!response.ok) throw new Error('Erro ao carregar tempos');
+                
+                const data = await response.json();
+                renderResolutionTable(data.brokers);
+            } catch (error) {
+                console.error('Erro:', error);
+                document.getElementById('resolutionTable').innerHTML = `
+                    <div class="empty-state">
+                        <p>Erro ao carregar dados</p>
+                    </div>
+                `;
+            }
+        }
+
+        function renderResolutionTable(brokers) {
+            if (!brokers || brokers.length === 0) {
+                document.getElementById('resolutionTable').innerHTML = `
+                    <div class="empty-state">
+                        <p>Nenhum assessor com chamados resolvidos</p>
+                        <p style="font-size: 0.85rem;">Os tempos serao calculados quando houver chamados finalizados</p>
+                    </div>
+                `;
+                return;
+            }
+
+            const getTimeBadgeClass = (hours) => {
+                if (hours <= 24) return 'time-good';
+                if (hours <= 72) return 'time-medium';
+                return 'time-bad';
+            };
+
+            const formatTime = (hours) => {
+                if (hours < 1) return '< 1 hora';
+                if (hours < 24) return `${Math.round(hours)} horas`;
+                const days = Math.round(hours / 24 * 10) / 10;
+                return `${days} dias`;
+            };
+
+            const html = `
+                <table class="broker-table">
+                    <thead>
+                        <tr>
+                            <th>Assessor</th>
+                            <th>Chamados Resolvidos</th>
+                            <th>Tempo Medio</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${brokers.map(broker => `
+                            <tr>
+                                <td>${broker.broker_name}</td>
+                                <td>${broker.total_tickets}</td>
+                                <td>
+                                    <span class="time-badge ${getTimeBadgeClass(broker.avg_resolution_hours)}">
+                                        ${formatTime(broker.avg_resolution_hours)}
+                                    </span>
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            `;
+
+            document.getElementById('resolutionTable').innerHTML = html;
+        }
+
+        function loadAllData() {
+            loadSummary();
+            loadCategories();
+            loadResolutionTime();
+        }
+
+        document.querySelectorAll('.quick-filter').forEach(btn => {
+            btn.addEventListener('click', function() {
+                document.querySelectorAll('.quick-filter').forEach(b => b.classList.remove('active'));
+                this.classList.add('active');
+                
+                const period = this.dataset.period;
+                const endDate = new Date();
+                const startDate = new Date();
+                
+                if (period === 'all') {
+                    document.getElementById('startDate').value = '';
+                    document.getElementById('endDate').value = '';
+                } else {
+                    startDate.setDate(endDate.getDate() - parseInt(period));
+                    document.getElementById('startDate').value = startDate.toISOString().split('T')[0];
+                    document.getElementById('endDate').value = endDate.toISOString().split('T')[0];
+                }
+                
+                loadAllData();
+            });
+        });
+
+        document.addEventListener('DOMContentLoaded', loadAllData);
+    </script>
+</body>
+</html>
