@@ -1,0 +1,148 @@
+"""
+Endpoints de autenticação.
+Gerencia login, logout e validação de tokens JWT.
+"""
+from fastapi import APIRouter, Depends, HTTPException, status, Request, Response
+from fastapi.security import OAuth2PasswordRequestForm
+from fastapi.responses import HTMLResponse, RedirectResponse
+from sqlalchemy.orm import Session
+from pydantic import BaseModel
+from typing import Optional
+
+from database.database import get_db
+from database import crud
+from core.security import create_access_token, decode_token
+
+router = APIRouter(prefix="/api/auth", tags=["Autenticação"])
+
+
+class Token(BaseModel):
+    """Schema para resposta de token."""
+    access_token: str
+    token_type: str
+
+
+class LoginRequest(BaseModel):
+    """Schema para requisição de login."""
+    username: str
+    password: str
+
+
+@router.post("/login", response_model=Token)
+async def login(
+    form_data: OAuth2PasswordRequestForm = Depends(),
+    db: Session = Depends(get_db)
+):
+    """
+    Endpoint de login.
+    Recebe username e password, retorna um token JWT.
+    """
+    user = crud.authenticate_user(db, form_data.username, form_data.password)
+    
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Usuário ou senha incorretos",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    # Cria o token JWT com informações do usuário
+    access_token = create_access_token(
+        data={
+            "sub": user.username,
+            "user_id": user.id,
+            "role": user.role
+        }
+    )
+    
+    return {"access_token": access_token, "token_type": "bearer"}
+
+
+@router.post("/login-form")
+async def login_form(
+    request: Request,
+    response: Response,
+    db: Session = Depends(get_db)
+):
+    """
+    Endpoint de login via formulário HTML.
+    Define um cookie com o token e redireciona para o painel.
+    """
+    form_data = await request.form()
+    username = form_data.get("username")
+    password = form_data.get("password")
+    
+    user = crud.authenticate_user(db, username, password)
+    
+    if not user:
+        return RedirectResponse(
+            url="/login?error=1",
+            status_code=status.HTTP_302_FOUND
+        )
+    
+    # Verifica se o usuário tem permissão para acessar o painel
+    if user.role not in ["admin", "broker"]:
+        return RedirectResponse(
+            url="/login?error=permission",
+            status_code=status.HTTP_302_FOUND
+        )
+    
+    access_token = create_access_token(
+        data={
+            "sub": user.username,
+            "user_id": user.id,
+            "role": user.role
+        }
+    )
+    
+    # Redireciona para o kanban com o token no cookie
+    redirect = RedirectResponse(url="/kanban", status_code=status.HTTP_302_FOUND)
+    redirect.set_cookie(
+        key="access_token",
+        value=access_token,
+        httponly=True,
+        max_age=86400,  # 24 horas
+        samesite="lax"
+    )
+    return redirect
+
+
+@router.post("/logout")
+async def logout(response: Response):
+    """Remove o cookie de autenticação."""
+    redirect = RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
+    redirect.delete_cookie(key="access_token")
+    return redirect
+
+
+@router.get("/me")
+async def get_current_user(request: Request, db: Session = Depends(get_db)):
+    """Retorna informações do usuário logado."""
+    token = request.cookies.get("access_token")
+    
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Não autenticado"
+        )
+    
+    payload = decode_token(token)
+    if not payload:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token inválido"
+        )
+    
+    user = crud.get_user_by_username(db, payload.get("sub"))
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Usuário não encontrado"
+        )
+    
+    return {
+        "id": user.id,
+        "username": user.username,
+        "email": user.email,
+        "role": user.role
+    }
