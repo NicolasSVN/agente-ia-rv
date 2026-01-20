@@ -9,7 +9,7 @@ from typing import Optional
 
 from database.database import get_db
 from database.crud import get_agent_config, create_or_update_agent_config
-from api.endpoints.auth import get_current_user_from_cookie
+from api.endpoints.auth import get_current_user
 from database.models import User, UserRole
 
 router = APIRouter(prefix="/api/agent-config", tags=["Agent Config"])
@@ -35,7 +35,7 @@ class AgentConfigUpdate(BaseModel):
     max_tokens: int = 500
 
 
-def require_admin(current_user: User = Depends(get_current_user_from_cookie)):
+def require_admin(current_user: User = Depends(get_current_user)):
     """Verifica se o usuário é admin."""
     if current_user.role != UserRole.ADMIN.value:
         raise HTTPException(

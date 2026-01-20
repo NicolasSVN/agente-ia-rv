@@ -56,13 +56,16 @@ Aplicação FastAPI completa para um agente de IA de assessores financeiros. O s
 - `GET /api/analytics/summary` - Resumo de KPIs (admin/broker)
 - `GET /api/analytics/resolution-time` - Tempo médio por assessor (admin/broker)
 - `GET /api/analytics/tickets-by-category` - Tickets por categoria (admin/broker)
+- `GET /api/agent-config/` - Configuração do agente (admin)
+- `PUT /api/agent-config/` - Atualizar configuração do agente (admin)
 
 ### Frontend
-- `/login` - Página de login
+- `/login` - Página de login (redireciona para /analytics após login)
+- `/analytics` - Dashboard de indicadores (admin/broker)
 - `/kanban` - Quadro Kanban (admin/broker)
 - `/admin` - Gerenciamento de usuários (admin)
 - `/integrations` - Gerenciamento de integrações (admin)
-- `/analytics` - Dashboard de indicadores (admin/broker)
+- `/agent-brain` - Painel de Controle do Cérebro do Agente (admin)
 
 ## Roles de Usuário
 - `admin` - Acesso total
@@ -109,9 +112,27 @@ A página `/analytics` (admin e broker) exibe indicadores de controle:
 Categorias padrão criadas automaticamente:
 - Investimentos, Conta, Transferências, Produtos, Suporte Técnico, Outros
 
+## Painel de Controle do Cérebro do Agente
+
+A página `/agent-brain` (apenas admin) permite configurar em tempo real:
+
+### Campos Disponíveis
+- **Personalidade e Regras** - Define como o agente deve se comportar, seu tom e princípios
+- **Restrições e Proibições** - O que o agente NÃO pode fazer em hipótese alguma
+- **Modelo de IA** - Escolha entre GPT-4o, GPT-4 Turbo, GPT-4 ou GPT-3.5 Turbo
+- **Temperatura** - Controle de criatividade (0 = objetivo, 2 = criativo)
+- **Tamanho Máximo da Resposta** - Limite de tokens por resposta
+
+### Funcionamento
+- Configurações são aplicadas imediatamente a todas as novas conversas
+- Não requer reinicialização do sistema
+- Armazenado no banco de dados (tabela `agent_config`)
+
 ## Mudanças Recentes
 - 2026-01-20: Aplicação criada com todas as funcionalidades
 - 2026-01-20: Corrigido serialização UserResponse (from_attributes)
 - 2026-01-20: Admin bootstrap via variáveis de ambiente
 - 2026-01-20: Adicionado painel de gerenciamento de integrações
 - 2026-01-20: Adicionado dashboard de analytics com KPIs e filtro de data
+- 2026-01-20: Adicionado Painel de Controle do Cérebro do Agente com configuração em tempo real
+- 2026-01-20: Menu de navegação unificado em todas as páginas
