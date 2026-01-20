@@ -161,3 +161,22 @@ class IntegrationSetting(Base):
     description = Column(String(255), nullable=True)
     
     integration = relationship("Integration", back_populates="settings")
+
+
+class AgentConfig(Base):
+    """
+    Configuração do agente de IA.
+    Armazena personalidade, modelo, temperatura e outras configurações.
+    Apenas um registro ativo por vez (singleton pattern).
+    """
+    __tablename__ = "agent_config"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    personality = Column(Text, nullable=False, default="")
+    restrictions = Column(Text, nullable=True, default="")
+    model = Column(String(50), default="gpt-4o")
+    temperature = Column(String(10), default="0.7")
+    max_tokens = Column(Integer, default=500)
+    is_active = Column(Integer, default=1)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())

@@ -7,7 +7,7 @@ from typing import List, Optional
 from datetime import datetime, date
 from database.models import (
     User, Ticket, TicketStatus, Integration, IntegrationSetting,
-    TicketCategory, Interaction, UserRole
+    TicketCategory, Interaction, UserRole, AgentConfig
 )
 from core.security import get_password_hash, verify_password
 
@@ -636,3 +636,78 @@ def get_tickets_by_category(db: Session, start_date: date = None, end_date: date
         })
     
     return category_list
+
+
+# ========== CRUD de Configuração do Agente ==========
+
+def get_agent_config(db: Session) -> Optional[AgentConfig]:
+    """Busca a configuração ativa do agente."""
+    return db.query(AgentConfig).filter(AgentConfig.is_active == 1).first()
+
+
+def create_or_update_agent_config(
+    db: Session,
+    personality: str,
+    restrictions: str = "",
+    model: str = "gpt-4o",
+    temperature: str = "0.7",
+    max_tokens: int = 500
+) -> AgentConfig:
+    """Cria ou atualiza a configuração do agente."""
+    existing = get_agent_config(db)
+    
+    if existing:
+        existing.personality = personality
+        existing.restrictions = restrictions
+        existing.model = model
+        existing.temperature = temperature
+        existing.max_tokens = max_tokens
+        db.commit()
+        db.refresh(existing)
+        return existing
+    
+    config = AgentConfig(
+        personality=personality,
+        restrictions=restrictions,
+        model=model,
+        temperature=temperature,
+        max_tokens=max_tokens,
+        is_active=1
+    )
+    db.add(config)
+    db.commit()
+    db.refresh(config)
+    return config
+
+
+def init_default_agent_config(db: Session):
+    """Inicializa configuração padrão do agente se não existir."""
+    existing = get_agent_config(db)
+    if not existing:
+        default_personality = """Você é um assistente virtual especializado em assessoria financeira.
+Seu papel é ajudar clientes com dúvidas sobre investimentos, produtos financeiros e serviços.
+
+REGRAS IMPORTANTES:
+1. Responda sempre de forma educada e profissional.
+2. Use o contexto fornecido para basear suas respostas.
+3. Se a informação não estiver disponível no contexto, seja honesto e diga que não tem essa informação.
+4. Quando não puder ajudar adequadamente, pergunte se o cliente deseja abrir um chamado para falar com um assessor.
+5. Mantenha as respostas concisas e objetivas, adequadas para WhatsApp.
+6. Nunca invente informações sobre produtos, taxas ou valores.
+
+Para abrir um chamado, o usuário deve responder "SIM" ou "sim" quando perguntado."""
+        
+        default_restrictions = """- Nunca forneça conselhos financeiros específicos ou recomendações de investimento.
+- Não mencione valores ou taxas a menos que estejam documentados na base de conhecimento.
+- Não prometa resultados ou retornos financeiros.
+- Não compartilhe informações de outros clientes.
+- Não faça operações financeiras em nome do cliente."""
+        
+        create_or_update_agent_config(
+            db,
+            personality=default_personality,
+            restrictions=default_restrictions,
+            model="gpt-4o",
+            temperature="0.7",
+            max_tokens=500
+        )

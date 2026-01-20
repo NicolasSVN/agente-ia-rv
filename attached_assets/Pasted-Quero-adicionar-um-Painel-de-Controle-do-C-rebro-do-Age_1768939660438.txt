@@ -1,0 +1,17 @@
+Quero adicionar um "Painel de Controle do Cérebro do Agente" ao meu aplicativo. Este painel deve ser uma nova área na seção de administração, visível apenas para os administradores.
+
+Neste painel, eu quero poder moldar a personalidade e o comportamento do meu agente de IA de forma simples e visual. Ele deve ter as seguintes ferramentas:
+
+1.  **A Alma do Agente:** Uma grande caixa de texto chamada "Personalidade e Regras". É aqui que eu vou escrever em português claro como o agente deve ser. Por exemplo, se ele deve ser formal ou amigável, qual seu nome, quais são seus princípios (como nunca dar conselhos financeiros diretos) e o que ele deve fazer quando não souber uma resposta. Este texto será a principal diretriz que a IA seguirá.
+
+2.  **O Motor da Inteligência:** Um menu de seleção chamado "Modelo de IA". Quero poder escolher entre diferentes "motores" da OpenAI, como "GPT-4 Turbo" para respostas mais inteligentes ou "GPT-3.5 Turbo" para respostas mais rápidas.
+
+3.  **O Termostato da Criatividade:** Um controle deslizante chamado "Temperatura". Se eu arrastar para perto de zero, quero que o agente seja muito direto, objetivo e previsível. Se eu arrastar para mais perto de dois, quero que ele seja mais criativo e até um pouco imprevisível em suas respostas.
+
+4.  **O Limite de Palavras:** Um campo numérico chamado "Tamanho Máximo da Resposta". Quero definir um limite para o quão longas as respostas do agente podem ser, para que ele não escreva textos enormes quando não for necessário.
+
+**Como deve funcionar:**
+
+- Quando eu abrir este painel, ele deve me mostrar as configurações que estão salvas no momento.
+- Depois que eu fizer minhas alterações e clicar em um botão "Salvar", o sistema deve guardar essas novas configurações permanentemente.
+- O mais importante: a partir desse momento, todas as novas conversas no WhatsApp devem usar imediatamente essas novas configurações, sem que eu precise reiniciar ou fazer qualquer outra coisa. O comportamento do agente deve mudar em tempo real.

@@ -1,6 +1,7 @@
 """
 Agente de IA usando a API da OpenAI.
 Gera respostas contextualizadas para perguntas dos usuários.
+Carrega configurações do banco de dados em tempo real.
 """
 from openai import OpenAI
 from typing import List, Optional, Tuple
@@ -17,9 +18,37 @@ class OpenAIAgent:
         self.client = None
         if settings.OPENAI_API_KEY:
             self.client = OpenAI(api_key=settings.OPENAI_API_KEY)
+    
+    def _get_config_from_db(self):
+        """Carrega configuração do agente do banco de dados."""
+        from database.database import SessionLocal
+        from database.crud import get_agent_config
         
-        # Prompt do sistema que define o comportamento do agente
-        self.system_prompt = """Você é um assistente virtual especializado em assessoria financeira.
+        db = SessionLocal()
+        try:
+            config = get_agent_config(db)
+            if config:
+                return {
+                    "personality": config.personality,
+                    "restrictions": config.restrictions or "",
+                    "model": config.model,
+                    "temperature": float(config.temperature),
+                    "max_tokens": config.max_tokens
+                }
+        finally:
+            db.close()
+        
+        return None
+    
+    def _build_system_prompt(self, config: dict = None) -> str:
+        """Constrói o prompt do sistema baseado na configuração."""
+        if config and config.get("personality"):
+            prompt = config["personality"]
+            if config.get("restrictions"):
+                prompt += f"\n\nRESTRIÇÕES E PROIBIÇÕES:\n{config['restrictions']}"
+            return prompt
+        
+        return """Você é um assistente virtual especializado em assessoria financeira.
 Seu papel é ajudar clientes com dúvidas sobre investimentos, produtos financeiros e serviços.
 
 REGRAS IMPORTANTES:
@@ -71,7 +100,6 @@ Para abrir um chamado, o usuário deve responder "SIM" ou "sim" quando perguntad
                 []
             )
         
-        # Verifica se o usuário quer criar um chamado
         if user_message.lower().strip() in ['sim', 'yes', 's', 'quero', 'pode ser']:
             return (
                 "Perfeito! Estou abrindo um chamado para você. "
@@ -81,19 +109,21 @@ Para abrir um chamado, o usuário deve responder "SIM" ou "sim" quando perguntad
                 []
             )
         
-        # Busca contexto relevante na base de conhecimento
+        config = self._get_config_from_db()
+        system_prompt = self._build_system_prompt(config)
+        model = config.get("model", "gpt-4o") if config else "gpt-4o"
+        temperature = config.get("temperature", 0.7) if config else 0.7
+        max_tokens = config.get("max_tokens", 500) if config else 500
+        
         vs = get_vector_store()
         context_documents = vs.search(user_message, n_results=3) if vs else []
         context = self._build_context(context_documents)
         
-        # Prepara as mensagens para a API
-        messages = [{"role": "system", "content": self.system_prompt}]
+        messages = [{"role": "system", "content": system_prompt}]
         
-        # Adiciona histórico se existir
         if conversation_history:
-            messages.extend(conversation_history[-6:])  # Últimas 6 mensagens
+            messages.extend(conversation_history[-6:])
         
-        # Adiciona contexto e mensagem atual
         messages.append({
             "role": "user",
             "content": f"""CONTEXTO DA BASE DE CONHECIMENTO:
@@ -110,15 +140,14 @@ pergunte se o cliente deseja abrir um chamado."""
         
         try:
             response = self.client.chat.completions.create(
-                model="gpt-4o",  # Modelo mais recente e eficiente
+                model=model,
                 messages=messages,
-                max_tokens=500,
-                temperature=0.7
+                max_tokens=max_tokens,
+                temperature=temperature
             )
             
             ai_response = response.choices[0].message.content
             
-            # Detecta se a IA sugeriu abrir um chamado
             suggest_ticket = any(phrase in ai_response.lower() for phrase in [
                 "abrir um chamado",
                 "falar com um assessor",
@@ -141,5 +170,4 @@ pergunte se o cliente deseja abrir um chamado."""
         return self.client is not None
 
 
-# Instância global do agente
 openai_agent = OpenAIAgent()

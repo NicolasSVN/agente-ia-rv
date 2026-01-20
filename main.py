@@ -10,7 +10,7 @@ from contextlib import asynccontextmanager
 
 from database.database import engine, Base, SessionLocal
 from database import crud
-from api.endpoints import auth, users, tickets, whatsapp_webhook, integrations, analytics
+from api.endpoints import auth, users, tickets, whatsapp_webhook, integrations, analytics, agent_config
 from core.security import decode_token
 
 
@@ -45,6 +45,7 @@ async def lifespan(app: FastAPI):
         
         crud.init_default_integrations(db)
         crud.init_default_categories(db)
+        crud.init_default_agent_config(db)
     finally:
         db.close()
     
@@ -74,6 +75,7 @@ app.include_router(tickets.router)
 app.include_router(whatsapp_webhook.router)
 app.include_router(integrations.router)
 app.include_router(analytics.router)
+app.include_router(agent_config.router)
 
 
 # ========== Rotas de Páginas HTML ==========
@@ -169,6 +171,28 @@ async def analytics_page(request: Request):
         return RedirectResponse(url="/login?error=permission")
     
     return templates.TemplateResponse("analytics.html", {"request": request})
+
+
+@app.get("/agent-brain", response_class=HTMLResponse)
+async def agent_brain_page(request: Request):
+    """
+    Painel de controle do cérebro do agente.
+    Permite configurar personalidade, modelo e parâmetros da IA.
+    Requer autenticação como admin.
+    """
+    token = request.cookies.get("access_token")
+    
+    if not token:
+        return RedirectResponse(url="/login")
+    
+    payload = decode_token(token)
+    if not payload:
+        return RedirectResponse(url="/login")
+    
+    if payload.get("role") != "admin":
+        return RedirectResponse(url="/login?error=permission")
+    
+    return templates.TemplateResponse("agent_brain.html", {"request": request})
 
 
 # ========== Health Check ==========
