@@ -341,6 +341,7 @@
 
         <div class="info-box">
             <p><strong>Importante:</strong> As chaves de API (secrets) devem ser configuradas na aba "Secrets" do Replit para maior segurança. Esta página mostra quais variáveis estão configuradas e permite testar as conexões.</p>
+            <p style="margin-top: 8px; font-size: 0.85rem;"><strong>Como configurar:</strong> No Replit, vá em Tools > Secrets e adicione cada variável de ambiente listada abaixo. O toggle "Ativo/Inativo" indica se você deseja usar esta integração no sistema.</p>
         </div>
 
         <div id="integrationsContainer">
@@ -353,9 +354,10 @@
 
         async function loadIntegrations() {
             try {
+                const fetchOptions = { credentials: 'include' };
                 const [integrationsRes, envMappingRes] = await Promise.all([
-                    fetch(`${API_BASE}/`),
-                    fetch(`${API_BASE}/env-mapping`)
+                    fetch(`${API_BASE}/`, fetchOptions),
+                    fetch(`${API_BASE}/env-mapping`, fetchOptions)
                 ]);
 
                 if (!integrationsRes.ok || !envMappingRes.ok) {
@@ -476,6 +478,7 @@
                 const response = await fetch(`${API_BASE}/${id}`, {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
                     body: JSON.stringify({ is_active: isActive })
                 });
 
@@ -500,7 +503,7 @@
             resultDiv.style.display = 'none';
 
             try {
-                const response = await fetch(`${API_BASE}/${id}/status`);
+                const response = await fetch(`${API_BASE}/${id}/status`, { credentials: 'include' });
                 const data = await response.json();
 
                 resultDiv.className = `test-result ${data.is_connected ? 'success' : 'error'}`;
@@ -518,7 +521,7 @@
 
         async function initDefaults() {
             try {
-                const response = await fetch(`${API_BASE}/init-defaults`, { method: 'POST' });
+                const response = await fetch(`${API_BASE}/init-defaults`, { method: 'POST', credentials: 'include' });
                 if (response.ok) {
                     loadIntegrations();
                 } else {
