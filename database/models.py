@@ -180,3 +180,38 @@ class AgentConfig(Base):
     is_active = Column(Integer, default=1)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+
+class Assessor(Base):
+    """
+    Base de Assessores.
+    Armazena informações dos assessores para disparo de mensagens e identificação.
+    """
+    __tablename__ = "assessores"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    nome = Column(String(255), nullable=False, index=True)
+    telefone_whatsapp = Column(String(20), nullable=True, index=True)
+    unidade = Column(String(255), nullable=True, index=True)
+    equipe = Column(String(255), nullable=True, index=True)
+    broker_responsavel = Column(String(255), nullable=True, index=True)
+    custom_fields = Column(Text, default="{}")
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+
+class CustomFieldDefinition(Base):
+    """
+    Definições de campos customizados para assessores.
+    Permite criar novos campos dinamicamente.
+    """
+    __tablename__ = "custom_field_definitions"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    slug = Column(String(100), unique=True, nullable=False, index=True)
+    label = Column(String(255), nullable=False)
+    field_type = Column(String(50), default="text")
+    is_required = Column(Integer, default=0)
+    is_active = Column(Integer, default=1)
+    options = Column(Text, default="[]")
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
