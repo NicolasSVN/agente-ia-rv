@@ -540,34 +540,47 @@ def get_resolution_time_by_broker(db: Session, start_date: date = None, end_date
     start_dt = datetime.combine(start_date, datetime.min.time()) if start_date else None
     end_dt = datetime.combine(end_date, datetime.max.time()) if end_date else None
     
-    query = db.query(
-        Ticket.broker_id,
-        User.username,
-        sql_func.count(Ticket.id).label('total_tickets'),
-        sql_func.avg(
-            sql_func.julianday(Ticket.resolved_at) - sql_func.julianday(Ticket.created_at)
-        ).label('avg_days')
-    ).join(User, Ticket.broker_id == User.id).filter(
+    query = db.query(Ticket).filter(
         Ticket.resolved_at.isnot(None),
         Ticket.broker_id.isnot(None)
-    ).group_by(Ticket.broker_id, User.username)
+    )
     
     if start_dt:
         query = query.filter(Ticket.resolved_at >= start_dt)
     if end_dt:
         query = query.filter(Ticket.resolved_at <= end_dt)
     
-    results = query.all()
+    tickets = query.all()
     
-    return [
-        {
-            "broker_id": r.broker_id,
-            "broker_name": r.username,
-            "total_tickets": r.total_tickets,
-            "avg_resolution_hours": round((r.avg_days or 0) * 24, 1)
-        }
-        for r in results
-    ]
+    broker_stats = {}
+    for ticket in tickets:
+        broker_id = ticket.broker_id
+        if broker_id not in broker_stats:
+            broker = db.query(User).filter(User.id == broker_id).first()
+            broker_stats[broker_id] = {
+                "broker_id": broker_id,
+                "broker_name": broker.username if broker else "Desconhecido",
+                "total_tickets": 0,
+                "total_hours": 0
+            }
+        
+        if ticket.resolved_at and ticket.created_at:
+            diff = ticket.resolved_at - ticket.created_at
+            hours = diff.total_seconds() / 3600
+            broker_stats[broker_id]["total_tickets"] += 1
+            broker_stats[broker_id]["total_hours"] += hours
+    
+    result = []
+    for broker_id, stats in broker_stats.items():
+        avg_hours = stats["total_hours"] / stats["total_tickets"] if stats["total_tickets"] > 0 else 0
+        result.append({
+            "broker_id": stats["broker_id"],
+            "broker_name": stats["broker_name"],
+            "total_tickets": stats["total_tickets"],
+            "avg_resolution_hours": round(avg_hours, 1)
+        })
+    
+    return result
 
 
 def get_tickets_by_category(db: Session, start_date: date = None, end_date: date = None) -> List[dict]:

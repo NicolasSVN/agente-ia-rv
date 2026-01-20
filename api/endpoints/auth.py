@@ -116,7 +116,7 @@ async def logout(response: Response):
 
 
 @router.get("/me")
-async def get_current_user(request: Request, db: Session = Depends(get_db)):
+async def get_current_user_endpoint(request: Request, db: Session = Depends(get_db)):
     """Retorna informações do usuário logado."""
     token = request.cookies.get("access_token")
     
@@ -146,3 +146,47 @@ async def get_current_user(request: Request, db: Session = Depends(get_db)):
         "email": user.email,
         "role": user.role
     }
+
+
+async def get_current_user(request: Request, db: Session = Depends(get_db)):
+    """Dependência que retorna o usuário autenticado."""
+    from database.models import User
+    token = request.cookies.get("access_token")
+    
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Não autenticado"
+        )
+    
+    payload = decode_token(token)
+    if not payload:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token inválido"
+        )
+    
+    user = crud.get_user_by_username(db, payload.get("sub"))
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Usuário não encontrado"
+        )
+    
+    return user
+
+
+def require_role(allowed_roles: list):
+    """Factory para criar dependência que verifica se o usuário tem uma role permitida."""
+    async def role_checker(
+        request: Request,
+        db: Session = Depends(get_db)
+    ):
+        user = await get_current_user(request, db)
+        if user.role not in allowed_roles:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Acesso negado"
+            )
+        return user
+    return role_checker

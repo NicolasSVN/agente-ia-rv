@@ -53,12 +53,16 @@ Aplicação FastAPI completa para um agente de IA de assessores financeiros. O s
 - `POST /webhook/whatsapp` - Webhook WAHA
 - `GET /api/integrations/` - Listar integrações (admin)
 - `GET /api/integrations/{id}/status` - Testar conexão (admin)
+- `GET /api/analytics/summary` - Resumo de KPIs (admin/broker)
+- `GET /api/analytics/resolution-time` - Tempo médio por assessor (admin/broker)
+- `GET /api/analytics/tickets-by-category` - Tickets por categoria (admin/broker)
 
 ### Frontend
 - `/login` - Página de login
 - `/kanban` - Quadro Kanban (admin/broker)
 - `/admin` - Gerenciamento de usuários (admin)
 - `/integrations` - Gerenciamento de integrações (admin)
+- `/analytics` - Dashboard de indicadores (admin/broker)
 
 ## Roles de Usuário
 - `admin` - Acesso total
@@ -84,8 +88,30 @@ A página `/integrations` (apenas admin) permite:
 
 **Importante:** As chaves de API devem ser configuradas via Secrets do Replit (Tools > Secrets), não através da interface. A página apenas mostra o status e permite testar conexões.
 
+## Dashboard de Analytics
+
+A página `/analytics` (admin e broker) exibe indicadores de controle:
+
+### KPIs Disponíveis
+- **Total de Atendimentos** - Quantidade de interações registradas
+- **Chamados Abertos** - Tickets com status "Aberto" ou "Em Andamento"
+- **Chamados Concluídos** - Tickets com status "Concluído"
+- **Assessores Ativos** - Brokers com tickets atribuídos no período
+- **Clientes Contactados** - Clientes únicos que receberam atendimento
+- **Clientes com Interesse** - Clientes marcados com interesse identificado
+
+### Recursos
+- Filtro por período (7, 30, 90 dias ou personalizado)
+- Gráfico de dúvidas por categoria
+- Tabela de tempo médio de resolução por assessor
+
+### Categorias de Tickets
+Categorias padrão criadas automaticamente:
+- Investimentos, Conta, Transferências, Produtos, Suporte Técnico, Outros
+
 ## Mudanças Recentes
 - 2026-01-20: Aplicação criada com todas as funcionalidades
 - 2026-01-20: Corrigido serialização UserResponse (from_attributes)
 - 2026-01-20: Admin bootstrap via variáveis de ambiente
 - 2026-01-20: Adicionado painel de gerenciamento de integrações
+- 2026-01-20: Adicionado dashboard de analytics com KPIs e filtro de data
