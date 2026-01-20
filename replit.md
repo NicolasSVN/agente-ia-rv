@@ -51,11 +51,14 @@ Aplicação FastAPI completa para um agente de IA de assessores financeiros. O s
 - `GET /api/users/` - Listar usuários (admin)
 - `GET /api/tickets/` - Listar tickets
 - `POST /webhook/whatsapp` - Webhook WAHA
+- `GET /api/integrations/` - Listar integrações (admin)
+- `GET /api/integrations/{id}/status` - Testar conexão (admin)
 
 ### Frontend
 - `/login` - Página de login
 - `/kanban` - Quadro Kanban (admin/broker)
 - `/admin` - Gerenciamento de usuários (admin)
+- `/integrations` - Gerenciamento de integrações (admin)
 
 ## Roles de Usuário
 - `admin` - Acesso total
@@ -71,7 +74,18 @@ Para indexar documentos do Notion:
 python indexer.py
 ```
 
+## Gerenciamento de Integrações
+
+A página `/integrations` (apenas admin) permite:
+- Visualizar status das integrações configuradas (OpenAI, Notion, WAHA)
+- Ver quais variáveis de ambiente estão configuradas
+- Testar conexões com serviços externos
+- Ativar/desativar integrações
+
+**Importante:** As chaves de API devem ser configuradas via Secrets do Replit (Tools > Secrets), não através da interface. A página apenas mostra o status e permite testar conexões.
+
 ## Mudanças Recentes
 - 2026-01-20: Aplicação criada com todas as funcionalidades
 - 2026-01-20: Corrigido serialização UserResponse (from_attributes)
 - 2026-01-20: Admin bootstrap via variáveis de ambiente
+- 2026-01-20: Adicionado painel de gerenciamento de integrações
