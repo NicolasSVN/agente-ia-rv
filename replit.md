@@ -58,6 +58,14 @@ Aplicação FastAPI completa para um agente de IA de assessores financeiros. O s
 - `GET /api/analytics/tickets-by-category` - Tickets por categoria (admin/broker)
 - `GET /api/agent-config/` - Configuração do agente (admin)
 - `PUT /api/agent-config/` - Atualizar configuração do agente (admin)
+- `GET /api/assessores` - Listar assessores (admin/broker)
+- `POST /api/assessores` - Criar assessor (admin/broker)
+- `PUT /api/assessores/{id}` - Atualizar assessor (admin/broker)
+- `DELETE /api/assessores/{id}` - Excluir assessor (admin/broker)
+- `GET /api/custom-fields` - Listar campos customizados (admin/broker)
+- `POST /api/custom-fields` - Criar campo customizado (admin/broker)
+- `POST /api/upload/preview` - Preview de planilha para importação (admin/broker)
+- `POST /api/upload/confirm` - Confirmar importação com mapeamento (admin/broker)
 
 ### Frontend
 - `/login` - Página de login (redireciona para /analytics após login)
@@ -66,6 +74,7 @@ Aplicação FastAPI completa para um agente de IA de assessores financeiros. O s
 - `/admin` - Gerenciamento de usuários (admin)
 - `/integrations` - Gerenciamento de integrações (admin)
 - `/agent-brain` - Painel de Controle do Cérebro do Agente (admin)
+- `/assessores` - Base de Assessores (admin/broker)
 
 ## Roles de Usuário
 - `admin` - Acesso total
@@ -137,3 +146,32 @@ A página `/agent-brain` (apenas admin) permite configurar em tempo real:
 - 2026-01-20: Adicionado Painel de Controle do Cérebro do Agente com configuração em tempo real
 - 2026-01-20: Menu de navegação unificado em todas as páginas
 - 2026-01-20: Renomeado app para "Agente IA - RV" e adicionado logo SVN
+- 2026-01-20: Adicionado módulo Base de Assessores com CRUD, campos customizados e importação de planilhas
+
+## Base de Assessores
+
+A página `/assessores` (admin e broker) permite gerenciar a base de assessores para disparo de mensagens e identificação.
+
+### Campos Padrão
+- **Nome do Assessor** - Nome completo (obrigatório)
+- **Telefone WhatsApp** - Número para identificação e contato
+- **Unidade** - Unidade de trabalho do assessor
+- **Equipe** - Equipe à qual pertence
+- **Broker Responsável** - Broker que supervisiona o assessor
+
+### Funcionalidades
+1. **CRUD Completo** - Criar, visualizar, editar e excluir assessores
+2. **Filtros Dinâmicos** - Filtrar por unidade, equipe, broker ou busca por nome/telefone
+3. **Campos Customizados** - Criar campos adicionais dinamicamente (ex: código do parceiro)
+4. **Importação de Planilhas** - Upload de Excel/CSV com mapeamento de campos
+
+### Importação de Planilhas
+1. Faça upload de arquivo Excel (.xlsx, .xls) ou CSV
+2. O sistema mostra as colunas encontradas e tenta mapear automaticamente
+3. Ajuste o mapeamento conforme necessário
+4. Opção de atualizar registros existentes pelo telefone
+5. Confirme a importação
+
+### Tabelas do Banco de Dados
+- `assessores` - Registros dos assessores com campos customizados em JSON
+- `custom_field_definitions` - Definições de campos customizados

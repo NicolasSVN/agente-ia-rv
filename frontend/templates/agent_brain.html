@@ -1,0 +1,580 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cerebro do Agente - Agente IA - RV</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            min-height: 100vh;
+            color: #e0e0e0;
+        }
+
+        .navbar {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 1rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .navbar h1 {
+            font-size: 1.5rem;
+            color: #fff;
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 1.5rem;
+            align-items: center;
+        }
+
+        .nav-links a {
+            color: #a0a0a0;
+            text-decoration: none;
+            transition: color 0.3s;
+            font-size: 0.95rem;
+        }
+
+        .nav-links a:hover, .nav-links a.active {
+            color: #6366f1;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        .page-header {
+            margin-bottom: 2rem;
+        }
+
+        .page-header h2 {
+            font-size: 1.8rem;
+            color: #fff;
+            margin-bottom: 0.5rem;
+        }
+
+        .page-header p {
+            color: #a0a0a0;
+            font-size: 1rem;
+        }
+
+        .config-card {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 16px;
+            padding: 2rem;
+            margin-bottom: 1.5rem;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .config-card h3 {
+            color: #fff;
+            font-size: 1.2rem;
+            margin-bottom: 0.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .config-card h3 .icon {
+            font-size: 1.4rem;
+        }
+
+        .config-card .description {
+            color: #888;
+            font-size: 0.9rem;
+            margin-bottom: 1rem;
+        }
+
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+
+        .form-group label {
+            display: block;
+            color: #ccc;
+            margin-bottom: 0.5rem;
+            font-weight: 500;
+        }
+
+        textarea {
+            width: 100%;
+            min-height: 200px;
+            padding: 1rem;
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 8px;
+            color: #fff;
+            font-family: inherit;
+            font-size: 0.95rem;
+            line-height: 1.6;
+            resize: vertical;
+        }
+
+        textarea:focus {
+            outline: none;
+            border-color: #6366f1;
+        }
+
+        textarea.small {
+            min-height: 120px;
+        }
+
+        select {
+            width: 100%;
+            padding: 0.75rem 1rem;
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 8px;
+            color: #fff;
+            font-size: 1rem;
+            cursor: pointer;
+        }
+
+        select:focus {
+            outline: none;
+            border-color: #6366f1;
+        }
+
+        select option {
+            background: #1a1a2e;
+            color: #fff;
+        }
+
+        .slider-container {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+
+        .slider-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .slider-value {
+            background: #6366f1;
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.9rem;
+            font-weight: 600;
+        }
+
+        input[type="range"] {
+            width: 100%;
+            height: 8px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+            outline: none;
+            -webkit-appearance: none;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 24px;
+            height: 24px;
+            background: #6366f1;
+            border-radius: 50%;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        input[type="range"]::-webkit-slider-thumb:hover {
+            transform: scale(1.1);
+        }
+
+        .slider-labels {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.85rem;
+            color: #888;
+        }
+
+        input[type="number"] {
+            width: 150px;
+            padding: 0.75rem 1rem;
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 8px;
+            color: #fff;
+            font-size: 1rem;
+        }
+
+        input[type="number"]:focus {
+            outline: none;
+            border-color: #6366f1;
+        }
+
+        .actions {
+            display: flex;
+            gap: 1rem;
+            margin-top: 2rem;
+        }
+
+        .btn {
+            padding: 1rem 2rem;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+            color: #fff;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 20px rgba(99, 102, 241, 0.4);
+        }
+
+        .btn-primary:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.1);
+            color: #fff;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.15);
+        }
+
+        .status-message {
+            padding: 1rem;
+            border-radius: 8px;
+            margin-bottom: 1.5rem;
+            display: none;
+        }
+
+        .status-message.success {
+            display: block;
+            background: rgba(16, 185, 129, 0.2);
+            border: 1px solid #10b981;
+            color: #10b981;
+        }
+
+        .status-message.error {
+            display: block;
+            background: rgba(239, 68, 68, 0.2);
+            border: 1px solid #ef4444;
+            color: #ef4444;
+        }
+
+        .loading {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 4rem;
+        }
+
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid rgba(255, 255, 255, 0.1);
+            border-top-color: #6366f1;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .info-box {
+            background: rgba(99, 102, 241, 0.1);
+            border: 1px solid rgba(99, 102, 241, 0.3);
+            border-radius: 8px;
+            padding: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        .info-box p {
+            color: #a5b4fc;
+            font-size: 0.9rem;
+            line-height: 1.6;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 1rem;
+            }
+            
+            .config-card {
+                padding: 1.5rem;
+            }
+            
+            .actions {
+                flex-direction: column;
+            }
+            
+            .btn {
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar">
+        <div style="display: flex; align-items: center; gap: 12px;">
+            <img src="/static/logo.png" alt="SVN" style="height: 32px;">
+            <h1>Agente IA - RV</h1>
+        </div>
+        <div class="nav-links">
+            <a href="/analytics">Dashboard</a>
+            <a href="/kanban">Chamados</a>
+            <a href="/admin">Usuarios</a>
+            <a href="/integrations">Integracoes</a>
+            <a href="/agent-brain" class="active">Cerebro IA</a>
+            <a href="/login" id="logoutLink">Sair</a>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="page-header">
+            <h2>Painel de Controle do Cerebro do Agente</h2>
+            <p>Configure a personalidade e comportamento do agente de IA</p>
+        </div>
+
+        <div id="statusMessage" class="status-message"></div>
+
+        <div id="loading" class="loading">
+            <div class="spinner"></div>
+        </div>
+
+        <form id="configForm" style="display: none;">
+            <div class="info-box">
+                <p><strong>Importante:</strong> As alteracoes feitas aqui serao aplicadas imediatamente a todas as novas conversas no WhatsApp. O agente passara a usar as novas configuracoes em tempo real.</p>
+            </div>
+
+            <div class="config-card">
+                <h3><span class="icon">&#129504;</span> A Alma do Agente</h3>
+                <p class="description">Defina a personalidade, regras e comportamento do agente. Escreva em portugues claro como o agente deve se comportar.</p>
+                <div class="form-group">
+                    <label for="personality">Personalidade e Regras</label>
+                    <textarea id="personality" placeholder="Ex: Voce e um assistente amigavel e profissional chamado Maria. Sempre responda de forma educada, use emojis com moderacao, e nunca de conselhos financeiros diretos..."></textarea>
+                </div>
+            </div>
+
+            <div class="config-card">
+                <h3><span class="icon">&#9940;</span> Restricoes e Proibicoes</h3>
+                <p class="description">Defina o que o agente NAO pode fazer em hipotese alguma. Delimite sua atuacao para maior seguranca.</p>
+                <div class="form-group">
+                    <label for="restrictions">O que o agente nao pode fazer</label>
+                    <textarea id="restrictions" class="small" placeholder="Ex: - Nunca forneca conselhos financeiros especificos
+- Nao prometa resultados ou retornos
+- Nao compartilhe dados de outros clientes..."></textarea>
+                </div>
+            </div>
+
+            <div class="config-card">
+                <h3><span class="icon">&#9881;</span> O Motor da Inteligencia</h3>
+                <p class="description">Escolha o modelo de IA que sera usado para gerar as respostas.</p>
+                <div class="form-group">
+                    <label for="model">Modelo de IA</label>
+                    <select id="model">
+                        <option value="gpt-4o">GPT-4o - Mais recente e eficiente</option>
+                        <option value="gpt-4-turbo">GPT-4 Turbo - Alta inteligencia, respostas detalhadas</option>
+                        <option value="gpt-4">GPT-4 - Modelo padrao</option>
+                        <option value="gpt-3.5-turbo">GPT-3.5 Turbo - Mais rapido e economico</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="config-card">
+                <h3><span class="icon">&#127777;</span> O Termostato da Criatividade</h3>
+                <p class="description">Controle o nivel de criatividade das respostas. Valores baixos = mais objetivo. Valores altos = mais criativo.</p>
+                <div class="form-group">
+                    <div class="slider-container">
+                        <div class="slider-header">
+                            <label for="temperature">Temperatura</label>
+                            <span id="tempValue" class="slider-value">0.7</span>
+                        </div>
+                        <input type="range" id="temperature" min="0" max="2" step="0.1" value="0.7">
+                        <div class="slider-labels">
+                            <span>Objetivo e Previsivel</span>
+                            <span>Criativo e Variado</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="config-card">
+                <h3><span class="icon">&#128221;</span> O Limite de Palavras</h3>
+                <p class="description">Defina o tamanho maximo das respostas do agente (em tokens, aproximadamente 1 token = 4 caracteres).</p>
+                <div class="form-group">
+                    <label for="maxTokens">Tamanho Maximo da Resposta</label>
+                    <input type="number" id="maxTokens" min="50" max="4000" value="500">
+                    <p class="description" style="margin-top: 0.5rem;">Recomendado: 300-800 para WhatsApp</p>
+                </div>
+            </div>
+
+            <div class="actions">
+                <button type="submit" class="btn btn-primary" id="saveBtn">Salvar Configuracoes</button>
+                <button type="button" class="btn btn-secondary" id="resetBtn">Restaurar Padrao</button>
+            </div>
+        </form>
+    </div>
+
+    <script>
+        const loadingEl = document.getElementById('loading');
+        const formEl = document.getElementById('configForm');
+        const statusEl = document.getElementById('statusMessage');
+        const temperatureInput = document.getElementById('temperature');
+        const tempValueEl = document.getElementById('tempValue');
+
+        temperatureInput.addEventListener('input', function() {
+            tempValueEl.textContent = this.value;
+        });
+
+        function showStatus(message, type) {
+            statusEl.textContent = message;
+            statusEl.className = 'status-message ' + type;
+            setTimeout(() => {
+                statusEl.className = 'status-message';
+            }, 5000);
+        }
+
+        async function loadConfig() {
+            try {
+                const response = await fetch('/api/agent-config/', {
+                    credentials: 'include'
+                });
+                
+                if (response.status === 401) {
+                    window.location.href = '/login';
+                    return;
+                }
+                
+                if (!response.ok) {
+                    throw new Error('Erro ao carregar configuracoes');
+                }
+                
+                const config = await response.json();
+                
+                document.getElementById('personality').value = config.personality || '';
+                document.getElementById('restrictions').value = config.restrictions || '';
+                document.getElementById('model').value = config.model || 'gpt-4o';
+                document.getElementById('temperature').value = config.temperature || '0.7';
+                document.getElementById('maxTokens').value = config.max_tokens || 500;
+                tempValueEl.textContent = config.temperature || '0.7';
+                
+                loadingEl.style.display = 'none';
+                formEl.style.display = 'block';
+                
+            } catch (error) {
+                loadingEl.style.display = 'none';
+                formEl.style.display = 'block';
+                showStatus('Erro ao carregar configuracoes: ' + error.message, 'error');
+            }
+        }
+
+        async function saveConfig(event) {
+            event.preventDefault();
+            
+            const saveBtn = document.getElementById('saveBtn');
+            saveBtn.disabled = true;
+            saveBtn.textContent = 'Salvando...';
+            
+            const data = {
+                personality: document.getElementById('personality').value,
+                restrictions: document.getElementById('restrictions').value,
+                model: document.getElementById('model').value,
+                temperature: document.getElementById('temperature').value,
+                max_tokens: parseInt(document.getElementById('maxTokens').value)
+            };
+            
+            try {
+                const response = await fetch('/api/agent-config/', {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    credentials: 'include',
+                    body: JSON.stringify(data)
+                });
+                
+                if (response.status === 401) {
+                    window.location.href = '/login';
+                    return;
+                }
+                
+                if (!response.ok) {
+                    throw new Error('Erro ao salvar configuracoes');
+                }
+                
+                showStatus('Configuracoes salvas com sucesso! O agente ja esta usando as novas configuracoes.', 'success');
+                
+            } catch (error) {
+                showStatus('Erro ao salvar: ' + error.message, 'error');
+            } finally {
+                saveBtn.disabled = false;
+                saveBtn.textContent = 'Salvar Configuracoes';
+            }
+        }
+
+        document.getElementById('configForm').addEventListener('submit', saveConfig);
+
+        document.getElementById('resetBtn').addEventListener('click', async function() {
+            if (!confirm('Tem certeza que deseja restaurar as configuracoes padrao?')) {
+                return;
+            }
+            
+            const defaultPersonality = `Voce e um assistente virtual especializado em assessoria financeira.
+Seu papel e ajudar clientes com duvidas sobre investimentos, produtos financeiros e servicos.
+
+REGRAS IMPORTANTES:
+1. Responda sempre de forma educada e profissional.
+2. Use o contexto fornecido para basear suas respostas.
+3. Se a informacao nao estiver disponivel no contexto, seja honesto e diga que nao tem essa informacao.
+4. Quando nao puder ajudar adequadamente, pergunte se o cliente deseja abrir um chamado para falar com um assessor.
+5. Mantenha as respostas concisas e objetivas, adequadas para WhatsApp.
+6. Nunca invente informacoes sobre produtos, taxas ou valores.
+
+Para abrir um chamado, o usuario deve responder "SIM" ou "sim" quando perguntado.`;
+
+            const defaultRestrictions = `- Nunca forneca conselhos financeiros especificos ou recomendacoes de investimento.
+- Nao mencione valores ou taxas a menos que estejam documentados na base de conhecimento.
+- Nao prometa resultados ou retornos financeiros.
+- Nao compartilhe informacoes de outros clientes.
+- Nao faca operacoes financeiras em nome do cliente.`;
+            
+            document.getElementById('personality').value = defaultPersonality;
+            document.getElementById('restrictions').value = defaultRestrictions;
+            document.getElementById('model').value = 'gpt-4o';
+            document.getElementById('temperature').value = '0.7';
+            document.getElementById('maxTokens').value = 500;
+            tempValueEl.textContent = '0.7';
+            
+            showStatus('Configuracoes restauradas para o padrao. Clique em Salvar para aplicar.', 'success');
+        });
+
+        document.getElementById('logoutLink').addEventListener('click', function(e) {
+            e.preventDefault();
+            document.cookie = 'access_token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+            window.location.href = '/login';
+        });
+
+        loadConfig();
+    </script>
+</body>
+</html>

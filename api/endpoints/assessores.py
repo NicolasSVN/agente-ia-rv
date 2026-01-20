@@ -1,5 +1,6 @@
 """
 Endpoints para gerenciamento da Base de Assessores.
+Requer autenticação como admin ou broker.
 """
 import os
 import uuid
@@ -18,9 +19,12 @@ except ImportError:
     pd = None
 
 from database.database import get_db
-from database.models import Assessor, CustomFieldDefinition
+from database.models import Assessor, CustomFieldDefinition, User
+from api.endpoints.auth import require_role
 
 router = APIRouter(prefix="/api/assessores", tags=["assessores"])
+
+require_admin_or_broker = require_role(["admin", "broker"])
 
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
@@ -124,14 +128,15 @@ def parse_custom_fields(assessor):
 
 
 @router.get("", response_model=List[dict])
-def list_assessores(
+async def list_assessores(
     search: Optional[str] = Query(None),
     unidade: Optional[str] = Query(None),
     equipe: Optional[str] = Query(None),
     broker: Optional[str] = Query(None),
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin_or_broker)
 ):
     query = db.query(Assessor)
     
@@ -154,12 +159,12 @@ def list_assessores(
 
 
 @router.get("/count")
-def count_assessores(db: Session = Depends(get_db)):
+async def count_assessores(db: Session = Depends(get_db), current_user: User = Depends(require_admin_or_broker)):
     return {"count": db.query(Assessor).count()}
 
 
 @router.get("/filters")
-def get_filter_options(db: Session = Depends(get_db)):
+async def get_filter_options(db: Session = Depends(get_db), current_user: User = Depends(require_admin_or_broker)):
     unidades = db.query(Assessor.unidade).distinct().filter(Assessor.unidade.isnot(None)).all()
     equipes = db.query(Assessor.equipe).distinct().filter(Assessor.equipe.isnot(None)).all()
     brokers = db.query(Assessor.broker_responsavel).distinct().filter(Assessor.broker_responsavel.isnot(None)).all()
@@ -172,7 +177,7 @@ def get_filter_options(db: Session = Depends(get_db)):
 
 
 @router.get("/{assessor_id}")
-def get_assessor(assessor_id: int, db: Session = Depends(get_db)):
+async def get_assessor(assessor_id: int, db: Session = Depends(get_db), current_user: User = Depends(require_admin_or_broker)):
     assessor = db.query(Assessor).filter(Assessor.id == assessor_id).first()
     if not assessor:
         raise HTTPException(status_code=404, detail="Assessor não encontrado")
@@ -180,7 +185,7 @@ def get_assessor(assessor_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("")
-def create_assessor(assessor: AssessorCreate, db: Session = Depends(get_db)):
+async def create_assessor(assessor: AssessorCreate, db: Session = Depends(get_db), current_user: User = Depends(require_admin_or_broker)):
     db_assessor = Assessor(
         nome=assessor.nome,
         telefone_whatsapp=assessor.telefone_whatsapp,
@@ -196,7 +201,7 @@ def create_assessor(assessor: AssessorCreate, db: Session = Depends(get_db)):
 
 
 @router.put("/{assessor_id}")
-def update_assessor(assessor_id: int, assessor: AssessorUpdate, db: Session = Depends(get_db)):
+async def update_assessor(assessor_id: int, assessor: AssessorUpdate, db: Session = Depends(get_db), current_user: User = Depends(require_admin_or_broker)):
     db_assessor = db.query(Assessor).filter(Assessor.id == assessor_id).first()
     if not db_assessor:
         raise HTTPException(status_code=404, detail="Assessor não encontrado")
@@ -214,7 +219,7 @@ def update_assessor(assessor_id: int, assessor: AssessorUpdate, db: Session = De
 
 
 @router.delete("/{assessor_id}")
-def delete_assessor(assessor_id: int, db: Session = Depends(get_db)):
+async def delete_assessor(assessor_id: int, db: Session = Depends(get_db), current_user: User = Depends(require_admin_or_broker)):
     db_assessor = db.query(Assessor).filter(Assessor.id == assessor_id).first()
     if not db_assessor:
         raise HTTPException(status_code=404, detail="Assessor não encontrado")
@@ -248,13 +253,13 @@ def parse_custom_field(field):
 
 
 @custom_fields_router.get("")
-def list_custom_fields(db: Session = Depends(get_db)):
+async def list_custom_fields(db: Session = Depends(get_db), current_user: User = Depends(require_admin_or_broker)):
     fields = db.query(CustomFieldDefinition).filter(CustomFieldDefinition.is_active == 1).all()
     return [parse_custom_field(f) for f in fields]
 
 
 @custom_fields_router.post("")
-def create_custom_field(field: CustomFieldCreate, db: Session = Depends(get_db)):
+async def create_custom_field(field: CustomFieldCreate, db: Session = Depends(get_db), current_user: User = Depends(require_admin_or_broker)):
     existing = db.query(CustomFieldDefinition).filter(CustomFieldDefinition.slug == field.slug).first()
     if existing:
         raise HTTPException(status_code=400, detail="Já existe um campo com este identificador")
@@ -273,7 +278,7 @@ def create_custom_field(field: CustomFieldCreate, db: Session = Depends(get_db))
 
 
 @custom_fields_router.delete("/{field_id}")
-def delete_custom_field(field_id: int, db: Session = Depends(get_db)):
+async def delete_custom_field(field_id: int, db: Session = Depends(get_db), current_user: User = Depends(require_admin_or_broker)):
     db_field = db.query(CustomFieldDefinition).filter(CustomFieldDefinition.id == field_id).first()
     if not db_field:
         raise HTTPException(status_code=404, detail="Campo customizado não encontrado")
@@ -287,7 +292,7 @@ upload_router = APIRouter(prefix="/api/upload", tags=["upload"])
 
 
 @upload_router.post("/preview", response_model=UploadPreview)
-async def upload_preview(file: UploadFile = File(...)):
+async def upload_preview(file: UploadFile = File(...), db: Session = Depends(get_db), current_user: User = Depends(require_admin_or_broker)):
     if pd is None:
         raise HTTPException(status_code=500, detail="Pandas não está instalado")
     
@@ -323,7 +328,7 @@ async def upload_preview(file: UploadFile = File(...)):
 
 
 @upload_router.get("/database-fields")
-def get_database_fields(db: Session = Depends(get_db)):
+async def get_database_fields(db: Session = Depends(get_db), current_user: User = Depends(require_admin_or_broker)):
     core_fields = [
         {"slug": "nome", "label": "Nome do Assessor", "required": True},
         {"slug": "telefone_whatsapp", "label": "Telefone WhatsApp", "required": False},
@@ -345,7 +350,7 @@ def get_database_fields(db: Session = Depends(get_db)):
 
 
 @upload_router.post("/confirm")
-def confirm_upload(data: UploadConfirm, db: Session = Depends(get_db)):
+async def confirm_upload(data: UploadConfirm, db: Session = Depends(get_db), current_user: User = Depends(require_admin_or_broker)):
     if pd is None:
         raise HTTPException(status_code=500, detail="Pandas não está instalado")
     

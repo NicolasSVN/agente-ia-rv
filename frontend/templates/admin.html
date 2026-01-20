@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Usuarios - Agente IA - RV</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #f0f2f5;
+            min-height: 100vh;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: white;
+            padding: 16px 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .header h1 {
+            font-size: 24px;
+        }
+        
+        .header-actions {
+            display: flex;
+            gap: 16px;
+            align-items: center;
+        }
+        
+        .header-actions a {
+            color: white;
+            text-decoration: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            transition: background 0.2s;
+        }
+        
+        .header-actions a:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+        
+        .btn-logout {
+            background: rgba(220, 38, 38, 0.2) !important;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 24px;
+        }
+        
+        .toolbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 24px;
+        }
+        
+        .btn-add {
+            padding: 12px 24px;
+            background: linear-gradient(135deg, #4a90d9 0%, #357abd 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+        
+        .btn-add:hover {
+            transform: translateY(-2px);
+        }
+        
+        .users-table {
+            background: white;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        
+        th, td {
+            padding: 16px;
+            text-align: left;
+            border-bottom: 1px solid #e5e7eb;
+        }
+        
+        th {
+            background: #f9fafb;
+            font-weight: 600;
+            color: #374151;
+            font-size: 14px;
+        }
+        
+        td {
+            color: #1f2937;
+        }
+        
+        .role-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        
+        .role-admin {
+            background: #fee2e2;
+            color: #dc2626;
+        }
+        
+        .role-broker {
+            background: #dbeafe;
+            color: #2563eb;
+        }
+        
+        .role-client {
+            background: #d1fae5;
+            color: #059669;
+        }
+        
+        .actions {
+            display: flex;
+            gap: 8px;
+        }
+        
+        .btn-edit, .btn-delete {
+            padding: 6px 12px;
+            border: none;
+            border-radius: 6px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+        
+        .btn-edit {
+            background: #dbeafe;
+            color: #2563eb;
+        }
+        
+        .btn-delete {
+            background: #fee2e2;
+            color: #dc2626;
+        }
+        
+        .btn-edit:hover, .btn-delete:hover {
+            opacity: 0.8;
+        }
+        
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+        
+        .modal.show {
+            display: flex;
+        }
+        
+        .modal-content {
+            background: white;
+            border-radius: 12px;
+            padding: 24px;
+            width: 100%;
+            max-width: 480px;
+        }
+        
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        
+        .modal-header h2 {
+            font-size: 20px;
+            color: #1a1a2e;
+        }
+        
+        .btn-close {
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: #666;
+        }
+        
+        .form-group {
+            margin-bottom: 16px;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 6px;
+            font-weight: 500;
+            color: #333;
+        }
+        
+        .form-group input,
+        .form-group select {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 14px;
+        }
+        
+        .btn-submit {
+            width: 100%;
+            padding: 14px;
+            background: linear-gradient(135deg, #4a90d9 0%, #357abd 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        
+        .empty-state {
+            text-align: center;
+            padding: 48px;
+            color: #666;
+        }
+        
+        .access-denied {
+            text-align: center;
+            padding: 100px 24px;
+            color: #dc2626;
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <div style="display: flex; align-items: center; gap: 12px;">
+            <img src="/static/logo.png" alt="SVN" style="height: 32px;">
+            <h1>Agente IA - RV</h1>
+        </div>
+        <div class="header-actions">
+            <a href="/analytics">Dashboard</a>
+            <a href="/kanban">Chamados</a>
+            <a href="/admin" style="background: rgba(255,255,255,0.15);">Usuarios</a>
+            <a href="/integrations">Integracoes</a>
+            <a href="/agent-brain">Cerebro IA</a>
+            <a href="#" class="btn-logout" onclick="logout()">Sair</a>
+        </div>
+    </header>
+    
+    <div class="container" id="main-content">
+        <div class="toolbar">
+            <div></div>
+            <button class="btn-add" onclick="openModal()">+ Novo Usuário</button>
+        </div>
+        
+        <div class="users-table">
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Usuário</th>
+                        <th>Email</th>
+                        <th>Telefone</th>
+                        <th>Função</th>
+                        <th>Ações</th>
+                    </tr>
+                </thead>
+                <tbody id="users-tbody">
+                    <tr>
+                        <td colspan="6" class="empty-state">Carregando...</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+    
+    <div class="access-denied" id="access-denied" style="display: none;">
+        <h2>Acesso Negado</h2>
+        <p>Apenas administradores podem acessar esta página.</p>
+        <a href="/kanban">Voltar ao Kanban</a>
+    </div>
+    
+    <div class="modal" id="userModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="modal-title">Novo Usuário</h2>
+                <button class="btn-close" onclick="closeModal()">&times;</button>
+            </div>
+            <form id="userForm" onsubmit="saveUser(event)">
+                <input type="hidden" id="userId" name="userId">
+                <div class="form-group">
+                    <label for="username">Nome de Usuário</label>
+                    <input type="text" id="username" name="username" required>
+                </div>
+                <div class="form-group">
+                    <label for="email">Email</label>
+                    <input type="email" id="email" name="email" required>
+                </div>
+                <div class="form-group">
+                    <label for="password">Senha</label>
+                    <input type="password" id="password" name="password">
+                    <small style="color: #666; font-size: 12px;">Deixe em branco para manter a senha atual (ao editar)</small>
+                </div>
+                <div class="form-group">
+                    <label for="phone">Telefone</label>
+                    <input type="text" id="phone" name="phone" placeholder="5511999999999">
+                </div>
+                <div class="form-group">
+                    <label for="role">Função</label>
+                    <select id="role" name="role" required>
+                        <option value="client">Cliente</option>
+                        <option value="broker">Assessor</option>
+                        <option value="admin">Administrador</option>
+                    </select>
+                </div>
+                <button type="submit" class="btn-submit">Salvar</button>
+            </form>
+        </div>
+    </div>
+    
+    <script>
+        let currentUserRole = null;
+        
+        document.addEventListener('DOMContentLoaded', async function() {
+            // Verifica se é admin
+            try {
+                const response = await fetch('/api/auth/me');
+                if (response.status === 401) {
+                    window.location.href = '/login';
+                    return;
+                }
+                
+                const user = await response.json();
+                currentUserRole = user.role;
+                
+                if (user.role !== 'admin') {
+                    document.getElementById('main-content').style.display = 'none';
+                    document.getElementById('access-denied').style.display = 'block';
+                    return;
+                }
+                
+                loadUsers();
+            } catch (error) {
+                console.error('Erro ao verificar permissões:', error);
+            }
+        });
+        
+        async function loadUsers() {
+            try {
+                const response = await fetch('/api/users/');
+                if (!response.ok) {
+                    throw new Error('Erro ao carregar usuários');
+                }
+                
+                const users = await response.json();
+                const tbody = document.getElementById('users-tbody');
+                
+                if (users.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="6" class="empty-state">Nenhum usuário cadastrado</td></tr>';
+                    return;
+                }
+                
+                tbody.innerHTML = users.map(user => `
+                    <tr>
+                        <td>${user.id}</td>
+                        <td>${user.username}</td>
+                        <td>${user.email}</td>
+                        <td>${user.phone || '-'}</td>
+                        <td><span class="role-badge role-${user.role}">${getRoleLabel(user.role)}</span></td>
+                        <td class="actions">
+                            <button class="btn-edit" onclick="editUser(${user.id})">Editar</button>
+                            <button class="btn-delete" onclick="deleteUser(${user.id})">Excluir</button>
+                        </td>
+                    </tr>
+                `).join('');
+                
+            } catch (error) {
+                console.error('Erro ao carregar usuários:', error);
+            }
+        }
+        
+        function getRoleLabel(role) {
+            switch(role) {
+                case 'admin': return 'Administrador';
+                case 'broker': return 'Assessor';
+                case 'client': return 'Cliente';
+                default: return role;
+            }
+        }
+        
+        function openModal(user = null) {
+            const modal = document.getElementById('userModal');
+            const form = document.getElementById('userForm');
+            const title = document.getElementById('modal-title');
+            
+            form.reset();
+            
+            if (user) {
+                title.textContent = 'Editar Usuário';
+                document.getElementById('userId').value = user.id;
+                document.getElementById('username').value = user.username;
+                document.getElementById('email').value = user.email;
+                document.getElementById('phone').value = user.phone || '';
+                document.getElementById('role').value = user.role;
+            } else {
+                title.textContent = 'Novo Usuário';
+                document.getElementById('userId').value = '';
+            }
+            
+            modal.classList.add('show');
+        }
+        
+        function closeModal() {
+            document.getElementById('userModal').classList.remove('show');
+        }
+        
+        async function editUser(userId) {
+            try {
+                const response = await fetch(`/api/users/${userId}`);
+                const user = await response.json();
+                openModal(user);
+            } catch (error) {
+                console.error('Erro ao carregar usuário:', error);
+            }
+        }
+        
+        async function saveUser(event) {
+            event.preventDefault();
+            
+            const userId = document.getElementById('userId').value;
+            const formData = new FormData(event.target);
+            
+            const data = {
+                username: formData.get('username'),
+                email: formData.get('email'),
+                phone: formData.get('phone') || null,
+                role: formData.get('role')
+            };
+            
+            const password = formData.get('password');
+            if (password) {
+                data.password = password;
+            }
+            
+            try {
+                const url = userId ? `/api/users/${userId}` : '/api/users/';
+                const method = userId ? 'PUT' : 'POST';
+                
+                const response = await fetch(url, {
+                    method: method,
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(data)
+                });
+                
+                if (response.ok) {
+                    closeModal();
+                    loadUsers();
+                } else {
+                    const error = await response.json();
+                    alert(error.detail || 'Erro ao salvar usuário');
+                }
+            } catch (error) {
+                console.error('Erro ao salvar usuário:', error);
+                alert('Erro ao salvar usuário');
+            }
+        }
+        
+        async function deleteUser(userId) {
+            if (!confirm('Tem certeza que deseja excluir este usuário?')) {
+                return;
+            }
+            
+            try {
+                const response = await fetch(`/api/users/${userId}`, {
+                    method: 'DELETE'
+                });
+                
+                if (response.ok) {
+                    loadUsers();
+                } else {
+                    alert('Erro ao excluir usuário');
+                }
+            } catch (error) {
+                console.error('Erro ao excluir usuário:', error);
+            }
+        }
+        
+        async function logout() {
+            await fetch('/api/auth/logout', { method: 'POST' });
+            window.location.href = '/login';
+        }
+        
+        document.getElementById('userModal').addEventListener('click', function(e) {
+            if (e.target === this) {
+                closeModal();
+            }
+        });
+    </script>
+</body>
+</html>
