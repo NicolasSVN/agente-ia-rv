@@ -342,6 +342,10 @@ async def set_custom_template(
     if not campaign:
         raise HTTPException(status_code=404, detail="Campanha não encontrada")
     
+    print(f"[DEBUG CUSTOM_TEMPLATE] campaign_id={campaign_id}")
+    print(f"[DEBUG CUSTOM_TEMPLATE] content length={len(request.content)}")
+    print(f"[DEBUG CUSTOM_TEMPLATE] content first 300 chars: '{request.content[:300]}'")
+    
     campaign.custom_template_content = request.content
     db.commit()
     
@@ -367,25 +371,37 @@ async def preview_campaign(
     template_name = "Mensagem Padrao"
     
     if campaign.custom_template_content:
-        template_content = campaign.custom_template_content
+        template_content = str(campaign.custom_template_content)
         template_name = "Mensagem Editada"
     elif campaign.template_id:
         template = db.query(MessageTemplate).filter(MessageTemplate.id == campaign.template_id).first()
         if template:
-            template_content = template.content
-            template_name = template.name
+            template_content = str(template.content)
+            template_name = str(template.name)
     
     try:
-        column_mapping = json.loads(campaign.column_mapping) if campaign.column_mapping else {}
-        custom_mapping = json.loads(campaign.custom_fields_mapping) if campaign.custom_fields_mapping else {}
-        data = json.loads(campaign.processed_data) if campaign.processed_data else []
+        column_mapping = json.loads(str(campaign.column_mapping)) if campaign.column_mapping else {}
+        custom_mapping = json.loads(str(campaign.custom_fields_mapping)) if campaign.custom_fields_mapping else {}
+        data = json.loads(str(campaign.processed_data)) if campaign.processed_data else []
     except json.JSONDecodeError:
         raise HTTPException(status_code=400, detail="Erro nos dados da campanha")
+    
+    print(f"[DEBUG PREVIEW] campaign_id={campaign_id}")
+    print(f"[DEBUG PREVIEW] column_mapping={column_mapping}")
+    print(f"[DEBUG PREVIEW] custom_mapping={custom_mapping}")
+    print(f"[DEBUG PREVIEW] data rows count={len(data)}")
+    if data:
+        print(f"[DEBUG PREVIEW] first row keys={list(data[0].keys())}")
+        print(f"[DEBUG PREVIEW] first row sample={data[0]}")
     
     if not column_mapping:
         raise HTTPException(status_code=400, detail="Mapeamento de colunas não definido")
     
     grouped = group_recommendations_by_assessor(data, column_mapping, custom_mapping, db)
+    print(f"[DEBUG PREVIEW] grouped keys={list(grouped.keys())}")
+    if grouped:
+        first_key = list(grouped.keys())[0]
+        print(f"[DEBUG PREVIEW] first assessor data={grouped[first_key]}")
     
     campaign.total_assessors = len(grouped)
     db.commit()
@@ -480,21 +496,42 @@ def format_currency(value) -> str:
 def build_message(template_content: str, assessor_data: dict, custom_mapping: dict) -> str:
     """
     Constrói a mensagem final substituindo as variáveis do template.
+    Usa regex flexível para aceitar variações de formatação.
     """
     from datetime import datetime
     message = template_content
     
-    message = message.replace("{{nome_assessor}}", assessor_data.get("nome_assessor", ""))
-    message = message.replace("{{assessor_id}}", assessor_data.get("assessor_id", ""))
-    message = message.replace("{{data_atual}}", datetime.now().strftime("%d/%m/%Y"))
+    nome_assessor = assessor_data.get("nome_assessor", "")
+    assessor_id_val = assessor_data.get("assessor_id", "")
+    clients = assessor_data.get("clients", {})
+    
+    print(f"[DEBUG BUILD_MESSAGE] template_content first 300 chars: '{template_content[:300] if template_content else 'EMPTY'}'")
+    print(f"[DEBUG BUILD_MESSAGE] nome_assessor='{nome_assessor}'")
+    print(f"[DEBUG BUILD_MESSAGE] assessor_id='{assessor_id_val}'")
+    print(f"[DEBUG BUILD_MESSAGE] clients count={len(clients)}")
+    if clients:
+        print(f"[DEBUG BUILD_MESSAGE] first client sample={list(clients.items())[:1]}")
+    
+    message = re.sub(r'\{\{?\s*nome_assessor\s*\}?\}', nome_assessor, message, flags=re.IGNORECASE)
+    message = re.sub(r'\{\{?\s*assessor_id\s*\}?\}', assessor_id_val, message, flags=re.IGNORECASE)
+    message = re.sub(r'\{\{?\s*data_atual\s*\}?\}', datetime.now().strftime("%d/%m/%Y"), message, flags=re.IGNORECASE)
     
     for var_name, value in assessor_data.get("custom_fields", {}).items():
-        message = message.replace(f"{{{{{var_name}}}}}", str(value))
+        pattern = r'\{\{?\s*' + re.escape(var_name) + r'\s*\}?\}'
+        message = re.sub(pattern, str(value), message, flags=re.IGNORECASE)
     
-    clients_block = build_clients_block(assessor_data.get("clients", {}))
-    message = message.replace("{{lista_clientes}}", clients_block)
+    clients_block = build_clients_block(clients)
+    print(f"[DEBUG BUILD_MESSAGE] clients_block length={len(clients_block)}")
+    if clients_block:
+        print(f"[DEBUG BUILD_MESSAGE] clients_block first 200 chars: '{clients_block[:200]}'")
+    else:
+        print(f"[DEBUG BUILD_MESSAGE] clients_block is EMPTY")
+    
+    message = re.sub(r'\{\{?\s*lista_clientes\s*\}?\}', clients_block, message, flags=re.IGNORECASE)
     
     message = re.sub(r'\{\{[^}]+\}\}', '', message)
+    
+    print(f"[DEBUG BUILD_MESSAGE] final message first 300 chars: '{message[:300]}'")
     
     return message
 
@@ -535,16 +572,16 @@ async def dispatch_campaign(
     template_content = DEFAULT_TEMPLATE_CONTENT
     
     if campaign.custom_template_content:
-        template_content = campaign.custom_template_content
+        template_content = str(campaign.custom_template_content)
     elif campaign.template_id:
         template = db.query(MessageTemplate).filter(MessageTemplate.id == campaign.template_id).first()
         if template:
-            template_content = template.content
+            template_content = str(template.content)
     
     try:
-        column_mapping = json.loads(campaign.column_mapping) if campaign.column_mapping else {}
-        custom_mapping = json.loads(campaign.custom_fields_mapping) if campaign.custom_fields_mapping else {}
-        data = json.loads(campaign.processed_data) if campaign.processed_data else []
+        column_mapping = json.loads(str(campaign.column_mapping)) if campaign.column_mapping else {}
+        custom_mapping = json.loads(str(campaign.custom_fields_mapping)) if campaign.custom_fields_mapping else {}
+        data = json.loads(str(campaign.processed_data)) if campaign.processed_data else []
     except json.JSONDecodeError:
         raise HTTPException(status_code=400, detail="Erro nos dados da campanha")
     
@@ -654,9 +691,9 @@ async def get_campaign(
     ).all()
     
     try:
-        column_mapping = json.loads(campaign.column_mapping) if campaign.column_mapping else {}
-        custom_fields_mapping = json.loads(campaign.custom_fields_mapping) if campaign.custom_fields_mapping else {}
-        processed_data = json.loads(campaign.processed_data) if campaign.processed_data else []
+        column_mapping = json.loads(str(campaign.column_mapping)) if campaign.column_mapping else {}
+        custom_fields_mapping = json.loads(str(campaign.custom_fields_mapping)) if campaign.custom_fields_mapping else {}
+        processed_data = json.loads(str(campaign.processed_data)) if campaign.processed_data else []
     except json.JSONDecodeError:
         column_mapping = {}
         custom_fields_mapping = {}
