@@ -551,8 +551,45 @@
                             <div class="loading"><div class="spinner"></div></div>
                         </div>
 
-                        <div class="wizard-actions">
-                            <button class="btn btn-secondary" onclick="goToStep(3)">
+                        <!-- Área de Progresso do Disparo -->
+                        <div id="dispatchProgress" style="display: none; margin: 24px 0; padding: 24px; background: #f8fafc; border-radius: 12px; border: 1px solid var(--border-color);">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                                <h4 style="margin: 0; display: flex; align-items: center; gap: 8px;">
+                                    <div class="spinner" style="width: 20px; height: 20px;"></div>
+                                    Enviando mensagens...
+                                </h4>
+                                <span id="progressPercent" style="font-size: 24px; font-weight: 700; color: var(--primary-color);">0%</span>
+                            </div>
+                            
+                            <div style="background: #e2e8f0; border-radius: 8px; height: 12px; overflow: hidden; margin-bottom: 16px;">
+                                <div id="progressBar" style="background: linear-gradient(90deg, var(--primary-color), #818cf8); height: 100%; width: 0%; transition: width 0.3s ease; border-radius: 8px;"></div>
+                            </div>
+                            
+                            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 16px;">
+                                <div style="text-align: center; padding: 12px; background: white; border-radius: 8px;">
+                                    <div id="progressCurrent" style="font-size: 24px; font-weight: 700; color: var(--primary-color);">0</div>
+                                    <div style="font-size: 12px; color: var(--text-secondary);">de <span id="progressTotal">0</span> assessores</div>
+                                </div>
+                                <div style="text-align: center; padding: 12px; background: white; border-radius: 8px;">
+                                    <div id="progressSent" style="font-size: 24px; font-weight: 700; color: #16a34a;">0</div>
+                                    <div style="font-size: 12px; color: var(--text-secondary);">Enviadas</div>
+                                </div>
+                                <div style="text-align: center; padding: 12px; background: white; border-radius: 8px;">
+                                    <div id="progressFailed" style="font-size: 24px; font-weight: 700; color: #dc2626;">0</div>
+                                    <div style="font-size: 12px; color: var(--text-secondary);">Falhas</div>
+                                </div>
+                            </div>
+                            
+                            <div id="currentDispatch" style="padding: 12px; background: white; border-radius: 8px; font-size: 14px;">
+                                <span style="color: var(--text-secondary);">Aguardando inicio...</span>
+                            </div>
+                            
+                            <div id="dispatchLog" style="max-height: 200px; overflow-y: auto; margin-top: 16px; font-size: 12px; font-family: monospace; background: #1e293b; color: #e2e8f0; padding: 12px; border-radius: 8px; display: none;">
+                            </div>
+                        </div>
+
+                        <div class="wizard-actions" id="dispatchActions">
+                            <button class="btn btn-secondary" onclick="goToStep(3)" id="backBtn">
                                 <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
                                 Voltar
                             </button>
@@ -1093,39 +1130,145 @@ Equipe de Gestao`;
         }
 
         async function dispatchCampaign() {
-            if (!confirm('Tem certeza que deseja disparar esta campanha? As mensagens serao enviadas para todos os assessores.')) {
+            if (!confirm('Tem certeza que deseja disparar esta campanha? As mensagens serao enviadas para todos os assessores com intervalo de 2-3 segundos entre cada envio.')) {
                 return;
             }
 
             const btn = document.getElementById('dispatchBtn');
+            const backBtn = document.getElementById('backBtn');
+            const progressDiv = document.getElementById('dispatchProgress');
+            const previewDiv = document.getElementById('previewMessages');
+            
             btn.disabled = true;
-            btn.innerHTML = '<div class="spinner" style="width: 20px; height: 20px;"></div> Enviando...';
+            backBtn.disabled = true;
+            btn.innerHTML = '<div class="spinner" style="width: 20px; height: 20px;"></div> Iniciando...';
+            
+            progressDiv.style.display = 'block';
+            previewDiv.style.display = 'none';
 
             try {
-                const response = await fetch(`${API_BASE}/${campaignId}/dispatch`, {
-                    method: 'POST',
-                    credentials: 'include'
-                });
-
-                if (!response.ok) {
-                    const error = await response.json();
-                    throw new Error(error.detail || 'Erro ao disparar campanha');
-                }
-
-                const data = await response.json();
-
-                alert(`Campanha disparada com sucesso!\n\nMensagens enviadas: ${data.messages_sent}\nFalhas: ${data.messages_failed}`);
-
-                location.reload();
+                const eventSource = new EventSource(`${API_BASE}/${campaignId}/dispatch-stream`);
+                
+                eventSource.onmessage = function(event) {
+                    const data = JSON.parse(event.data);
+                    
+                    if (data.type === 'start') {
+                        document.getElementById('progressTotal').textContent = data.total;
+                        btn.innerHTML = '<div class="spinner" style="width: 20px; height: 20px;"></div> Enviando...';
+                        addLogEntry(`Iniciando disparo para ${data.total} assessores...`, 'info');
+                    }
+                    else if (data.type === 'progress') {
+                        document.getElementById('progressCurrent').textContent = data.current;
+                        document.getElementById('progressPercent').textContent = data.percent + '%';
+                        document.getElementById('progressBar').style.width = data.percent + '%';
+                        document.getElementById('progressSent').textContent = data.sent_count;
+                        document.getElementById('progressFailed').textContent = data.failed_count;
+                        
+                        const statusIcon = data.status === 'sent' || data.status === 'simulated' 
+                            ? '<span style="color: #16a34a;">&#10004;</span>' 
+                            : '<span style="color: #dc2626;">&#10008;</span>';
+                        
+                        const currentHtml = `
+                            ${statusIcon} 
+                            <strong>${data.assessor_name}</strong>
+                            <span style="color: var(--text-secondary); margin-left: 8px;">${data.assessor_phone || 'Sem telefone'}</span>
+                            ${data.error ? `<span style="color: #dc2626; margin-left: 8px; font-size: 12px;">(${data.error})</span>` : ''}
+                        `;
+                        document.getElementById('currentDispatch').innerHTML = currentHtml;
+                        
+                        const logStatus = data.status === 'sent' ? 'success' : data.status === 'simulated' ? 'warning' : 'error';
+                        addLogEntry(`[${data.current}/${data.total}] ${data.assessor_name} - ${data.status.toUpperCase()}${data.error ? ': ' + data.error : ''}`, logStatus);
+                    }
+                    else if (data.type === 'complete') {
+                        eventSource.close();
+                        
+                        document.getElementById('progressPercent').textContent = '100%';
+                        document.getElementById('progressBar').style.width = '100%';
+                        
+                        const headerHtml = `
+                            <h4 style="margin: 0; display: flex; align-items: center; gap: 8px;">
+                                <svg width="24" height="24" fill="none" stroke="#16a34a" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                                Disparo Concluido!
+                            </h4>
+                        `;
+                        progressDiv.querySelector('h4').parentElement.innerHTML = headerHtml + `<span style="font-size: 24px; font-weight: 700; color: #16a34a;">100%</span>`;
+                        
+                        addLogEntry(`Disparo finalizado! Enviadas: ${data.sent_count}, Falhas: ${data.failed_count}`, 'info');
+                        
+                        btn.innerHTML = `
+                            <svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                            Campanha Enviada
+                        `;
+                        btn.classList.remove('btn-primary');
+                        btn.classList.add('btn-secondary');
+                        
+                        backBtn.style.display = 'none';
+                        
+                        const actionsDiv = document.getElementById('dispatchActions');
+                        actionsDiv.innerHTML = `
+                            <button class="btn btn-primary" onclick="location.reload()">
+                                <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/></svg>
+                                Nova Campanha
+                            </button>
+                            <button class="btn btn-secondary" onclick="location.reload()">
+                                Ver Historico
+                            </button>
+                        `;
+                        
+                        if (data.failed_count > 0) {
+                            setTimeout(() => {
+                                alert(`Disparo concluido!\n\nMensagens enviadas: ${data.sent_count}\nFalhas: ${data.failed_count}\n\nVerifique o historico para analisar as falhas.`);
+                            }, 500);
+                        }
+                    }
+                };
+                
+                eventSource.onerror = function(error) {
+                    console.error('SSE Error:', error);
+                    eventSource.close();
+                    
+                    addLogEntry('Erro na conexao com o servidor', 'error');
+                    
+                    btn.disabled = false;
+                    backBtn.disabled = false;
+                    btn.innerHTML = `
+                        <svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/></svg>
+                        Tentar Novamente
+                    `;
+                    
+                    alert('Erro na conexao. Verifique se a campanha foi parcialmente enviada antes de tentar novamente.');
+                };
 
             } catch (error) {
                 alert(error.message);
                 btn.disabled = false;
+                backBtn.disabled = false;
                 btn.innerHTML = `
                     <svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/></svg>
                     Disparar Campanha
                 `;
             }
+        }
+        
+        function addLogEntry(message, type = 'info') {
+            const logDiv = document.getElementById('dispatchLog');
+            logDiv.style.display = 'block';
+            
+            const colors = {
+                'info': '#94a3b8',
+                'success': '#4ade80',
+                'warning': '#fbbf24',
+                'error': '#f87171'
+            };
+            
+            const time = new Date().toLocaleTimeString('pt-BR');
+            const entry = document.createElement('div');
+            entry.style.color = colors[type] || colors.info;
+            entry.style.marginBottom = '4px';
+            entry.textContent = `[${time}] ${message}`;
+            
+            logDiv.appendChild(entry);
+            logDiv.scrollTop = logDiv.scrollHeight;
         }
 
         async function loadHistory() {
