@@ -631,13 +631,13 @@
         }
 
         function openUploadModal() {
-            document.getElementById('uploadModal').classList.add('active');
+            document.getElementById('uploadModal').classList.add('show');
             clearFile();
         }
 
         function closeUploadModal(event) {
             if (event && event.target !== event.currentTarget) return;
-            document.getElementById('uploadModal').classList.remove('active');
+            document.getElementById('uploadModal').classList.remove('show');
             clearFile();
             document.getElementById('uploadForm').reset();
         }
