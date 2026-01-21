@@ -17,7 +17,9 @@ from database.models import MessageTemplate, Campaign, CampaignDispatch, Campaig
 from api.endpoints.auth import require_role
 from database.models import User
 
-DISPATCH_DELAY_SECONDS = 2.5
+DISPATCH_DELAY_SECONDS = 5.0
+MAX_RETRY_ATTEMPTS = 3
+RETRY_DELAY_SECONDS = 3.0
 
 router = APIRouter(prefix="/api/campaigns", tags=["campaigns"])
 
@@ -943,32 +945,81 @@ async def dispatch_campaign_stream(
                     
                     status = "pending"
                     error_msg = ""
+                    attempt = 1
                     
                     if phone and waha_url:
-                        try:
-                            result = await whatsapp_client.send_message(phone, message)
-                            dispatch.api_response = json.dumps(result, ensure_ascii=False, default=str)
-                            
-                            if result.get("success"):
-                                dispatch.status = "sent"
-                                dispatch.sent_at = datetime.utcnow()
-                                sent_count += 1
-                                status = "sent"
-                            else:
-                                dispatch.status = "failed"
-                                error_code = result.get("error_code", "UNKNOWN")
-                                error_msg = result.get("error", "Erro desconhecido")
-                                dispatch.error_message = error_msg
-                                dispatch.error_details = translate_error_to_natural_language(error_code, error_msg, phone)
-                                failed_count += 1
-                                status = "failed"
-                        except Exception as e:
-                            dispatch.status = "failed"
-                            dispatch.error_message = str(e)
-                            dispatch.error_details = f"Erro inesperado ao enviar mensagem: {str(e)}"
-                            failed_count += 1
-                            status = "failed"
-                            error_msg = str(e)
+                        while attempt <= MAX_RETRY_ATTEMPTS:
+                            try:
+                                result = await whatsapp_client.send_message(phone, message)
+                                dispatch.api_response = json.dumps(result, ensure_ascii=False, default=str)
+                                
+                                if result.get("success"):
+                                    dispatch.status = "sent"
+                                    dispatch.sent_at = datetime.utcnow()
+                                    sent_count += 1
+                                    status = "sent"
+                                    break
+                                else:
+                                    error_code = result.get("error_code", "UNKNOWN")
+                                    error_msg = result.get("error", "Erro desconhecido")
+                                    
+                                    is_retryable = (
+                                        error_code.startswith("HTTP_5") or 
+                                        "500" in error_code or
+                                        "502" in error_code or
+                                        "503" in error_code or
+                                        error_code in ["TIMEOUT", "CONNECTION_ERROR", "HTTP_ERROR"]
+                                    )
+                                    
+                                    if is_retryable and attempt < MAX_RETRY_ATTEMPTS:
+                                        retry_data = {
+                                            'type': 'retry',
+                                            'current': current_index,
+                                            'total': total_assessors,
+                                            'assessor_name': assessor_name,
+                                            'attempt': attempt,
+                                            'max_attempts': MAX_RETRY_ATTEMPTS,
+                                            'error': error_msg
+                                        }
+                                        yield f"data: {json.dumps(retry_data, ensure_ascii=False)}\n\n"
+                                        await asyncio.sleep(RETRY_DELAY_SECONDS)
+                                        attempt += 1
+                                        continue
+                                    else:
+                                        dispatch.status = "failed"
+                                        dispatch.error_message = error_msg
+                                        dispatch.error_details = translate_error_to_natural_language(error_code, error_msg, phone)
+                                        if attempt > 1:
+                                            dispatch.error_details += f" (após {attempt} tentativas)"
+                                        failed_count += 1
+                                        status = "failed"
+                                        break
+                            except Exception as e:
+                                error_msg = str(e)
+                                
+                                if attempt < MAX_RETRY_ATTEMPTS:
+                                    retry_data = {
+                                        'type': 'retry',
+                                        'current': current_index,
+                                        'total': total_assessors,
+                                        'assessor_name': assessor_name,
+                                        'attempt': attempt,
+                                        'max_attempts': MAX_RETRY_ATTEMPTS,
+                                        'error': error_msg
+                                    }
+                                    yield f"data: {json.dumps(retry_data, ensure_ascii=False)}\n\n"
+                                    await asyncio.sleep(RETRY_DELAY_SECONDS)
+                                    attempt += 1
+                                    continue
+                                else:
+                                    dispatch.status = "failed"
+                                    dispatch.error_message = error_msg
+                                    dispatch.error_details = f"Erro inesperado ao enviar mensagem: {error_msg}"
+                                    if attempt > 1:
+                                        dispatch.error_details += f" (após {attempt} tentativas)"
+                                    failed_count += 1
+                                    status = "failed"
+                                    break
                     else:
                         if not phone:
                             dispatch.status = "failed"
@@ -997,7 +1048,8 @@ async def dispatch_campaign_stream(
                         'status': status,
                         'error': error_msg,
                         'sent_count': sent_count,
-                        'failed_count': failed_count
+                        'failed_count': failed_count,
+                        'attempts_made': attempt
                     }
                     yield f"data: {json.dumps(progress_data, ensure_ascii=False)}\n\n"
                     

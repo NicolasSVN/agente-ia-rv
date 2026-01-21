@@ -1155,7 +1155,17 @@ Equipe de Gestao`;
                     if (data.type === 'start') {
                         document.getElementById('progressTotal').textContent = data.total;
                         btn.innerHTML = '<div class="spinner" style="width: 20px; height: 20px;"></div> Enviando...';
-                        addLogEntry(`Iniciando disparo para ${data.total} assessores...`, 'info');
+                        addLogEntry(`Iniciando disparo para ${data.total} assessores (delay: 5s, retry: 3x)...`, 'info');
+                    }
+                    else if (data.type === 'retry') {
+                        const nextAttempt = data.attempt + 1;
+                        const currentHtml = `
+                            <span style="color: #f59e0b;">&#8635;</span> 
+                            <strong>${data.assessor_name}</strong>
+                            <span style="color: #f59e0b; margin-left: 8px;">Tentativa ${data.attempt} falhou, aguardando retry (${nextAttempt}/${data.max_attempts})...</span>
+                        `;
+                        document.getElementById('currentDispatch').innerHTML = currentHtml;
+                        addLogEntry(`[${data.current}/${data.total}] ${data.assessor_name} - Tentativa ${data.attempt} falhou, aguardando retry (${nextAttempt}/${data.max_attempts}): ${data.error}`, 'warning');
                     }
                     else if (data.type === 'progress') {
                         document.getElementById('progressCurrent').textContent = data.current;
@@ -1177,7 +1187,8 @@ Equipe de Gestao`;
                         document.getElementById('currentDispatch').innerHTML = currentHtml;
                         
                         const logStatus = data.status === 'sent' ? 'success' : data.status === 'simulated' ? 'warning' : 'error';
-                        addLogEntry(`[${data.current}/${data.total}] ${data.assessor_name} - ${data.status.toUpperCase()}${data.error ? ': ' + data.error : ''}`, logStatus);
+                        const retryInfo = data.attempts_made > 1 ? ` (após ${data.attempts_made} tentativas)` : '';
+                        addLogEntry(`[${data.current}/${data.total}] ${data.assessor_name} - ${data.status.toUpperCase()}${retryInfo}${data.error ? ': ' + data.error : ''}`, logStatus);
                     }
                     else if (data.type === 'complete') {
                         eventSource.close();
