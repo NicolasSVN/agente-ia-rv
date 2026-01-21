@@ -85,11 +85,17 @@ async def test_agent_message(
     
     history_for_ai = [{"role": msg["role"], "content": msg["content"]} for msg in history[-10:]]
     
-    response, should_create_ticket, context = await openai_agent.generate_response(
-        message,
-        history_for_ai,
-        extra_context=knowledge_context
-    )
+    try:
+        response, should_create_ticket, context = await openai_agent.generate_response(
+            message,
+            history_for_ai,
+            extra_context=knowledge_context
+        )
+    except Exception as e:
+        print(f"[AGENT_TEST] Erro ao gerar resposta: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Erro ao gerar resposta: {str(e)}")
     
     history.append({
         "role": "user",
