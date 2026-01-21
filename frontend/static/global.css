@@ -4,8 +4,9 @@
     --primary-color: #4f46e5;
     --primary-hover: #4338ca;
     --primary-light: #eef2ff;
-    --sidebar-width: 260px;
+    --sidebar-width: 220px;
     --sidebar-collapsed: 70px;
+    --topbar-height: 60px;
     --bg-color: #f8fafc;
     --card-bg: #ffffff;
     --text-primary: #1e293b;
@@ -32,7 +33,45 @@ body {
 
 .app-layout {
     display: flex;
+    flex-direction: column;
     min-height: 100vh;
+}
+
+.topbar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: var(--topbar-height);
+    background: var(--card-bg);
+    border-bottom: 1px solid var(--border-color);
+    display: flex;
+    align-items: center;
+    padding: 0 24px;
+    z-index: 1100;
+    gap: 16px;
+}
+
+.topbar-logo {
+    height: 32px;
+    width: auto;
+}
+
+.topbar-title {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    white-space: nowrap;
+}
+
+.topbar-spacer {
+    flex: 1;
+}
+
+.app-body {
+    display: flex;
+    margin-top: var(--topbar-height);
+    min-height: calc(100vh - var(--topbar-height));
 }
 
 .sidebar {
@@ -40,9 +79,9 @@ body {
     background: var(--card-bg);
     border-right: 1px solid var(--border-color);
     position: fixed;
-    top: 0;
+    top: var(--topbar-height);
     left: 0;
-    height: 100vh;
+    height: calc(100vh - var(--topbar-height));
     z-index: 1000;
     transition: width 0.3s ease;
     display: flex;
@@ -51,35 +90,6 @@ body {
 
 .sidebar.collapsed {
     width: var(--sidebar-collapsed);
-}
-
-.sidebar-header {
-    padding: 20px;
-    border-bottom: 1px solid var(--border-color);
-    display: flex;
-    align-items: center;
-    gap: 12px;
-}
-
-.sidebar.collapsed .sidebar-header {
-    padding: 20px 15px;
-    justify-content: center;
-}
-
-.sidebar-logo {
-    height: 36px;
-    width: auto;
-}
-
-.sidebar-title {
-    font-size: 1.1rem;
-    font-weight: 700;
-    color: var(--text-primary);
-    white-space: nowrap;
-}
-
-.sidebar.collapsed .sidebar-title {
-    display: none;
 }
 
 .sidebar-nav {

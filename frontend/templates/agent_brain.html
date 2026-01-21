@@ -167,12 +167,14 @@
 </head>
 <body>
     <div class="app-layout">
-        <aside class="sidebar" id="sidebar">
-            <div class="sidebar-header">
-                <img src="/static/logo.png" alt="SVN" class="sidebar-logo">
-                <span class="sidebar-title">Agente IA - RV</span>
-            </div>
-            <button class="sidebar-toggle" onclick="toggleSidebar()">
+        <header class="topbar">
+            <img src="/static/logo.png" alt="SVN" class="topbar-logo">
+            <span class="topbar-title">Agente IA - RV</span>
+            <div class="topbar-spacer"></div>
+        </header>
+        <div class="app-body">
+            <aside class="sidebar" id="sidebar">
+                <button class="sidebar-toggle" onclick="toggleSidebar()">
                 <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
                 </svg>
@@ -306,6 +308,7 @@
                 </form>
             </div>
         </main>
+        </div>
     </div>
 
     <script>
