@@ -496,30 +496,43 @@ def format_currency(value) -> str:
 def build_message(template_content: str, assessor_data: dict, custom_mapping: dict) -> str:
     """
     Constrói a mensagem final substituindo as variáveis do template.
-    Usa regex flexível para aceitar variações de formatação.
+    Usa substituição simples para máxima confiabilidade.
     """
     from datetime import datetime
-    message = template_content
+    message = str(template_content) if template_content else ""
     
-    nome_assessor = assessor_data.get("nome_assessor", "")
-    assessor_id_val = assessor_data.get("assessor_id", "")
+    nome_assessor = str(assessor_data.get("nome_assessor", ""))
+    assessor_id_val = str(assessor_data.get("assessor_id", ""))
     clients = assessor_data.get("clients", {})
     
-    print(f"[DEBUG BUILD_MESSAGE] template_content first 300 chars: '{template_content[:300] if template_content else 'EMPTY'}'")
+    print(f"[DEBUG BUILD_MESSAGE] template_content first 300 chars: '{message[:300] if message else 'EMPTY'}'")
     print(f"[DEBUG BUILD_MESSAGE] nome_assessor='{nome_assessor}'")
     print(f"[DEBUG BUILD_MESSAGE] assessor_id='{assessor_id_val}'")
     print(f"[DEBUG BUILD_MESSAGE] clients count={len(clients)}")
     if clients:
         print(f"[DEBUG BUILD_MESSAGE] first client sample={list(clients.items())[:1]}")
     
-    message = re.sub(r'\{\{?\s*nome_assessor\s*\}?\}', nome_assessor, message, flags=re.IGNORECASE)
-    message = re.sub(r'\{\{?\s*assessor_id\s*\}?\}', assessor_id_val, message, flags=re.IGNORECASE)
-    message = re.sub(r'\{\{?\s*data_atual\s*\}?\}', datetime.now().strftime("%d/%m/%Y"), message, flags=re.IGNORECASE)
+    # Substituição direta com str.replace() - mais confiável
+    message = message.replace("{{nome_assessor}}", nome_assessor)
+    message = message.replace("{{ nome_assessor }}", nome_assessor)
+    message = message.replace("{nome_assessor}", nome_assessor)
     
+    message = message.replace("{{assessor_id}}", assessor_id_val)
+    message = message.replace("{{ assessor_id }}", assessor_id_val)
+    message = message.replace("{assessor_id}", assessor_id_val)
+    
+    data_atual = datetime.now().strftime("%d/%m/%Y")
+    message = message.replace("{{data_atual}}", data_atual)
+    message = message.replace("{{ data_atual }}", data_atual)
+    message = message.replace("{data_atual}", data_atual)
+    
+    # Campos customizados
     for var_name, value in assessor_data.get("custom_fields", {}).items():
-        pattern = r'\{\{?\s*' + re.escape(var_name) + r'\s*\}?\}'
-        message = re.sub(pattern, str(value), message, flags=re.IGNORECASE)
+        message = message.replace("{{" + var_name + "}}", str(value))
+        message = message.replace("{{ " + var_name + " }}", str(value))
+        message = message.replace("{" + var_name + "}", str(value))
     
+    # Constrói o bloco de clientes
     clients_block = build_clients_block(clients)
     print(f"[DEBUG BUILD_MESSAGE] clients_block length={len(clients_block)}")
     if clients_block:
@@ -527,8 +540,11 @@ def build_message(template_content: str, assessor_data: dict, custom_mapping: di
     else:
         print(f"[DEBUG BUILD_MESSAGE] clients_block is EMPTY")
     
-    message = re.sub(r'\{\{?\s*lista_clientes\s*\}?\}', clients_block, message, flags=re.IGNORECASE)
+    message = message.replace("{{lista_clientes}}", clients_block)
+    message = message.replace("{{ lista_clientes }}", clients_block)
+    message = message.replace("{lista_clientes}", clients_block)
     
+    # Remove variáveis não substituídas
     message = re.sub(r'\{\{[^}]+\}\}', '', message)
     
     print(f"[DEBUG BUILD_MESSAGE] final message first 300 chars: '{message[:300]}'")
