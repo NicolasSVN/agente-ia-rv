@@ -104,20 +104,19 @@ A página `/integrations` (apenas admin) permite:
 
 ## Dashboard de Analytics
 
-A página `/analytics` (admin e broker) exibe indicadores de controle:
+A página `/analytics` (admin, gestao_rv e broker) exibe indicadores de controle:
 
 ### KPIs Disponíveis
 - **Total de Atendimentos** - Quantidade de interações registradas
 - **Chamados Abertos** - Tickets com status "Aberto" ou "Em Andamento"
 - **Chamados Concluídos** - Tickets com status "Concluído"
-- **Assessores Ativos** - Brokers com tickets atribuídos no período
-- **Clientes Contactados** - Clientes únicos que receberam atendimento
-- **Clientes com Interesse** - Clientes marcados com interesse identificado
+- **Mensagens Enviadas** - Total de mensagens disparadas via campanhas
+- **Assessores Impactados** - Assessores únicos que receberam mensagens de campanhas
 
 ### Recursos
 - Filtro por período (7, 30, 90 dias ou personalizado)
 - Gráfico de dúvidas por categoria
-- Tabela de tempo médio de resolução por assessor
+- Tabela de tempo médio de resolução por Broker (perfil de usuário)
 
 ### Categorias de Tickets
 Categorias padrão criadas automaticamente:
