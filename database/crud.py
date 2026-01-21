@@ -7,7 +7,7 @@ from typing import List, Optional
 from datetime import datetime, date
 from database.models import (
     User, Ticket, TicketStatus, Integration, IntegrationSetting,
-    TicketCategory, Interaction, UserRole, AgentConfig
+    TicketCategory, Interaction, UserRole, AgentConfig, CampaignDispatch
 )
 from core.security import get_password_hash, verify_password
 
@@ -517,60 +517,34 @@ def get_analytics_summary(db: Session, start_date: date = None, end_date: date =
     closed_tickets_query = date_filter(closed_tickets_query, Ticket.resolved_at)
     chamados_concluidos = closed_tickets_query.scalar() or 0
     
-    # 4. Assessores ativos (brokers com tickets atribuídos no período)
-    if broker_id:
-        assessores_ativos = 1  # Se filtrado por broker, mostra apenas 1
-    else:
-        active_brokers_query = db.query(sql_func.count(distinct(Ticket.broker_id))).filter(
-            Ticket.broker_id.isnot(None)
-        )
-        active_brokers_query = date_filter(active_brokers_query, Ticket.created_at)
-        assessores_ativos = active_brokers_query.scalar() or 0
-    
-    # 5. Clientes contactados (únicos por telefone ou ID)
-    if broker_id:
-        clients_by_id = db.query(sql_func.count(distinct(Ticket.client_id))).filter(
-            Ticket.client_id.isnot(None),
-            Ticket.broker_id == broker_id
-        )
-        clients_by_id = date_filter(clients_by_id, Ticket.created_at)
-        clientes_contactados = clients_by_id.scalar() or 0
-    else:
-        clients_by_id = db.query(sql_func.count(distinct(Interaction.client_id))).filter(
-            Interaction.client_id.isnot(None)
-        )
-        clients_by_id = date_filter(clients_by_id, Interaction.created_at)
-        
-        clients_by_phone = db.query(sql_func.count(distinct(Interaction.client_phone))).filter(
-            Interaction.client_phone.isnot(None),
-            Interaction.client_id.is_(None)
-        )
-        clients_by_phone = date_filter(clients_by_phone, Interaction.created_at)
-        
-        clientes_contactados = (clients_by_id.scalar() or 0) + (clients_by_phone.scalar() or 0)
-    
-    # 6. Clientes com interesse identificado
-    interest_query = db.query(sql_func.count(distinct(Ticket.client_id))).filter(
-        Ticket.interest_identified == True
+    # 4. Mensagens enviadas para assessores (de campanhas)
+    mensagens_query = db.query(sql_func.count(CampaignDispatch.id)).filter(
+        CampaignDispatch.status.in_(["sent", "simulated"])
     )
-    interest_query = broker_filter(interest_query, Ticket.broker_id)
-    interest_query = date_filter(interest_query, Ticket.interest_identified_at)
-    clientes_com_interesse = interest_query.scalar() or 0
+    mensagens_query = date_filter(mensagens_query, CampaignDispatch.sent_at)
+    mensagens_enviadas = mensagens_query.scalar() or 0
+    
+    # 5. Assessores únicos impactados por campanhas
+    assessores_unicos_query = db.query(sql_func.count(distinct(CampaignDispatch.assessor_phone))).filter(
+        CampaignDispatch.status.in_(["sent", "simulated"]),
+        CampaignDispatch.assessor_phone.isnot(None)
+    )
+    assessores_unicos_query = date_filter(assessores_unicos_query, CampaignDispatch.sent_at)
+    assessores_unicos_impactados = assessores_unicos_query.scalar() or 0
     
     return {
         "total_atendimentos": total_atendimentos,
         "chamados_abertos": chamados_abertos,
         "chamados_concluidos": chamados_concluidos,
-        "assessores_ativos": assessores_ativos,
-        "clientes_contactados": clientes_contactados,
-        "clientes_com_interesse": clientes_com_interesse,
+        "mensagens_enviadas": mensagens_enviadas,
+        "assessores_unicos_impactados": assessores_unicos_impactados,
     }
 
 
 def get_resolution_time_by_broker(db: Session, start_date: date = None, end_date: date = None, broker_id: int = None) -> List[dict]:
     """
-    Calcula o tempo médio de resolução por assessor.
-    Se broker_id fornecido, filtra apenas dados do broker.
+    Calcula o tempo médio de resolução por Broker (perfil de usuário).
+    Se broker_id fornecido, filtra apenas dados do broker específico.
     """
     start_dt = datetime.combine(start_date, datetime.min.time()) if start_date else None
     end_dt = datetime.combine(end_date, datetime.max.time()) if end_date else None

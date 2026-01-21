@@ -209,7 +209,7 @@ async def agent_brain_page(request: Request):
 async def assessores_page(request: Request):
     """
     Página de gerenciamento da Base de Assessores.
-    Requer autenticação como admin, broker ou gestao_rv.
+    Requer autenticação como admin ou gestao_rv.
     """
     token = request.cookies.get("access_token")
     
@@ -221,7 +221,7 @@ async def assessores_page(request: Request):
         return RedirectResponse(url="/login")
     
     user_role = payload.get("role")
-    if user_role not in ["admin", "broker", "gestao_rv"]:
+    if user_role not in ["admin", "gestao_rv"]:
         return RedirectResponse(url="/login?error=permission")
     
     return templates.TemplateResponse("assessores.html", {"request": request, "user_role": user_role})
