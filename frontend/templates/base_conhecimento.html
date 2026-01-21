@@ -492,7 +492,7 @@
 
         async function loadStats() {
             try {
-                const response = await fetch('/api/knowledge/stats');
+                const response = await fetch('/api/knowledge/stats', {credentials: 'same-origin'});
                 if (response.ok) {
                     const data = await response.json();
                     document.getElementById('statTotal').textContent = data.total_documents;
@@ -519,7 +519,7 @@
                 if (search) params.append('search', search);
                 if (params.toString()) url += '?' + params.toString();
 
-                const response = await fetch(url);
+                const response = await fetch(url, {credentials: 'same-origin'});
                 if (!response.ok) throw new Error('Erro ao carregar documentos');
                 
                 const data = await response.json();
@@ -702,7 +702,8 @@
 
                 const response = await fetch('/api/knowledge/upload', {
                     method: 'POST',
-                    body: formData
+                    body: formData,
+                    credentials: 'same-origin'
                 });
 
                 const data = await response.json();
@@ -728,7 +729,8 @@
 
             try {
                 const response = await fetch(`/api/knowledge/${id}`, {
-                    method: 'DELETE'
+                    method: 'DELETE',
+                    credentials: 'same-origin'
                 });
 
                 if (!response.ok) {
@@ -746,7 +748,8 @@
         async function reindexDocument(id) {
             try {
                 const response = await fetch(`/api/knowledge/${id}/reindex`, {
-                    method: 'POST'
+                    method: 'POST',
+                    credentials: 'same-origin'
                 });
 
                 if (!response.ok) {
