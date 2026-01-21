@@ -42,3 +42,5 @@ run = ["python", "main.py"]
 
 [userenv.shared]
 WAHA_API_URL = "https://waha-production-3000.up.railway.app"
+OPENAI_ORG_ID = "org-ea0pS41q43zJPgCzWLoUnGzi"
+OPENAI_PROJECT_ID = "proj_ESHVQ6hdk1CDKTUaNSE9WpWU"
