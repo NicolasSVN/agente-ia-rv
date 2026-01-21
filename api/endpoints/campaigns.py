@@ -18,6 +18,42 @@ from database.models import User
 router = APIRouter(prefix="/api/campaigns", tags=["campaigns"])
 
 
+def translate_error_to_natural_language(error_code: str, error_msg: str, phone: str = "") -> str:
+    """
+    Traduz códigos de erro técnicos para linguagem natural amigável.
+    """
+    translations = {
+        "TIMEOUT": f"O servidor do WhatsApp demorou muito para responder. Isso pode indicar que o serviço está sobrecarregado ou indisponível.",
+        "CONNECTION_ERROR": "Não foi possível conectar ao servidor do WhatsApp. Verifique se a URL do WAHA está correta e se o serviço está online.",
+        "HTTP_401": "Credenciais inválidas. A chave de API do WAHA pode estar incorreta ou expirada.",
+        "HTTP_403": "Acesso negado. Verifique as permissões da sua chave de API do WAHA.",
+        "HTTP_404": "Endpoint não encontrado. Verifique se a URL do WAHA está correta.",
+        "HTTP_500": "Erro interno no servidor do WhatsApp. O serviço WAHA pode estar com problemas.",
+        "HTTP_502": "O servidor do WhatsApp está temporariamente indisponível (Bad Gateway).",
+        "HTTP_503": "O servidor do WhatsApp está em manutenção ou sobrecarregado.",
+        "API_ERROR": f"A API do WhatsApp retornou um erro: {error_msg}",
+        "HTTP_ERROR": f"Erro de comunicação com o servidor: {error_msg}",
+    }
+    
+    if error_code in translations:
+        base_msg = translations[error_code]
+    elif error_code.startswith("HTTP_"):
+        base_msg = f"O servidor retornou código de erro {error_code.replace('HTTP_', '')}: {error_msg}"
+    else:
+        base_msg = f"Erro ao enviar mensagem: {error_msg}"
+    
+    if "not registered" in error_msg.lower() or "number not exist" in error_msg.lower():
+        base_msg = f"O número {phone} não está registrado no WhatsApp ou está inativo."
+    elif "session not found" in error_msg.lower():
+        base_msg = "A sessão do WhatsApp não foi encontrada. É necessário reconectar o WhatsApp no painel WAHA."
+    elif "not connected" in error_msg.lower():
+        base_msg = "O WhatsApp não está conectado. Verifique se o celular está online e conectado à internet."
+    elif "invalid phone" in error_msg.lower() or "invalid number" in error_msg.lower():
+        base_msg = f"O número {phone} está em formato inválido. Verifique se está no padrão correto (ex: 5511999999999)."
+    
+    return base_msg
+
+
 def template_has_required_variables(template: str) -> bool:
     """
     Verifica se o template contém as variáveis obrigatórias.
@@ -762,22 +798,35 @@ async def dispatch_campaign(
         if phone and waha_url:
             try:
                 result = await whatsapp_client.send_message(phone, message)
-                if not result.get("error"):
+                dispatch.api_response = json.dumps(result, ensure_ascii=False, default=str)
+                
+                if result.get("success"):
                     dispatch.status = "sent"
                     dispatch.sent_at = datetime.utcnow()
                     sent_count += 1
                 else:
                     dispatch.status = "failed"
-                    dispatch.error_message = result.get("error", "Erro desconhecido")
+                    error_code = result.get("error_code", "UNKNOWN")
+                    error_msg = result.get("error", "Erro desconhecido")
+                    dispatch.error_message = error_msg
+                    dispatch.error_details = translate_error_to_natural_language(error_code, error_msg, phone)
                     failed_count += 1
             except Exception as e:
                 dispatch.status = "failed"
                 dispatch.error_message = str(e)
+                dispatch.error_details = f"Erro inesperado ao enviar mensagem: {str(e)}"
                 failed_count += 1
         else:
-            dispatch.status = "simulated"
-            dispatch.sent_at = datetime.utcnow()
-            sent_count += 1
+            if not phone:
+                dispatch.status = "failed"
+                dispatch.error_message = "Telefone não informado"
+                dispatch.error_details = f"O assessor '{assessor_data.get('nome_assessor', 'Desconhecido')}' não possui número de telefone cadastrado na planilha ou na base de assessores."
+                failed_count += 1
+            elif not waha_url:
+                dispatch.status = "simulated"
+                dispatch.error_details = "Disparo simulado - WAHA não configurado"
+                dispatch.sent_at = datetime.utcnow()
+                sent_count += 1
     
     campaign.status = CampaignStatus.SENT.value
     campaign.messages_sent = sent_count
@@ -879,6 +928,100 @@ async def get_campaign(
             }
             for d in dispatches
         ]
+    }
+
+
+@router.get("/{campaign_id}/failures")
+async def get_campaign_failures(
+    campaign_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin_or_gestao())
+):
+    """
+    Retorna análise detalhada das falhas de uma campanha.
+    Agrupa falhas por tipo e fornece descrição em linguagem natural.
+    """
+    campaign = db.query(Campaign).filter(Campaign.id == campaign_id).first()
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campanha não encontrada")
+    
+    failed_dispatches = db.query(CampaignDispatch).filter(
+        CampaignDispatch.campaign_id == campaign_id,
+        CampaignDispatch.status == "failed"
+    ).all()
+    
+    if not failed_dispatches:
+        return {
+            "campaign_id": campaign_id,
+            "campaign_name": campaign.name,
+            "total_failures": 0,
+            "failures": [],
+            "summary": "Nenhuma falha registrada nesta campanha."
+        }
+    
+    failures = []
+    error_categories = {}
+    
+    for d in failed_dispatches:
+        error_msg = d.error_message or "Erro desconhecido"
+        error_detail = d.error_details or translate_error_to_natural_language("UNKNOWN", error_msg, d.assessor_phone or "")
+        
+        category = "Outro"
+        if "timeout" in error_msg.lower():
+            category = "Timeout"
+        elif "connection" in error_msg.lower() or "conectar" in error_msg.lower():
+            category = "Conexao"
+        elif "401" in error_msg or "403" in error_msg or "credenciais" in error_detail.lower():
+            category = "Autenticacao"
+        elif "telefone" in error_msg.lower() or "phone" in error_msg.lower() or "numero" in error_msg.lower():
+            category = "Numero Invalido"
+        elif "session" in error_msg.lower() or "sessao" in error_detail.lower():
+            category = "Sessao WhatsApp"
+        
+        if category not in error_categories:
+            error_categories[category] = 0
+        error_categories[category] += 1
+        
+        api_response_parsed = None
+        if d.api_response:
+            try:
+                api_response_parsed = json.loads(d.api_response)
+            except json.JSONDecodeError:
+                api_response_parsed = d.api_response
+        
+        failures.append({
+            "assessor_name": d.assessor_name or "Desconhecido",
+            "assessor_phone": d.assessor_phone or "Nao informado",
+            "error_message": error_msg,
+            "error_details": error_detail,
+            "category": category,
+            "api_response": api_response_parsed
+        })
+    
+    summary_parts = []
+    for cat, count in sorted(error_categories.items(), key=lambda x: -x[1]):
+        if cat == "Conexao":
+            summary_parts.append(f"{count} falha(s) de conexao com o servidor WAHA")
+        elif cat == "Autenticacao":
+            summary_parts.append(f"{count} falha(s) de autenticacao (chave de API)")
+        elif cat == "Numero Invalido":
+            summary_parts.append(f"{count} numero(s) de telefone invalido(s) ou ausente(s)")
+        elif cat == "Sessao WhatsApp":
+            summary_parts.append(f"{count} problema(s) com a sessao do WhatsApp")
+        elif cat == "Timeout":
+            summary_parts.append(f"{count} timeout(s) - servidor demorou para responder")
+        else:
+            summary_parts.append(f"{count} outro(s) erro(s)")
+    
+    summary = "Resumo das falhas: " + "; ".join(summary_parts) + "." if summary_parts else "Nenhuma falha categorizada."
+    
+    return {
+        "campaign_id": campaign_id,
+        "campaign_name": campaign.name,
+        "total_failures": len(failed_dispatches),
+        "categories": error_categories,
+        "summary": summary,
+        "failures": failures
     }
 
 

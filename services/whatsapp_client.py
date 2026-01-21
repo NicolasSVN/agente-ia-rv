@@ -33,11 +33,19 @@ class WhatsAppClient:
             message: Texto da mensagem a ser enviada
             
         Returns:
-            Resposta da API WAHA
+            Resposta da API WAHA com campos padronizados:
+            - success: bool
+            - error: str (se houver erro)
+            - error_code: str (código do erro)
+            - raw_response: dict (resposta original da API)
         """
         url = f"{self.base_url}/api/sendText"
+        
+        phone_clean = ''.join(filter(str.isdigit, to))
+        chat_id = to if "@c.us" in to else f"{phone_clean}@c.us"
+        
         payload = {
-            "chatId": to if "@c.us" in to else f"{to}@c.us",
+            "chatId": chat_id,
             "text": message,
             "session": self.session
         }
@@ -45,10 +53,51 @@ class WhatsAppClient:
         async with httpx.AsyncClient() as client:
             try:
                 response = await client.post(url, json=payload, headers=self._get_headers(), timeout=30.0)
-                response.raise_for_status()
-                return response.json()
+                raw_data = response.json() if response.content else {}
+                
+                if response.status_code >= 400:
+                    error_msg = raw_data.get("message", raw_data.get("error", f"HTTP {response.status_code}"))
+                    return {
+                        "success": False,
+                        "error": error_msg,
+                        "error_code": f"HTTP_{response.status_code}",
+                        "raw_response": raw_data,
+                        "status_code": response.status_code
+                    }
+                
+                if raw_data.get("error"):
+                    return {
+                        "success": False,
+                        "error": raw_data.get("error"),
+                        "error_code": raw_data.get("code", "API_ERROR"),
+                        "raw_response": raw_data
+                    }
+                
+                return {
+                    "success": True,
+                    "raw_response": raw_data,
+                    "message_id": raw_data.get("id", raw_data.get("key", {}).get("id"))
+                }
+                
+            except httpx.TimeoutException:
+                return {
+                    "success": False,
+                    "error": "Timeout ao conectar com o servidor WhatsApp",
+                    "error_code": "TIMEOUT"
+                }
+            except httpx.ConnectError as e:
+                return {
+                    "success": False,
+                    "error": f"Não foi possível conectar ao servidor WAHA: {self.base_url}",
+                    "error_code": "CONNECTION_ERROR",
+                    "details": str(e)
+                }
             except httpx.HTTPError as e:
-                return {"error": str(e), "success": False}
+                return {
+                    "success": False,
+                    "error": str(e),
+                    "error_code": "HTTP_ERROR"
+                }
     
     async def send_seen(self, chat_id: str) -> dict:
         """Marca uma mensagem como lida."""

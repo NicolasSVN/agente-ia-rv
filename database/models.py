@@ -290,6 +290,8 @@ class CampaignDispatch(Base):
     message_content = Column(Text, nullable=False)
     status = Column(String(50), default="pending")
     error_message = Column(Text, nullable=True)
+    error_details = Column(Text, nullable=True)
+    api_response = Column(Text, nullable=True)
     sent_at = Column(DateTime(timezone=True), nullable=True)
     
     campaign = relationship("Campaign", back_populates="dispatches")

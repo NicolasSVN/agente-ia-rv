@@ -604,6 +604,26 @@
         </div>
     </div>
 
+    <div class="modal-overlay" id="failuresModal" style="display: none;">
+        <div class="modal" style="max-width: 900px; max-height: 90vh;">
+            <div class="modal-header" style="background: #fef2f2; border-bottom: 1px solid #fecaca;">
+                <h3 id="failuresModalTitle" style="color: #dc2626;">
+                    <svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="vertical-align: middle; margin-right: 8px;">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                    </svg>
+                    Analise de Falhas
+                </h3>
+                <button class="modal-close" onclick="closeFailuresModal()">&times;</button>
+            </div>
+            <div class="modal-body" id="failuresModalBody" style="max-height: 70vh; overflow-y: auto;">
+                <div style="text-align: center; padding: 40px;">Carregando...</div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeFailuresModal()">Fechar</button>
+            </div>
+        </div>
+    </div>
+
     <div class="modal-overlay" id="templateModal" style="display: none;">
         <div class="modal" style="max-width: 700px;">
             <div class="modal-header">
@@ -1131,7 +1151,10 @@ Equipe de Gestao`;
                         <td>${c.created_at ? new Date(c.created_at).toLocaleDateString('pt-BR') : '-'}</td>
                         <td>${c.total_assessors}</td>
                         <td>${c.messages_sent}</td>
-                        <td>${c.messages_failed}</td>
+                        <td style="color: ${c.messages_failed > 0 ? '#dc2626' : 'inherit'}; font-weight: ${c.messages_failed > 0 ? '600' : 'normal'};">
+                            ${c.messages_failed}
+                            ${c.messages_failed > 0 ? `<button onclick="openFailuresModal(${c.id})" class="btn" style="margin-left: 8px; padding: 2px 8px; font-size: 11px; background: #fef2f2; color: #dc2626; border: 1px solid #fecaca;">Ver Falhas</button>` : ''}
+                        </td>
                         <td><span class="status-badge status-${c.status}">${c.status}</span></td>
                         <td>
                             <div style="position: relative;">
@@ -1141,6 +1164,7 @@ Equipe de Gestao`;
                                     </svg>
                                 </button>
                                 <div id="optionsMenu-${c.id}" class="options-menu" style="display: none; position: absolute; right: 0; top: 100%; background: white; border: 1px solid var(--border-color); border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); z-index: 100; min-width: 120px;">
+                                    ${c.messages_failed > 0 ? `<button onclick="openFailuresModal(${c.id})" style="display: block; width: 100%; padding: 10px 16px; text-align: left; border: none; background: none; cursor: pointer; color: #dc2626; font-size: 14px;">Analisar Falhas</button>` : ''}
                                     <button onclick="deleteCampaign(${c.id})" style="display: block; width: 100%; padding: 10px 16px; text-align: left; border: none; background: none; cursor: pointer; color: #dc2626; font-size: 14px;">
                                         Excluir
                                     </button>
@@ -1413,6 +1437,103 @@ Equipe de Gestao`;
                 console.error('Erro ao excluir campanha:', error);
                 alert(error.message);
             }
+        }
+
+        async function openFailuresModal(campaignId) {
+            document.getElementById('failuresModal').style.display = 'flex';
+            document.getElementById('failuresModalBody').innerHTML = '<div style="text-align: center; padding: 40px;">Carregando analise de falhas...</div>';
+            
+            try {
+                const response = await fetch(`${API_BASE}/${campaignId}/failures`, { credentials: 'include' });
+                if (!response.ok) throw new Error('Erro ao carregar falhas');
+                
+                const data = await response.json();
+                
+                if (data.total_failures === 0) {
+                    document.getElementById('failuresModalBody').innerHTML = `
+                        <div style="text-align: center; padding: 40px; color: #10b981;">
+                            <svg width="48" height="48" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="margin-bottom: 16px;">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                            </svg>
+                            <p style="font-size: 18px; font-weight: 600;">Nenhuma falha registrada!</p>
+                            <p style="color: var(--text-secondary);">Todas as mensagens foram enviadas com sucesso.</p>
+                        </div>
+                    `;
+                    return;
+                }
+                
+                document.getElementById('failuresModalTitle').innerHTML = `
+                    <svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="vertical-align: middle; margin-right: 8px;">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                    </svg>
+                    Analise de Falhas - ${data.campaign_name}
+                `;
+                
+                let categoriesHtml = '';
+                if (data.categories && Object.keys(data.categories).length > 0) {
+                    categoriesHtml = `
+                        <div style="display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 16px;">
+                            ${Object.entries(data.categories).map(([cat, count]) => `
+                                <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 8px 16px;">
+                                    <span style="font-weight: 600; color: #dc2626;">${count}</span>
+                                    <span style="color: #7f1d1d;">${cat}</span>
+                                </div>
+                            `).join('')}
+                        </div>
+                    `;
+                }
+                
+                let failuresHtml = data.failures.map(f => `
+                    <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 16px; margin-bottom: 12px;">
+                        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px;">
+                            <div>
+                                <strong style="color: #1f2937;">${f.assessor_name}</strong>
+                                <span style="color: var(--text-secondary); font-size: 13px; margin-left: 8px;">${f.assessor_phone}</span>
+                            </div>
+                            <span style="background: #fecaca; color: #7f1d1d; padding: 2px 8px; border-radius: 4px; font-size: 12px;">${f.category}</span>
+                        </div>
+                        <div style="background: white; border-radius: 6px; padding: 12px; margin-top: 8px;">
+                            <p style="margin: 0; color: #374151; font-size: 14px;">${f.error_details}</p>
+                        </div>
+                        ${f.api_response ? `
+                            <details style="margin-top: 8px;">
+                                <summary style="cursor: pointer; color: var(--text-secondary); font-size: 12px;">Detalhes tecnicos</summary>
+                                <pre style="background: #1f2937; color: #10b981; padding: 12px; border-radius: 6px; margin-top: 8px; font-size: 11px; overflow-x: auto; max-height: 150px;">${JSON.stringify(f.api_response, null, 2)}</pre>
+                            </details>
+                        ` : ''}
+                    </div>
+                `).join('');
+                
+                document.getElementById('failuresModalBody').innerHTML = `
+                    <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 16px; margin-bottom: 24px;">
+                        <p style="margin: 0; color: #7f1d1d; font-weight: 500;">
+                            <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="vertical-align: middle; margin-right: 8px;">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                            </svg>
+                            ${data.summary}
+                        </p>
+                    </div>
+                    
+                    ${categoriesHtml}
+                    
+                    <h4 style="margin-bottom: 16px; color: #374151;">Detalhamento por Assessor (${data.total_failures} falha${data.total_failures > 1 ? 's' : ''})</h4>
+                    
+                    ${failuresHtml}
+                `;
+                
+            } catch (error) {
+                console.error('Erro ao carregar falhas:', error);
+                document.getElementById('failuresModalBody').innerHTML = `
+                    <div style="text-align: center; padding: 40px; color: #dc2626;">
+                        <p>Erro ao carregar analise de falhas.</p>
+                        <p style="font-size: 13px; color: var(--text-secondary);">${error.message}</p>
+                    </div>
+                `;
+            }
+        }
+
+        function closeFailuresModal() {
+            document.getElementById('failuresModal').style.display = 'none';
         }
 
         function logout() {
