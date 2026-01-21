@@ -13,6 +13,7 @@ class UserRole(str, enum.Enum):
     """Roles disponíveis para usuários."""
     ADMIN = "admin"
     BROKER = "broker"
+    GESTAO_RV = "gestao_rv"
     CLIENT = "client"
 
 

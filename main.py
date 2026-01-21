@@ -99,7 +99,7 @@ async def login_page(request: Request):
 async def kanban_page(request: Request):
     """
     Página do quadro Kanban.
-    Requer autenticação como admin ou broker.
+    Requer autenticação como admin, broker ou gestao_rv.
     """
     token = request.cookies.get("access_token")
     
@@ -110,10 +110,11 @@ async def kanban_page(request: Request):
     if not payload:
         return RedirectResponse(url="/login")
     
-    if payload.get("role") not in ["admin", "broker"]:
+    user_role = payload.get("role")
+    if user_role not in ["admin", "broker", "gestao_rv"]:
         return RedirectResponse(url="/login?error=permission")
     
-    return templates.TemplateResponse("kanban.html", {"request": request})
+    return templates.TemplateResponse("kanban.html", {"request": request, "user_role": user_role})
 
 
 @app.get("/admin", response_class=HTMLResponse)
@@ -131,7 +132,10 @@ async def admin_page(request: Request):
     if not payload:
         return RedirectResponse(url="/login")
     
-    return templates.TemplateResponse("admin.html", {"request": request})
+    if payload.get("role") != "admin":
+        return RedirectResponse(url="/login?error=permission")
+    
+    return templates.TemplateResponse("admin.html", {"request": request, "user_role": "admin"})
 
 
 @app.get("/integrations", response_class=HTMLResponse)
@@ -152,14 +156,14 @@ async def integrations_page(request: Request):
     if payload.get("role") != "admin":
         return RedirectResponse(url="/login?error=permission")
     
-    return templates.TemplateResponse("integrations.html", {"request": request})
+    return templates.TemplateResponse("integrations.html", {"request": request, "user_role": "admin"})
 
 
 @app.get("/analytics", response_class=HTMLResponse)
 async def analytics_page(request: Request):
     """
     Dashboard de analytics com indicadores de controle.
-    Requer autenticação como admin ou broker.
+    Requer autenticação como admin, broker ou gestao_rv.
     """
     token = request.cookies.get("access_token")
     
@@ -170,10 +174,11 @@ async def analytics_page(request: Request):
     if not payload:
         return RedirectResponse(url="/login")
     
-    if payload.get("role") not in ["admin", "broker"]:
+    user_role = payload.get("role")
+    if user_role not in ["admin", "broker", "gestao_rv"]:
         return RedirectResponse(url="/login?error=permission")
     
-    return templates.TemplateResponse("analytics.html", {"request": request})
+    return templates.TemplateResponse("analytics.html", {"request": request, "user_role": user_role})
 
 
 @app.get("/agent-brain", response_class=HTMLResponse)
@@ -181,7 +186,7 @@ async def agent_brain_page(request: Request):
     """
     Painel de controle do cérebro do agente.
     Permite configurar personalidade, modelo e parâmetros da IA.
-    Requer autenticação como admin.
+    Requer autenticação como admin ou gestao_rv.
     """
     token = request.cookies.get("access_token")
     
@@ -192,17 +197,18 @@ async def agent_brain_page(request: Request):
     if not payload:
         return RedirectResponse(url="/login")
     
-    if payload.get("role") != "admin":
+    user_role = payload.get("role")
+    if user_role not in ["admin", "gestao_rv"]:
         return RedirectResponse(url="/login?error=permission")
     
-    return templates.TemplateResponse("agent_brain.html", {"request": request})
+    return templates.TemplateResponse("agent_brain.html", {"request": request, "user_role": user_role})
 
 
 @app.get("/assessores", response_class=HTMLResponse)
 async def assessores_page(request: Request):
     """
     Página de gerenciamento da Base de Assessores.
-    Requer autenticação como admin ou broker.
+    Requer autenticação como admin, broker ou gestao_rv.
     """
     token = request.cookies.get("access_token")
     
@@ -213,10 +219,11 @@ async def assessores_page(request: Request):
     if not payload:
         return RedirectResponse(url="/login")
     
-    if payload.get("role") not in ["admin", "broker"]:
+    user_role = payload.get("role")
+    if user_role not in ["admin", "broker", "gestao_rv"]:
         return RedirectResponse(url="/login?error=permission")
     
-    return templates.TemplateResponse("assessores.html", {"request": request})
+    return templates.TemplateResponse("assessores.html", {"request": request, "user_role": user_role})
 
 
 # ========== Health Check ==========

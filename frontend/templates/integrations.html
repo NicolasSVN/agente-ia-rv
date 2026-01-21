@@ -318,7 +318,7 @@
                 </div>
 
                 <div class="alert alert-info" style="margin-bottom: 24px;">
-                    <strong>Configuração de Integrações:</strong> As chaves de API devem ser configuradas através da aba <strong>Secrets</strong> do Replit (clique em Tools > Secrets no painel esquerdo). Após configurar, use o botão "Testar Conexão" para verificar se está funcionando corretamente.
+                    <strong>Configuração de Integrações:</strong> Preencha as chaves de API abaixo e clique em "Salvar Configurações". Para persistência permanente, configure também em Tools > Secrets no Replit.
                 </div>
 
                 <div id="integrationsContainer">
@@ -415,8 +415,8 @@
                         </div>
                         <div class="integration-body">
                             <div class="env-vars-section">
-                                <h3>Variáveis de Ambiente Necessárias</h3>
-                                <p style="color: var(--text-secondary); margin-bottom: 16px; font-size: 0.9rem;">Configure estas variáveis em Tools > Secrets no Replit.</p>
+                                <h3>Configurações</h3>
+                                <p style="color: var(--text-secondary); margin-bottom: 16px; font-size: 0.9rem;">Preencha os campos abaixo para configurar a integração.</p>
                                 ${Object.entries(settings).map(([key, config]) => `
                                     <div class="env-var-item">
                                         <div class="env-var-info">
@@ -430,6 +430,13 @@
                                                 ${config.default ? ` (Padrão: ${config.default})` : ''}
                                             </div>
                                         </div>
+                                        <div class="env-var-input">
+                                            <input type="${config.is_secret ? 'password' : 'text'}" 
+                                                   id="input-${config.env_var}"
+                                                   data-env-var="${config.env_var}"
+                                                   placeholder="${config.is_configured ? '••••••••' : 'Digite o valor...'}"
+                                                   class="secret-input">
+                                        </div>
                                         <div class="env-var-status">
                                             <span class="status-dot ${config.is_configured ? 'configured' : 'missing'}"></span>
                                             <span style="font-size: 0.85rem; color: var(--text-secondary);">${config.is_configured ? 'Configurado' : 'Pendente'}</span>
@@ -438,6 +445,9 @@
                                 `).join('')}
                             </div>
                             <div class="action-buttons">
+                                <button class="btn btn-primary" onclick="saveSecrets('${integration.type}', this)">
+                                    Salvar Configurações
+                                </button>
                                 <button class="btn btn-success" onclick="testConnection(${integration.id}, this)">
                                     Testar Conexão
                                 </button>
@@ -530,6 +540,57 @@
                 console.error('Erro:', error);
                 alert('Erro ao inicializar integrações');
             }
+        }
+
+        async function saveSecrets(integrationType, button) {
+            const originalText = button.innerHTML;
+            button.innerHTML = '<span class="spinner-sm"></span> Salvando...';
+            button.disabled = true;
+
+            const inputs = document.querySelectorAll('.secret-input');
+            const secrets = [];
+
+            inputs.forEach(input => {
+                const value = input.value.trim();
+                if (value) {
+                    secrets.push({
+                        env_var: input.dataset.envVar,
+                        value: value
+                    });
+                }
+            });
+
+            if (secrets.length === 0) {
+                alert('Preencha pelo menos um campo para salvar.');
+                button.innerHTML = originalText;
+                button.disabled = false;
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/save-secrets`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify(secrets)
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    alert(data.message);
+                    inputs.forEach(input => input.value = '');
+                    loadIntegrations();
+                } else {
+                    const error = await response.json();
+                    alert('Erro: ' + (error.detail || 'Não foi possível salvar'));
+                }
+            } catch (error) {
+                console.error('Erro:', error);
+                alert('Erro ao salvar configurações');
+            }
+
+            button.innerHTML = originalText;
+            button.disabled = false;
         }
 
         async function logout() {

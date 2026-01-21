@@ -19,12 +19,14 @@ async def get_analytics_summary(
     start_date: Optional[date] = Query(None, description="Data inicial (YYYY-MM-DD)"),
     end_date: Optional[date] = Query(None, description="Data final (YYYY-MM-DD)"),
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(["admin", "broker"]))
+    current_user: User = Depends(require_role(["admin", "broker", "gestao_rv"]))
 ):
     """
     Retorna resumo dos indicadores principais.
+    Brokers veem apenas seus próprios dados.
     """
-    summary = crud.get_analytics_summary(db, start_date, end_date)
+    broker_filter = int(current_user.id) if str(current_user.role) == "broker" else None
+    summary = crud.get_analytics_summary(db, start_date, end_date, broker_id=broker_filter)
     return summary
 
 
@@ -33,12 +35,14 @@ async def get_resolution_time(
     start_date: Optional[date] = Query(None, description="Data inicial (YYYY-MM-DD)"),
     end_date: Optional[date] = Query(None, description="Data final (YYYY-MM-DD)"),
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(["admin", "broker"]))
+    current_user: User = Depends(require_role(["admin", "broker", "gestao_rv"]))
 ):
     """
     Retorna tempo médio de resolução por assessor.
+    Brokers veem apenas seus próprios dados.
     """
-    data = crud.get_resolution_time_by_broker(db, start_date, end_date)
+    broker_filter = int(current_user.id) if str(current_user.role) == "broker" else None
+    data = crud.get_resolution_time_by_broker(db, start_date, end_date, broker_id=broker_filter)
     return {"brokers": data}
 
 
@@ -47,19 +51,21 @@ async def get_tickets_by_category(
     start_date: Optional[date] = Query(None, description="Data inicial (YYYY-MM-DD)"),
     end_date: Optional[date] = Query(None, description="Data final (YYYY-MM-DD)"),
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(["admin", "broker"]))
+    current_user: User = Depends(require_role(["admin", "broker", "gestao_rv"]))
 ):
     """
     Retorna distribuição de tickets por categoria.
+    Brokers veem apenas seus próprios dados.
     """
-    data = crud.get_tickets_by_category(db, start_date, end_date)
+    broker_filter = int(current_user.id) if str(current_user.role) == "broker" else None
+    data = crud.get_tickets_by_category(db, start_date, end_date, broker_id=broker_filter)
     return {"categories": data}
 
 
 @router.get("/categories")
 async def get_categories(
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(["admin"]))
+    current_user: User = Depends(require_role(["admin", "gestao_rv"]))
 ):
     """
     Lista todas as categorias disponíveis.

@@ -117,9 +117,18 @@ def get_tickets_by_status(db: Session, status: str) -> List[Ticket]:
     return db.query(Ticket).filter(Ticket.status == status).all()
 
 
-def get_tickets_by_broker(db: Session, broker_id: int) -> List[Ticket]:
+def get_tickets_by_broker(
+    db: Session, 
+    broker_id: int, 
+    skip: int = 0, 
+    limit: int = 100,
+    status_filter: Optional[str] = None
+) -> List[Ticket]:
     """Lista tickets atribuídos a um broker específico."""
-    return db.query(Ticket).filter(Ticket.broker_id == broker_id).all()
+    query = db.query(Ticket).filter(Ticket.broker_id == broker_id)
+    if status_filter:
+        query = query.filter(Ticket.status == status_filter)
+    return query.offset(skip).limit(limit).all()
 
 
 def create_ticket(
@@ -462,9 +471,10 @@ def get_interactions(
 
 # ========== Analytics ==========
 
-def get_analytics_summary(db: Session, start_date: date = None, end_date: date = None) -> dict:
+def get_analytics_summary(db: Session, start_date: date = None, end_date: date = None, broker_id: int = None) -> dict:
     """
     Retorna métricas agregadas para o dashboard.
+    Se broker_id fornecido, filtra apenas dados do broker.
     """
     start_dt = datetime.combine(start_date, datetime.min.time()) if start_date else None
     end_dt = datetime.combine(end_date, datetime.max.time()) if end_date else None
@@ -476,8 +486,18 @@ def get_analytics_summary(db: Session, start_date: date = None, end_date: date =
             query = query.filter(date_column <= end_dt)
         return query
     
-    # 1. Quantidade de atendimentos (interações)
-    interactions_query = db.query(sql_func.count(Interaction.id))
+    def broker_filter(query, broker_col):
+        if broker_id:
+            query = query.filter(broker_col == broker_id)
+        return query
+    
+    # 1. Quantidade de atendimentos (interações) - broker filtra por tickets associados
+    if broker_id:
+        interactions_query = db.query(sql_func.count(Interaction.id)).join(
+            Ticket, Interaction.ticket_id == Ticket.id
+        ).filter(Ticket.broker_id == broker_id)
+    else:
+        interactions_query = db.query(sql_func.count(Interaction.id))
     interactions_query = date_filter(interactions_query, Interaction.created_at)
     total_atendimentos = interactions_query.scalar() or 0
     
@@ -485,6 +505,7 @@ def get_analytics_summary(db: Session, start_date: date = None, end_date: date =
     open_tickets_query = db.query(sql_func.count(Ticket.id)).filter(
         Ticket.status.in_([TicketStatus.OPEN.value, TicketStatus.IN_PROGRESS.value])
     )
+    open_tickets_query = broker_filter(open_tickets_query, Ticket.broker_id)
     open_tickets_query = date_filter(open_tickets_query, Ticket.created_at)
     chamados_abertos = open_tickets_query.scalar() or 0
     
@@ -492,34 +513,47 @@ def get_analytics_summary(db: Session, start_date: date = None, end_date: date =
     closed_tickets_query = db.query(sql_func.count(Ticket.id)).filter(
         Ticket.status == TicketStatus.CLOSED.value
     )
+    closed_tickets_query = broker_filter(closed_tickets_query, Ticket.broker_id)
     closed_tickets_query = date_filter(closed_tickets_query, Ticket.resolved_at)
     chamados_concluidos = closed_tickets_query.scalar() or 0
     
     # 4. Assessores ativos (brokers com tickets atribuídos no período)
-    active_brokers_query = db.query(sql_func.count(distinct(Ticket.broker_id))).filter(
-        Ticket.broker_id.isnot(None)
-    )
-    active_brokers_query = date_filter(active_brokers_query, Ticket.created_at)
-    assessores_ativos = active_brokers_query.scalar() or 0
+    if broker_id:
+        assessores_ativos = 1  # Se filtrado por broker, mostra apenas 1
+    else:
+        active_brokers_query = db.query(sql_func.count(distinct(Ticket.broker_id))).filter(
+            Ticket.broker_id.isnot(None)
+        )
+        active_brokers_query = date_filter(active_brokers_query, Ticket.created_at)
+        assessores_ativos = active_brokers_query.scalar() or 0
     
     # 5. Clientes contactados (únicos por telefone ou ID)
-    clients_by_id = db.query(sql_func.count(distinct(Interaction.client_id))).filter(
-        Interaction.client_id.isnot(None)
-    )
-    clients_by_id = date_filter(clients_by_id, Interaction.created_at)
-    
-    clients_by_phone = db.query(sql_func.count(distinct(Interaction.client_phone))).filter(
-        Interaction.client_phone.isnot(None),
-        Interaction.client_id.is_(None)
-    )
-    clients_by_phone = date_filter(clients_by_phone, Interaction.created_at)
-    
-    clientes_contactados = (clients_by_id.scalar() or 0) + (clients_by_phone.scalar() or 0)
+    if broker_id:
+        clients_by_id = db.query(sql_func.count(distinct(Ticket.client_id))).filter(
+            Ticket.client_id.isnot(None),
+            Ticket.broker_id == broker_id
+        )
+        clients_by_id = date_filter(clients_by_id, Ticket.created_at)
+        clientes_contactados = clients_by_id.scalar() or 0
+    else:
+        clients_by_id = db.query(sql_func.count(distinct(Interaction.client_id))).filter(
+            Interaction.client_id.isnot(None)
+        )
+        clients_by_id = date_filter(clients_by_id, Interaction.created_at)
+        
+        clients_by_phone = db.query(sql_func.count(distinct(Interaction.client_phone))).filter(
+            Interaction.client_phone.isnot(None),
+            Interaction.client_id.is_(None)
+        )
+        clients_by_phone = date_filter(clients_by_phone, Interaction.created_at)
+        
+        clientes_contactados = (clients_by_id.scalar() or 0) + (clients_by_phone.scalar() or 0)
     
     # 6. Clientes com interesse identificado
     interest_query = db.query(sql_func.count(distinct(Ticket.client_id))).filter(
         Ticket.interest_identified == True
     )
+    interest_query = broker_filter(interest_query, Ticket.broker_id)
     interest_query = date_filter(interest_query, Ticket.interest_identified_at)
     clientes_com_interesse = interest_query.scalar() or 0
     
@@ -533,9 +567,10 @@ def get_analytics_summary(db: Session, start_date: date = None, end_date: date =
     }
 
 
-def get_resolution_time_by_broker(db: Session, start_date: date = None, end_date: date = None) -> List[dict]:
+def get_resolution_time_by_broker(db: Session, start_date: date = None, end_date: date = None, broker_id: int = None) -> List[dict]:
     """
     Calcula o tempo médio de resolução por assessor.
+    Se broker_id fornecido, filtra apenas dados do broker.
     """
     start_dt = datetime.combine(start_date, datetime.min.time()) if start_date else None
     end_dt = datetime.combine(end_date, datetime.max.time()) if end_date else None
@@ -544,6 +579,9 @@ def get_resolution_time_by_broker(db: Session, start_date: date = None, end_date
         Ticket.resolved_at.isnot(None),
         Ticket.broker_id.isnot(None)
     )
+    
+    if broker_id:
+        query = query.filter(Ticket.broker_id == broker_id)
     
     if start_dt:
         query = query.filter(Ticket.resolved_at >= start_dt)
@@ -554,11 +592,11 @@ def get_resolution_time_by_broker(db: Session, start_date: date = None, end_date
     
     broker_stats = {}
     for ticket in tickets:
-        broker_id = ticket.broker_id
-        if broker_id not in broker_stats:
-            broker = db.query(User).filter(User.id == broker_id).first()
-            broker_stats[broker_id] = {
-                "broker_id": broker_id,
+        tid = ticket.broker_id
+        if tid not in broker_stats:
+            broker = db.query(User).filter(User.id == tid).first()
+            broker_stats[tid] = {
+                "broker_id": tid,
                 "broker_name": broker.username if broker else "Desconhecido",
                 "total_tickets": 0,
                 "total_hours": 0
@@ -567,11 +605,11 @@ def get_resolution_time_by_broker(db: Session, start_date: date = None, end_date
         if ticket.resolved_at and ticket.created_at:
             diff = ticket.resolved_at - ticket.created_at
             hours = diff.total_seconds() / 3600
-            broker_stats[broker_id]["total_tickets"] += 1
-            broker_stats[broker_id]["total_hours"] += hours
+            broker_stats[tid]["total_tickets"] += 1
+            broker_stats[tid]["total_hours"] += hours
     
     result = []
-    for broker_id, stats in broker_stats.items():
+    for tid, stats in broker_stats.items():
         avg_hours = stats["total_hours"] / stats["total_tickets"] if stats["total_tickets"] > 0 else 0
         result.append({
             "broker_id": stats["broker_id"],
@@ -583,9 +621,10 @@ def get_resolution_time_by_broker(db: Session, start_date: date = None, end_date
     return result
 
 
-def get_tickets_by_category(db: Session, start_date: date = None, end_date: date = None) -> List[dict]:
+def get_tickets_by_category(db: Session, start_date: date = None, end_date: date = None, broker_id: int = None) -> List[dict]:
     """
     Conta tickets por categoria.
+    Se broker_id fornecido, filtra apenas tickets do broker.
     """
     start_dt = datetime.combine(start_date, datetime.min.time()) if start_date else None
     end_dt = datetime.combine(end_date, datetime.max.time()) if end_date else None
@@ -596,6 +635,9 @@ def get_tickets_by_category(db: Session, start_date: date = None, end_date: date
         TicketCategory.color,
         sql_func.count(Ticket.id).label('count')
     ).outerjoin(Ticket, Ticket.category_id == TicketCategory.id)
+    
+    if broker_id:
+        query = query.filter((Ticket.broker_id == broker_id) | (Ticket.broker_id.is_(None)))
     
     if start_dt:
         query = query.filter((Ticket.created_at >= start_dt) | (Ticket.created_at.is_(None)))
@@ -610,6 +652,8 @@ def get_tickets_by_category(db: Session, start_date: date = None, end_date: date
     uncategorized_query = db.query(sql_func.count(Ticket.id)).filter(
         Ticket.category_id.is_(None)
     )
+    if broker_id:
+        uncategorized_query = uncategorized_query.filter(Ticket.broker_id == broker_id)
     if start_dt:
         uncategorized_query = uncategorized_query.filter(Ticket.created_at >= start_dt)
     if end_dt:

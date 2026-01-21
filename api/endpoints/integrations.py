@@ -424,3 +424,45 @@ async def init_default_integrations(
     """Inicializa as integrações padrão se não existirem."""
     crud.init_default_integrations(db)
     return {"message": "Integrações padrão inicializadas"}
+
+
+class SecretInput(BaseModel):
+    """Schema para entrada de secret."""
+    env_var: str
+    value: str
+
+
+ALLOWED_SECRET_KEYS = {"OPENAI_API_KEY", "NOTION_API_KEY", "WAHA_API_URL", "NOTION_ROOT_PAGE_ID"}
+
+
+@router.post("/save-secrets")
+async def save_integration_secrets(
+    secrets: List[SecretInput],
+    current_user: dict = Depends(get_current_admin)
+):
+    """
+    Salva secrets de integração como variáveis de ambiente.
+    Apenas chaves específicas são permitidas por segurança.
+    Os valores são armazenados em memória para a sessão atual.
+    Para persistência permanente, configure em Tools > Secrets no Replit.
+    """
+    saved = []
+    rejected = []
+    
+    for secret in secrets:
+        if secret.env_var not in ALLOWED_SECRET_KEYS:
+            rejected.append(secret.env_var)
+            continue
+        if secret.value and secret.value.strip():
+            os.environ[secret.env_var] = secret.value.strip()
+            saved.append(secret.env_var)
+    
+    message = f"{len(saved)} secret(s) configurado(s) com sucesso"
+    if rejected:
+        message += f". {len(rejected)} chave(s) não permitida(s) foram ignoradas"
+    
+    return {
+        "message": message,
+        "saved_keys": saved,
+        "rejected_keys": rejected
+    }

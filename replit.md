@@ -69,16 +69,17 @@ Aplicação FastAPI completa para um agente de IA de assessores financeiros. O s
 
 ### Frontend
 - `/login` - Página de login (redireciona para /analytics após login)
-- `/analytics` - Dashboard de indicadores (admin/broker)
-- `/kanban` - Quadro Kanban (admin/broker)
+- `/analytics` - Dashboard de indicadores (admin/broker/gestao_rv)
+- `/kanban` - Quadro Kanban (admin/broker/gestao_rv)
 - `/admin` - Gerenciamento de usuários (admin)
 - `/integrations` - Gerenciamento de integrações (admin)
-- `/agent-brain` - Painel de Controle do Cérebro do Agente (admin)
-- `/assessores` - Base de Assessores (admin/broker)
+- `/agent-brain` - Painel de Controle do Cérebro do Agente (admin/gestao_rv)
+- `/assessores` - Base de Assessores (admin/broker/gestao_rv)
 
 ## Roles de Usuário
-- `admin` - Acesso total
-- `broker` - Acesso ao Kanban
+- `admin` - Acesso total ao sistema
+- `gestao_rv` - Acesso a tudo exceto Usuários e Integrações
+- `broker` - Acesso aos chamados próprios e dashboard
 - `client` - Apenas via WhatsApp
 
 ## Execução
@@ -94,11 +95,11 @@ python indexer.py
 
 A página `/integrations` (apenas admin) permite:
 - Visualizar status das integrações configuradas (OpenAI, Notion, WAHA)
-- Ver quais variáveis de ambiente estão configuradas
+- Configurar chaves de API diretamente na interface
 - Testar conexões com serviços externos
 - Ativar/desativar integrações
 
-**Importante:** As chaves de API devem ser configuradas via Secrets do Replit (Tools > Secrets), não através da interface. A página apenas mostra o status e permite testar conexões.
+**Nota:** Os secrets configurados pela interface são salvos em memória para a sessão atual. Para persistência permanente, configure também em Tools > Secrets no Replit.
 
 ## Dashboard de Analytics
 
@@ -123,7 +124,7 @@ Categorias padrão criadas automaticamente:
 
 ## Painel de Controle do Cérebro do Agente
 
-A página `/agent-brain` (apenas admin) permite configurar em tempo real:
+A página `/agent-brain` (admin e gestao_rv) permite configurar em tempo real:
 
 ### Campos Disponíveis
 - **Personalidade e Regras** - Define como o agente deve se comportar, seu tom e princípios
@@ -154,6 +155,13 @@ A página `/agent-brain` (apenas admin) permite configurar em tempo real:
   - Arquivo CSS global compartilhado (`frontend/static/global.css`)
   - Português corrigido em todas as interfaces (acentuação, gramática)
   - Modais padronizados com estrutura consistente
+- 2026-01-21: **Sistema de Permissões Atualizado**:
+  - Novo role `gestao_rv` com acesso a tudo exceto Usuários e Integrações
+  - Broker agora vê apenas seus próprios chamados (atribuídos a ele)
+  - Menu lateral dinâmico que oculta itens conforme o role do usuário
+- 2026-01-21: **Configuração de Secrets na Interface**:
+  - Página de integrações permite configurar chaves de API diretamente
+  - Endpoint `POST /api/integrations/save-secrets` para salvar configurações
 
 ## Design System
 

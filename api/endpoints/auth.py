@@ -81,7 +81,7 @@ async def login_form(
         )
     
     # Verifica se o usuário tem permissão para acessar o painel
-    if user.role not in ["admin", "broker"]:
+    if user.role not in ["admin", "broker", "gestao_rv"]:
         return RedirectResponse(
             url="/login?error=permission",
             status_code=status.HTTP_302_FOUND

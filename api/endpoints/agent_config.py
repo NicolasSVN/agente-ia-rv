@@ -35,12 +35,12 @@ class AgentConfigUpdate(BaseModel):
     max_tokens: int = 500
 
 
-def require_admin(current_user: User = Depends(get_current_user)):
-    """Verifica se o usuário é admin."""
-    if current_user.role != UserRole.ADMIN.value:
+def require_admin_or_gestao(current_user: User = Depends(get_current_user)):
+    """Verifica se o usuário é admin ou gestao_rv."""
+    if current_user.role not in [UserRole.ADMIN.value, UserRole.GESTAO_RV.value]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Acesso restrito a administradores"
+            detail="Acesso restrito a administradores e gestão RV"
         )
     return current_user
 
@@ -48,7 +48,7 @@ def require_admin(current_user: User = Depends(get_current_user)):
 @router.get("/", response_model=AgentConfigResponse)
 async def get_config(
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin)
+    current_user: User = Depends(require_admin_or_gestao)
 ):
     """Retorna a configuração atual do agente."""
     config = get_agent_config(db)
@@ -64,7 +64,7 @@ async def get_config(
 async def update_config(
     config_data: AgentConfigUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin)
+    current_user: User = Depends(require_admin_or_gestao)
 ):
     """Atualiza a configuração do agente."""
     config = create_or_update_agent_config(
@@ -80,7 +80,7 @@ async def update_config(
 
 @router.get("/models")
 async def get_available_models(
-    current_user: User = Depends(require_admin)
+    current_user: User = Depends(require_admin_or_gestao)
 ):
     """Retorna os modelos de IA disponíveis."""
     return {

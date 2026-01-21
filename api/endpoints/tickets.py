@@ -56,7 +56,7 @@ class TicketResponse(BaseModel):
 
 def get_current_staff(request: Request, db: Session = Depends(get_db)):
     """
-    Dependency que verifica se o usuário atual é admin ou broker.
+    Dependency que verifica se o usuário atual é admin, broker ou gestao_rv.
     Usado para proteger rotas do painel.
     """
     token = request.cookies.get("access_token")
@@ -79,7 +79,7 @@ def get_current_staff(request: Request, db: Session = Depends(get_db)):
             detail="Token inválido"
         )
     
-    if payload.get("role") not in ["admin", "broker"]:
+    if payload.get("role") not in ["admin", "broker", "gestao_rv"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Acesso negado"
@@ -96,11 +96,23 @@ async def list_tickets(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_staff)
 ):
-    """Lista todos os tickets."""
-    if status:
-        tickets = crud.get_tickets_by_status(db, status)
+    """
+    Lista tickets.
+    - Admin e Gestão RV: veem todos os tickets
+    - Broker: vê apenas seus próprios tickets (atribuídos a ele)
+    """
+    user_role = current_user.get("role")
+    user_id = current_user.get("user_id")
+    
+    if user_role == "broker":
+        # Broker só vê seus próprios tickets
+        tickets = crud.get_tickets_by_broker(db, user_id, skip=skip, limit=limit, status_filter=status)
     else:
-        tickets = crud.get_tickets(db, skip=skip, limit=limit)
+        # Admin e Gestão RV veem todos
+        if status:
+            tickets = crud.get_tickets_by_status(db, status)
+        else:
+            tickets = crud.get_tickets(db, skip=skip, limit=limit)
     return tickets
 
 
