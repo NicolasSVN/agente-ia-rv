@@ -420,6 +420,26 @@
                     </div>
 
                     <div class="chat-sidebar">
+                        <div class="info-card" id="assessorCard" style="display: none;">
+                            <h3>Assessor Identificado</h3>
+                            <div class="info-item">
+                                <span class="label">Nome</span>
+                                <span class="value" id="assessorNome">-</span>
+                            </div>
+                            <div class="info-item">
+                                <span class="label">Broker</span>
+                                <span class="value" id="assessorBroker">-</span>
+                            </div>
+                            <div class="info-item">
+                                <span class="label">Equipe</span>
+                                <span class="value" id="assessorEquipe">-</span>
+                            </div>
+                            <div class="info-item">
+                                <span class="label">Unidade</span>
+                                <span class="value" id="assessorUnidade">-</span>
+                            </div>
+                        </div>
+
                         <div class="info-card">
                             <h3>Ultima Resposta</h3>
                             <div class="info-item">
@@ -585,6 +605,7 @@
                 document.getElementById('lastTicket').className = 'value ' + (data.should_create_ticket ? 'warning' : 'success');
                 document.getElementById('messageCount').textContent = data.conversation_length;
                 
+                updateAssessorInfo(data.identified_assessor);
                 updateKnowledgeList(data.knowledge_documents);
                 
             } catch (error) {
@@ -595,6 +616,21 @@
                 sendBtn.disabled = false;
                 input.focus();
             }
+        }
+
+        function updateAssessorInfo(assessor) {
+            const card = document.getElementById('assessorCard');
+            
+            if (!assessor) {
+                card.style.display = 'none';
+                return;
+            }
+            
+            card.style.display = 'block';
+            document.getElementById('assessorNome').textContent = assessor.nome || '-';
+            document.getElementById('assessorBroker').textContent = assessor.broker || '-';
+            document.getElementById('assessorEquipe').textContent = assessor.equipe || '-';
+            document.getElementById('assessorUnidade').textContent = assessor.unidade || '-';
         }
 
         function updateKnowledgeList(documents) {
@@ -636,6 +672,7 @@
                     document.getElementById('lastTicket').className = 'value';
                     document.getElementById('messageCount').textContent = '0';
                     document.getElementById('knowledgeList').innerHTML = '<p style="color: var(--text-secondary); font-size: 0.9rem;">Nenhum documento consultado ainda.</p>';
+                    document.getElementById('assessorCard').style.display = 'none';
                 }
             } catch (error) {
                 alert('Erro ao limpar conversa: ' + error.message);

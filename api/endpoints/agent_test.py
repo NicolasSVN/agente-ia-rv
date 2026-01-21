@@ -18,6 +18,7 @@ from services.vector_store import get_vector_store
 router = APIRouter(prefix="/api/agent", tags=["Agent Test"])
 
 test_conversations: Dict[int, List[dict]] = {}
+test_session_data: Dict[int, Dict[str, Any]] = {}
 
 
 class TestMessageRequest(BaseModel):
@@ -30,6 +31,7 @@ class TestMessageResponse(BaseModel):
     intent: Optional[str]
     knowledge_documents: List[dict]
     conversation_length: int
+    identified_assessor: Optional[Dict[str, Any]] = None
 
 
 class ConversationMessage(BaseModel):
@@ -63,25 +65,11 @@ async def test_agent_message(
     if user_id not in test_conversations:
         test_conversations[user_id] = []
     
+    if user_id not in test_session_data:
+        test_session_data[user_id] = {"identified_assessor": None}
+    
     history = test_conversations[user_id]
-    
-    knowledge_context = ""
-    knowledge_documents = []
-    
-    try:
-        vector_store = get_vector_store()
-        if vector_store:
-            search_results = vector_store.search(message, n_results=3)
-            
-            if search_results:
-                knowledge_documents = search_results
-                knowledge_context = "\n\n--- Informações da Base de Conhecimento ---\n"
-                for i, result in enumerate(search_results, 1):
-                    title = result.get("metadata", {}).get("document_title", "Documento")
-                    content = result.get("content", "")[:500]
-                    knowledge_context += f"\n[{i}] {title}:\n{content}\n"
-    except Exception as e:
-        print(f"[AGENT_TEST] Erro ao buscar na base de conhecimento: {e}")
+    session = test_session_data[user_id]
     
     history_for_ai = [{"role": msg["role"], "content": msg["content"]} for msg in history[-10:]]
     
@@ -89,13 +77,22 @@ async def test_agent_message(
         response, should_create_ticket, context = await openai_agent.generate_response(
             message,
             history_for_ai,
-            extra_context=knowledge_context
+            extra_context=None,
+            sender_phone=None,
+            identified_assessor=session.get("identified_assessor")
         )
+        
+        if context and context.get("identified_assessor"):
+            session["identified_assessor"] = context["identified_assessor"]
+            test_session_data[user_id] = session
+            
     except Exception as e:
         print(f"[AGENT_TEST] Erro ao gerar resposta: {e}")
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Erro ao gerar resposta: {str(e)}")
+    
+    knowledge_documents = context.get("documents", []) if context else []
     
     history.append({
         "role": "user",
@@ -113,6 +110,8 @@ async def test_agent_message(
     
     test_conversations[user_id] = history[-20:]
     
+    identified = session.get("identified_assessor")
+    
     return TestMessageResponse(
         response=response,
         should_create_ticket=should_create_ticket,
@@ -125,7 +124,13 @@ async def test_agent_message(
             }
             for doc in knowledge_documents
         ],
-        conversation_length=len(history)
+        conversation_length=len(history),
+        identified_assessor={
+            "nome": identified.get("nome"),
+            "broker": identified.get("broker"),
+            "equipe": identified.get("equipe"),
+            "unidade": identified.get("unidade")
+        } if identified else None
     )
 
 
@@ -143,6 +148,9 @@ async def clear_test_conversation(
     
     if user_id in test_conversations:
         del test_conversations[user_id]
+    
+    if user_id in test_session_data:
+        del test_session_data[user_id]
     
     return {"success": True, "message": "Conversa de teste limpa com sucesso"}
 

@@ -3,8 +3,9 @@ Agente de IA usando a API da OpenAI.
 Gera respostas contextualizadas para perguntas dos usuários.
 Carrega configurações do banco de dados em tempo real.
 """
+import re
 from openai import OpenAI
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Dict, Any
 from core.config import get_settings
 from services.vector_store import get_vector_store
 
@@ -39,6 +40,138 @@ class OpenAIAgent:
             db.close()
         
         return None
+    
+    def _search_assessor_by_name(self, name: str) -> Optional[Dict[str, Any]]:
+        """Busca assessor pelo nome na base de dados."""
+        from database.database import SessionLocal
+        from database.models import Assessor
+        from sqlalchemy import func
+        import json
+        
+        db = SessionLocal()
+        try:
+            assessor = db.query(Assessor).filter(
+                func.lower(Assessor.nome).contains(name.lower())
+            ).first()
+            
+            if assessor:
+                custom = {}
+                if assessor.custom_fields:
+                    try:
+                        custom = json.loads(assessor.custom_fields)
+                    except:
+                        pass
+                
+                return {
+                    "id": assessor.id,
+                    "nome": assessor.nome,
+                    "telefone": assessor.telefone_whatsapp,
+                    "unidade": assessor.unidade,
+                    "equipe": assessor.equipe,
+                    "broker": assessor.broker_responsavel,
+                    "campos_customizados": custom
+                }
+        except Exception as e:
+            print(f"[OpenAI] Erro ao buscar assessor: {e}")
+        finally:
+            db.close()
+        
+        return None
+    
+    def _search_assessor_by_phone(self, phone: str) -> Optional[Dict[str, Any]]:
+        """Busca assessor pelo telefone na base de dados."""
+        from database.database import SessionLocal
+        from database.models import Assessor
+        from sqlalchemy import or_
+        import json
+        
+        clean_phone = re.sub(r'\D', '', phone)
+        if not clean_phone or len(clean_phone) < 8:
+            return None
+        
+        last_digits = clean_phone[-9:] if len(clean_phone) >= 9 else clean_phone
+        
+        db = SessionLocal()
+        try:
+            assessor = db.query(Assessor).filter(
+                or_(
+                    Assessor.telefone_whatsapp.contains(last_digits),
+                    Assessor.telefone_whatsapp.contains(clean_phone)
+                )
+            ).first()
+            
+            if assessor:
+                custom = {}
+                if assessor.custom_fields:
+                    try:
+                        custom = json.loads(assessor.custom_fields)
+                    except:
+                        pass
+                
+                return {
+                    "id": assessor.id,
+                    "nome": assessor.nome,
+                    "telefone": assessor.telefone_whatsapp,
+                    "unidade": assessor.unidade,
+                    "equipe": assessor.equipe,
+                    "broker": assessor.broker_responsavel,
+                    "campos_customizados": custom
+                }
+        except Exception as e:
+            print(f"[OpenAI] Erro ao buscar assessor por telefone: {e}")
+        finally:
+            db.close()
+        
+        return None
+    
+    def _extract_name_from_message(self, message: str) -> Optional[str]:
+        """Extrai nome do usuário da mensagem se ele se identificar."""
+        patterns = [
+            r'(?:sou|me chamo|meu nome[eé]?)\s+(?:o|a)?\s*([A-Za-zÀ-ÿ]+(?:\s+[A-Za-zÀ-ÿ]+)*)',
+            r'(?:aqui|aqui é|aqui e)\s+(?:o|a)?\s*([A-Za-zÀ-ÿ]+(?:\s+[A-Za-zÀ-ÿ]+)*)',
+            r'(?:oi|olá|ola),?\s+(?:sou|aqui é|aqui e)?\s*(?:o|a)?\s*([A-Za-zÀ-ÿ]+(?:\s+[A-Za-zÀ-ÿ]+)*)',
+            r'eu sou\s+(?:o|a)?\s*([A-Za-zÀ-ÿ]+(?:\s+[A-Za-zÀ-ÿ]+)*)',
+        ]
+        
+        stop_words = ['sou', 'aqui', 'oi', 'ola', 'olá', 'sabe', 'me', 'dizer', 'qual', 'quem', 'meu', 'minha']
+        
+        for pattern in patterns:
+            match = re.search(pattern, message, re.IGNORECASE)
+            if match:
+                full_name = match.group(1).strip()
+                words = full_name.split()
+                cleaned_words = []
+                for word in words:
+                    if word.lower() in stop_words:
+                        break
+                    if len(word) > 1:
+                        cleaned_words.append(word.capitalize())
+                
+                if cleaned_words:
+                    name = ' '.join(cleaned_words[:3])
+                    if len(name) > 2:
+                        return name
+        
+        return None
+    
+    def _build_assessor_context(self, assessor: Dict[str, Any]) -> str:
+        """Constrói contexto com dados do assessor identificado."""
+        context = f"""
+--- DADOS DO ASSESSOR IDENTIFICADO ---
+Nome: {assessor.get('nome', 'N/A')}
+Broker Responsável: {assessor.get('broker', 'N/A')}
+Equipe: {assessor.get('equipe', 'N/A')}
+Unidade: {assessor.get('unidade', 'N/A')}
+Telefone: {assessor.get('telefone', 'N/A')}
+"""
+        if assessor.get('campos_customizados'):
+            context += "\nCampos Adicionais:\n"
+            for key, value in assessor['campos_customizados'].items():
+                context += f"- {key}: {value}\n"
+        
+        context += "\nVocê pode usar essas informações para responder perguntas como 'quem é meu broker?', 'qual minha equipe?', etc.\n"
+        
+        return context
     
     def _build_system_prompt(self, config: dict = None) -> str:
         """Constrói o prompt do sistema baseado na configuração."""
@@ -78,7 +211,9 @@ Para abrir um chamado, o usuário deve responder "SIM" ou "sim" quando perguntad
         self,
         user_message: str,
         conversation_history: Optional[List[dict]] = None,
-        extra_context: Optional[str] = None
+        extra_context: Optional[str] = None,
+        sender_phone: Optional[str] = None,
+        identified_assessor: Optional[Dict[str, Any]] = None
     ) -> Tuple[str, bool, dict]:
         """
         Gera uma resposta para a mensagem do usuário.
@@ -86,12 +221,15 @@ Para abrir um chamado, o usuário deve responder "SIM" ou "sim" quando perguntad
         Args:
             user_message: Mensagem do usuário
             conversation_history: Histórico da conversa (opcional)
+            extra_context: Contexto adicional (opcional)
+            sender_phone: Telefone do remetente para identificação (opcional)
+            identified_assessor: Assessor já identificado em mensagens anteriores (opcional)
             
         Returns:
             Tuple contendo:
             - response: Resposta gerada
             - should_create_ticket: Se deve criar um chamado
-            - context_documents: Documentos usados como contexto
+            - context_info: Informações de contexto incluindo assessor identificado
         """
         if not self.client:
             return (
@@ -110,6 +248,20 @@ Para abrir um chamado, o usuário deve responder "SIM" ou "sim" quando perguntad
                 {"intent": "create_ticket"}
             )
         
+        assessor_data = identified_assessor
+        
+        if not assessor_data:
+            extracted_name = self._extract_name_from_message(user_message)
+            if extracted_name:
+                assessor_data = self._search_assessor_by_name(extracted_name)
+                if assessor_data:
+                    print(f"[OpenAI] Assessor identificado por nome: {assessor_data['nome']}")
+        
+        if not assessor_data and sender_phone:
+            assessor_data = self._search_assessor_by_phone(sender_phone)
+            if assessor_data:
+                print(f"[OpenAI] Assessor identificado por telefone: {assessor_data['nome']}")
+        
         config = self._get_config_from_db()
         system_prompt = self._build_system_prompt(config)
         model = config.get("model", "gpt-4o") if config else "gpt-4o"
@@ -119,6 +271,9 @@ Para abrir um chamado, o usuário deve responder "SIM" ou "sim" quando perguntad
         vs = get_vector_store()
         context_documents = vs.search(user_message, n_results=3) if vs else []
         context = self._build_context(context_documents)
+        
+        if assessor_data:
+            context = self._build_assessor_context(assessor_data) + "\n" + context
         
         if extra_context:
             context += f"\n\n{extra_context}"
@@ -135,11 +290,11 @@ Para abrir um chamado, o usuário deve responder "SIM" ou "sim" quando perguntad
 
 ---
 
-PERGUNTA DO CLIENTE:
+PERGUNTA DO ASSESSOR/CLIENTE:
 {user_message}
 
-Responda de forma clara e objetiva. Se não encontrar a informação no contexto, 
-pergunte se o cliente deseja abrir um chamado."""
+Responda de forma clara e objetiva. Use as informações do assessor identificado se disponíveis.
+Se não encontrar a informação no contexto, pergunte se deseja abrir um chamado."""
         })
         
         try:
@@ -159,7 +314,11 @@ pergunte se o cliente deseja abrir um chamado."""
                 "quer abrir"
             ])
             
-            return ai_response, False, {"intent": "question", "documents": context_documents}
+            return ai_response, False, {
+                "intent": "question", 
+                "documents": context_documents,
+                "identified_assessor": assessor_data
+            }
             
         except Exception as e:
             print(f"[OpenAI] Erro ao gerar resposta: {e}")
@@ -167,7 +326,7 @@ pergunte se o cliente deseja abrir um chamado."""
                 "Desculpe, ocorreu um erro ao processar sua mensagem. "
                 "Deseja abrir um chamado para falar com um assessor?",
                 False,
-                {"intent": "error", "error": str(e)}
+                {"intent": "error", "error": str(e), "identified_assessor": assessor_data}
             )
     
     def is_available(self) -> bool:
