@@ -57,10 +57,12 @@ body {
 .sidebar-header {
     padding: 20px 16px;
     border-bottom: 1px solid var(--border-color);
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 8px;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center;
+    gap: 10px;
+    text-align: center;
 }
 
 .sidebar.collapsed .sidebar-header {
@@ -68,9 +70,11 @@ body {
 }
 
 .sidebar-logo {
+    display: block;
     height: 40px;
     width: auto;
     max-width: 100%;
+    margin: 0 auto;
 }
 
 .sidebar.collapsed .sidebar-logo {
@@ -78,7 +82,9 @@ body {
 }
 
 .sidebar-title {
-    font-size: 0.95rem;
+    display: block;
+    width: 100%;
+    font-size: 0.9rem;
     font-weight: 600;
     color: var(--text-primary);
     text-align: center;
