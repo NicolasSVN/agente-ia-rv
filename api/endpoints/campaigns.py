@@ -653,23 +653,37 @@ async def get_campaign(
         CampaignDispatch.campaign_id == campaign_id
     ).all()
     
+    try:
+        column_mapping = json.loads(campaign.column_mapping) if campaign.column_mapping else {}
+        custom_fields_mapping = json.loads(campaign.custom_fields_mapping) if campaign.custom_fields_mapping else {}
+        processed_data = json.loads(campaign.processed_data) if campaign.processed_data else []
+    except json.JSONDecodeError:
+        column_mapping = {}
+        custom_fields_mapping = {}
+        processed_data = []
+    
     return {
         "id": campaign.id,
         "name": campaign.name,
         "status": campaign.status,
         "template_id": campaign.template_id,
         "template_name": campaign.template.name if campaign.template else None,
+        "custom_template_content": campaign.custom_template_content,
         "original_filename": campaign.original_filename,
+        "column_mapping": column_mapping,
+        "custom_fields_mapping": custom_fields_mapping,
         "total_assessors": campaign.total_assessors,
         "total_recommendations": campaign.total_recommendations,
         "messages_sent": campaign.messages_sent,
         "messages_failed": campaign.messages_failed,
         "created_at": campaign.created_at.isoformat() if campaign.created_at else None,
         "sent_at": campaign.sent_at.isoformat() if campaign.sent_at else None,
+        "has_data": len(processed_data) > 0,
         "dispatches": [
             {
                 "assessor_id": d.assessor_id,
                 "assessor_name": d.assessor_name,
+                "assessor_phone": d.assessor_phone,
                 "status": d.status,
                 "error_message": d.error_message,
                 "sent_at": d.sent_at.isoformat() if d.sent_at else None
