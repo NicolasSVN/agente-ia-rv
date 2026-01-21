@@ -769,3 +769,64 @@ async def delete_campaign(
     db.commit()
     
     return {"message": "Campanha excluída com sucesso"}
+
+
+@router.get("/{campaign_id}/debug")
+async def debug_campaign(
+    campaign_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin_or_gestao())
+):
+    """
+    Endpoint de diagnóstico para verificar dados da campanha.
+    """
+    campaign = db.query(Campaign).filter(Campaign.id == campaign_id).first()
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campanha não encontrada")
+    
+    template_content = DEFAULT_TEMPLATE_CONTENT
+    template_source = "default"
+    
+    if campaign.custom_template_content:
+        template_content = str(campaign.custom_template_content)
+        template_source = "custom"
+    elif campaign.template_id:
+        template = db.query(MessageTemplate).filter(MessageTemplate.id == campaign.template_id).first()
+        if template:
+            template_content = str(template.content)
+            template_source = f"template_{campaign.template_id}"
+    
+    try:
+        column_mapping = json.loads(str(campaign.column_mapping)) if campaign.column_mapping else {}
+        custom_mapping = json.loads(str(campaign.custom_fields_mapping)) if campaign.custom_fields_mapping else {}
+        data = json.loads(str(campaign.processed_data)) if campaign.processed_data else []
+    except json.JSONDecodeError as e:
+        return {"error": f"JSON decode error: {str(e)}"}
+    
+    grouped = {}
+    if column_mapping and data:
+        grouped = group_recommendations_by_assessor(data, column_mapping, custom_mapping, db)
+    
+    sample_message = ""
+    if grouped:
+        first_key = list(grouped.keys())[0]
+        sample_message = build_message(template_content, grouped[first_key], custom_mapping)
+    
+    return {
+        "campaign_id": campaign_id,
+        "campaign_name": campaign.name,
+        "status": campaign.status,
+        "template_source": template_source,
+        "template_content_preview": template_content[:500] if template_content else None,
+        "template_has_nome_assessor": "{{nome_assessor}}" in template_content if template_content else False,
+        "template_has_lista_clientes": "{{lista_clientes}}" in template_content if template_content else False,
+        "column_mapping": column_mapping,
+        "custom_mapping": custom_mapping,
+        "data_rows_count": len(data),
+        "data_first_row": data[0] if data else None,
+        "data_first_row_keys": list(data[0].keys()) if data else [],
+        "grouped_assessors_count": len(grouped),
+        "grouped_keys": list(grouped.keys())[:5],
+        "first_assessor_data": grouped[list(grouped.keys())[0]] if grouped else None,
+        "sample_message_preview": sample_message[:500] if sample_message else None
+    }
