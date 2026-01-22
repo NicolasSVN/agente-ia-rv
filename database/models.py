@@ -192,6 +192,7 @@ class Assessor(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     nome = Column(String(255), nullable=False, index=True)
+    email = Column(String(255), nullable=False, unique=True, index=True)
     telefone_whatsapp = Column(String(20), nullable=True, index=True)
     unidade = Column(String(255), nullable=True, index=True)
     equipe = Column(String(255), nullable=True, index=True)
@@ -285,6 +286,7 @@ class CampaignDispatch(Base):
     id = Column(Integer, primary_key=True, index=True)
     campaign_id = Column(Integer, ForeignKey("campaigns.id"), nullable=False)
     assessor_id = Column(String(100), nullable=False)
+    assessor_email = Column(String(255), nullable=True, index=True)
     assessor_phone = Column(String(20), nullable=True)
     assessor_name = Column(String(255), nullable=True)
     message_content = Column(Text, nullable=False)

@@ -33,6 +33,7 @@ temp_files = {}
 
 class AssessorBase(BaseModel):
     nome: str
+    email: str
     telefone_whatsapp: Optional[str] = None
     unidade: Optional[str] = None
     equipe: Optional[str] = None
@@ -46,6 +47,7 @@ class AssessorCreate(AssessorBase):
 
 class AssessorUpdate(BaseModel):
     nome: Optional[str] = None
+    email: Optional[str] = None
     telefone_whatsapp: Optional[str] = None
     unidade: Optional[str] = None
     equipe: Optional[str] = None
@@ -111,6 +113,7 @@ def parse_custom_fields(assessor):
     result = {
         "id": assessor.id,
         "nome": assessor.nome,
+        "email": assessor.email,
         "telefone_whatsapp": assessor.telefone_whatsapp,
         "unidade": assessor.unidade,
         "equipe": assessor.equipe,
@@ -186,8 +189,13 @@ async def get_assessor(assessor_id: int, db: Session = Depends(get_db), current_
 
 @router.post("")
 async def create_assessor(assessor: AssessorCreate, db: Session = Depends(get_db), current_user: User = Depends(require_admin_or_gestao)):
+    existing = db.query(Assessor).filter(Assessor.email == assessor.email).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Já existe um assessor com este e-mail")
+    
     db_assessor = Assessor(
         nome=assessor.nome,
+        email=assessor.email,
         telefone_whatsapp=assessor.telefone_whatsapp,
         unidade=assessor.unidade,
         equipe=assessor.equipe,
@@ -205,6 +213,14 @@ async def update_assessor(assessor_id: int, assessor: AssessorUpdate, db: Sessio
     db_assessor = db.query(Assessor).filter(Assessor.id == assessor_id).first()
     if not db_assessor:
         raise HTTPException(status_code=404, detail="Assessor não encontrado")
+    
+    if assessor.email:
+        existing = db.query(Assessor).filter(
+            Assessor.email == assessor.email,
+            Assessor.id != assessor_id
+        ).first()
+        if existing:
+            raise HTTPException(status_code=400, detail="Já existe outro assessor com este e-mail")
     
     update_data = assessor.model_dump(exclude_unset=True)
     for key, value in update_data.items():
@@ -331,6 +347,7 @@ async def upload_preview(file: UploadFile = File(...), db: Session = Depends(get
 async def get_database_fields(db: Session = Depends(get_db), current_user: User = Depends(require_admin_or_gestao)):
     core_fields = [
         {"slug": "nome", "label": "Nome do Assessor", "required": True},
+        {"slug": "email", "label": "E-mail", "required": True},
         {"slug": "telefone_whatsapp", "label": "Telefone WhatsApp", "required": False},
         {"slug": "unidade", "label": "Unidade", "required": False},
         {"slug": "equipe", "label": "Equipe", "required": False},
@@ -393,9 +410,13 @@ async def confirm_upload(data: UploadConfirm, db: Session = Depends(get_db), cur
                     errors.append(f"Linha {idx + 2}: Nome é obrigatório")
                     continue
                 
-                if data.update_existing and assessor_data.get("telefone_whatsapp"):
+                if not assessor_data.get("email"):
+                    errors.append(f"Linha {idx + 2}: E-mail é obrigatório")
+                    continue
+                
+                if data.update_existing and assessor_data.get("email"):
                     existing = db.query(Assessor).filter(
-                        Assessor.telefone_whatsapp == assessor_data["telefone_whatsapp"]
+                        Assessor.email == assessor_data["email"]
                     ).first()
                     
                     if existing:

@@ -113,6 +113,7 @@ class TemplateUpdate(BaseModel):
 
 class ColumnMapping(BaseModel):
     assessor_id: str
+    assessor_email: str
     client_id: str
     ativo_saida: str
     valor_saida: str
@@ -326,6 +327,7 @@ def suggest_column_mapping(columns: List[str]) -> dict:
     
     field_patterns = {
         "assessor_id": ["assessor", "id_assessor", "cod_assessor", "codigo_assessor", "advisor"],
+        "assessor_email": ["email", "email_assessor", "e-mail", "mail", "assessor_email"],
         "client_id": ["cliente", "id_cliente", "cod_cliente", "codigo_cliente", "client"],
         "ativo_saida": ["ativo_saida", "saida", "venda", "papel_saida", "ticker_saida"],
         "valor_saida": ["valor_saida", "vl_saida", "valor_venda"],
@@ -355,7 +357,7 @@ async def update_campaign_mapping(
     if not campaign:
         raise HTTPException(status_code=404, detail="Campanha não encontrada")
     
-    required_fields = ["assessor_id", "client_id", "ativo_saida", "valor_saida", "ativo_compra", "valor_compra"]
+    required_fields = ["assessor_id", "assessor_email", "client_id", "ativo_saida", "valor_saida", "ativo_compra", "valor_compra"]
     missing = [f for f in required_fields if f not in column_mapping or not column_mapping[f]]
     if missing:
         raise HTTPException(status_code=400, detail=f"Campos obrigatórios faltando: {', '.join(missing)}")
@@ -519,6 +521,7 @@ def group_recommendations_by_assessor(data: List[dict], mapping: dict, custom_ma
     
     # Extrai os nomes das colunas do mapeamento
     col_assessor = mapping.get("assessor_id", "")
+    col_assessor_email = mapping.get("assessor_email", "")
     col_client = mapping.get("client_id", "")
     col_ativo_saida = mapping.get("ativo_saida", "")
     col_valor_saida = mapping.get("valor_saida", "")
@@ -544,12 +547,21 @@ def group_recommendations_by_assessor(data: List[dict], mapping: dict, custom_ma
             # Tenta buscar o assessor na base de dados
             assessor = None
             
-            # Primeiro tenta como ID numérico
-            try:
-                assessor_id_int = int(assessor_id)
-                assessor = db.query(Assessor).filter(Assessor.id == assessor_id_int).first()
-            except (ValueError, TypeError):
-                pass
+            # Primeiro tenta buscar por email (se disponível na planilha)
+            email_from_sheet = ""
+            if col_assessor_email:
+                email_val = row.get(col_assessor_email, "")
+                if email_val:
+                    email_from_sheet = str(email_val).strip()
+                    assessor = db.query(Assessor).filter(Assessor.email == email_from_sheet).first()
+            
+            # Se não encontrou por email, tenta como ID numérico
+            if not assessor:
+                try:
+                    assessor_id_int = int(assessor_id)
+                    assessor = db.query(Assessor).filter(Assessor.id == assessor_id_int).first()
+                except (ValueError, TypeError):
+                    pass
             
             # Se não encontrou, tenta por telefone ou nome
             if not assessor:
@@ -562,12 +574,15 @@ def group_recommendations_by_assessor(data: List[dict], mapping: dict, custom_ma
             if assessor:
                 nome = assessor.nome
                 telefone = assessor.telefone_whatsapp or ""
+                email_assessor = assessor.email or email_from_sheet
             else:
                 nome = assessor_id
                 telefone = ""
+                email_assessor = email_from_sheet
             
             grouped[assessor_id] = {
                 "assessor_id": assessor_id,
+                "email_assessor": email_assessor,
                 "nome_assessor": nome,
                 "telefone": telefone,
                 "clients": {},
@@ -793,6 +808,7 @@ async def dispatch_campaign(
         dispatch = CampaignDispatch(
             campaign_id=campaign_id,
             assessor_id=assessor_id,
+            assessor_email=assessor_data.get("email_assessor", ""),
             assessor_phone=phone,
             assessor_name=assessor_data.get("nome_assessor", ""),
             message_content=message,
@@ -935,6 +951,7 @@ async def dispatch_campaign_stream(
                     dispatch = CampaignDispatch(
                         campaign_id=campaign_id,
                         assessor_id=assessor_id,
+                        assessor_email=assessor_data.get("email_assessor", ""),
                         assessor_phone=phone,
                         assessor_name=assessor_name,
                         message_content=message,

@@ -274,6 +274,7 @@
                             <thead>
                                 <tr>
                                     <th>Nome</th>
+                                    <th>E-mail</th>
                                     <th>WhatsApp</th>
                                     <th>Unidade</th>
                                     <th>Equipe</th>
@@ -304,6 +305,10 @@
                             <input type="text" class="form-input" id="form-nome" required>
                         </div>
                         <div class="form-group">
+                            <label class="form-label">E-mail *</label>
+                            <input type="email" class="form-input" id="form-email" required placeholder="assessor@empresa.com">
+                        </div>
+                        <div class="form-group">
                             <label class="form-label">Telefone WhatsApp</label>
                             <input type="text" class="form-input" id="form-telefone" placeholder="(00) 00000-0000">
                         </div>
@@ -315,10 +320,10 @@
                             <label class="form-label">Equipe</label>
                             <input type="text" class="form-input" id="form-equipe">
                         </div>
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">Broker Responsável</label>
-                        <input type="text" class="form-input" id="form-broker">
+                        <div class="form-group">
+                            <label class="form-label">Broker Responsável</label>
+                            <input type="text" class="form-input" id="form-broker">
+                        </div>
                     </div>
                     <div id="custom-fields-container" style="display: none; border-top: 1px solid var(--border-color); padding-top: 20px; margin-top: 20px;">
                         <h4 style="margin-bottom: 16px; font-weight: 600;">Campos Customizados</h4>
@@ -366,7 +371,7 @@
                     </div>
                     <div style="margin-top: 16px; display: flex; align-items: center; gap: 10px;">
                         <input type="checkbox" id="update-existing" style="width: 18px; height: 18px;">
-                        <label for="update-existing" style="color: var(--text-primary);">Atualizar registros existentes (pelo telefone)</label>
+                        <label for="update-existing" style="color: var(--text-primary);">Atualizar registros existentes (pelo e-mail)</label>
                     </div>
                 </div>
                 <div id="upload-step-3" style="display: none; text-align: center; padding: 32px 0;">
@@ -538,6 +543,7 @@
             tbody.innerHTML = assessores.map(a => `
                 <tr>
                     <td style="font-weight: 500;">${a.nome || '-'}</td>
+                    <td>${a.email || '-'}</td>
                     <td>${a.telefone_whatsapp || '-'}</td>
                     <td>${a.unidade || '-'}</td>
                     <td>${a.equipe || '-'}</td>
@@ -584,6 +590,7 @@
             
             document.getElementById('form-id').value = assessor?.id || '';
             document.getElementById('form-nome').value = assessor?.nome || '';
+            document.getElementById('form-email').value = assessor?.email || '';
             document.getElementById('form-telefone').value = assessor?.telefone_whatsapp || '';
             document.getElementById('form-unidade').value = assessor?.unidade || '';
             document.getElementById('form-equipe').value = assessor?.equipe || '';
@@ -638,6 +645,7 @@
 
             const data = {
                 nome: document.getElementById('form-nome').value,
+                email: document.getElementById('form-email').value,
                 telefone_whatsapp: document.getElementById('form-telefone').value || null,
                 unidade: document.getElementById('form-unidade').value || null,
                 equipe: document.getElementById('form-equipe').value || null,
