@@ -355,13 +355,12 @@ def init_default_integrations(db: Session):
             ]
         },
         {
-            "name": "WhatsApp (WAHA)",
-            "type": "waha",
+            "name": "WhatsApp (Z-API)",
+            "type": "zapi",
             "settings": [
-                {"key": "api_url", "description": "URL da API WAHA", "is_secret": False},
-                {"key": "api_key", "description": "Chave de autenticação WAHA", "is_secret": True},
-                {"key": "session_name", "description": "Nome da sessão WhatsApp", "is_secret": False},
-                {"key": "webhook_url", "description": "URL do webhook para receber mensagens", "is_secret": False},
+                {"key": "instance_id", "description": "ID da instância Z-API", "is_secret": False},
+                {"key": "token", "description": "Token da instância Z-API", "is_secret": True},
+                {"key": "client_token", "description": "Client-Token para autenticação", "is_secret": True},
             ]
         },
     ]

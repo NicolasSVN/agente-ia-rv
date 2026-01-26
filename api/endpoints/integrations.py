@@ -121,10 +121,10 @@ def get_env_var_mapping():
             "database_id": {"env": "NOTION_DATABASE_ID", "required": False},
             "parent_page_id": {"env": "NOTION_PARENT_PAGE_ID", "required": False},
         },
-        "waha": {
-            "api_url": {"env": "WAHA_API_URL", "required": True, "is_secret": False},
-            "api_key": {"env": "WAHA_API_KEY", "required": False, "is_secret": True},
-            "session_name": {"env": "WAHA_SESSION_NAME", "required": False, "default": "default"},
+        "zapi": {
+            "instance_id": {"env": "ZAPI_INSTANCE_ID", "required": True, "is_secret": False},
+            "token": {"env": "ZAPI_TOKEN", "required": True, "is_secret": True},
+            "client_token": {"env": "ZAPI_CLIENT_TOKEN", "required": True, "is_secret": True},
         },
     }
 
@@ -391,30 +391,39 @@ async def check_integration_status(
             else:
                 message = "NOTION_API_KEY não configurada. Configure em Secrets."
         
-        elif integration.type == "waha":
-            api_url = os.getenv("WAHA_API_URL")
-            api_key = os.getenv("WAHA_API_KEY")
-            if api_url:
-                headers = {"Content-Type": "application/json"}
-                if api_key:
-                    headers["X-Api-Key"] = api_key
+        elif integration.type == "zapi":
+            instance_id = os.getenv("ZAPI_INSTANCE_ID")
+            token = os.getenv("ZAPI_TOKEN")
+            client_token = os.getenv("ZAPI_CLIENT_TOKEN")
+            if instance_id and token and client_token:
+                headers = {
+                    "Content-Type": "application/json",
+                    "Client-Token": client_token
+                }
                 async with httpx.AsyncClient() as client:
                     response = await client.get(
-                        f"{api_url.rstrip('/')}/api/sessions",
+                        f"https://api.z-api.io/instances/{instance_id}/token/{token}/status",
                         headers=headers,
                         timeout=10.0
                     )
                     if response.status_code == 200:
-                        sessions = response.json()
-                        session_count = len(sessions) if isinstance(sessions, list) else 0
-                        is_connected = True
-                        message = f"Conexão estabelecida! {session_count} sessão(ões) encontrada(s)."
+                        data = response.json()
+                        connected = data.get("connected", False)
+                        if connected:
+                            is_connected = True
+                            message = f"Conexão estabelecida! WhatsApp conectado."
+                        else:
+                            message = f"Instância encontrada mas WhatsApp desconectado. Status: {data.get('error', 'desconhecido')}"
                     elif response.status_code == 401:
-                        message = "Erro de autenticação. Verifique a WAHA_API_KEY."
+                        message = "Erro de autenticação. Verifique o Token ou Client-Token."
                     else:
                         message = f"Erro na API: {response.status_code}"
             else:
-                message = "WAHA_API_URL não configurada."
+                missing = []
+                if not instance_id: missing.append("ZAPI_INSTANCE_ID")
+                if not token: missing.append("ZAPI_TOKEN")
+                if not client_token: missing.append("ZAPI_CLIENT_TOKEN")
+                message = f"Variáveis não configuradas: {', '.join(missing)}"
         
         else:
             message = "Tipo de integração não suportado para teste."
@@ -452,7 +461,7 @@ class SecretInput(BaseModel):
     value: str
 
 
-ALLOWED_SECRET_KEYS = {"OPENAI_API_KEY", "NOTION_API_KEY", "WAHA_API_URL", "NOTION_ROOT_PAGE_ID"}
+ALLOWED_SECRET_KEYS = {"OPENAI_API_KEY", "NOTION_API_KEY", "ZAPI_INSTANCE_ID", "ZAPI_TOKEN", "ZAPI_CLIENT_TOKEN", "NOTION_ROOT_PAGE_ID"}
 
 
 @router.post("/save-secrets")

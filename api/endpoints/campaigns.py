@@ -30,11 +30,11 @@ def translate_error_to_natural_language(error_code: str, error_msg: str, phone: 
     """
     translations = {
         "TIMEOUT": f"O servidor do WhatsApp demorou muito para responder. Isso pode indicar que o serviço está sobrecarregado ou indisponível.",
-        "CONNECTION_ERROR": "Não foi possível conectar ao servidor do WhatsApp. Verifique se a URL do WAHA está correta e se o serviço está online.",
-        "HTTP_401": "Credenciais inválidas. A chave de API do WAHA pode estar incorreta ou expirada.",
-        "HTTP_403": "Acesso negado. Verifique as permissões da sua chave de API do WAHA.",
-        "HTTP_404": "Endpoint não encontrado. Verifique se a URL do WAHA está correta.",
-        "HTTP_500": "Erro interno no servidor do WhatsApp. O serviço WAHA pode estar com problemas.",
+        "CONNECTION_ERROR": "Não foi possível conectar ao servidor do WhatsApp. Verifique se as credenciais Z-API estão corretas e o serviço está online.",
+        "HTTP_401": "Credenciais inválidas. O Token ou Client-Token do Z-API pode estar incorreto.",
+        "HTTP_403": "Acesso negado. Verifique as permissões da sua instância Z-API.",
+        "HTTP_404": "Endpoint não encontrado. Verifique se o Instance ID está correto.",
+        "HTTP_500": "Erro interno no servidor do WhatsApp. O serviço Z-API pode estar com problemas.",
         "HTTP_502": "O servidor do WhatsApp está temporariamente indisponível (Bad Gateway).",
         "HTTP_503": "O servidor do WhatsApp está em manutenção ou sobrecarregado.",
         "API_ERROR": f"A API do WhatsApp retornou um erro: {error_msg}",
@@ -51,7 +51,7 @@ def translate_error_to_natural_language(error_code: str, error_msg: str, phone: 
     if "not registered" in error_msg.lower() or "number not exist" in error_msg.lower():
         base_msg = f"O número {phone} não está registrado no WhatsApp ou está inativo."
     elif "session not found" in error_msg.lower():
-        base_msg = "A sessão do WhatsApp não foi encontrada. É necessário reconectar o WhatsApp no painel WAHA."
+        base_msg = "A sessão do WhatsApp não foi encontrada. É necessário reconectar o WhatsApp no painel Z-API."
     elif "not connected" in error_msg.lower():
         base_msg = "O WhatsApp não está conectado. Verifique se o celular está online e conectado à internet."
     elif "invalid phone" in error_msg.lower() or "invalid number" in error_msg.lower():
@@ -1048,10 +1048,10 @@ async def dispatch_campaign(
     
     grouped = group_recommendations_by_assessor(data, column_mapping, custom_mapping, db)
     
-    from services.whatsapp_client import whatsapp_client
+    from services.whatsapp_client import zapi_client
     import os
     
-    waha_url = os.getenv("WAHA_API_URL", "")
+    zapi_configured = zapi_client.is_configured()
     sent_count = 0
     failed_count = 0
     
@@ -1071,9 +1071,9 @@ async def dispatch_campaign(
         db.add(dispatch)
         db.flush()
         
-        if phone and waha_url:
+        if phone and zapi_configured:
             try:
-                result = await whatsapp_client.send_message(phone, message)
+                result = await zapi_client.send_text(phone, message, delay_typing=2)
                 dispatch.api_response = json.dumps(result, ensure_ascii=False, default=str)
                 
                 if result.get("success"):
@@ -1098,9 +1098,9 @@ async def dispatch_campaign(
                 dispatch.error_message = "Telefone não informado"
                 dispatch.error_details = f"O assessor '{assessor_data.get('nome_assessor', 'Desconhecido')}' não possui número de telefone cadastrado na planilha ou na base de assessores."
                 failed_count += 1
-            elif not waha_url:
+            elif not zapi_configured:
                 dispatch.status = "simulated"
-                dispatch.error_details = "Disparo simulado - WAHA não configurado"
+                dispatch.error_details = "Disparo simulado - Z-API não configurado"
                 dispatch.sent_at = datetime.utcnow()
                 sent_count += 1
     
@@ -1191,10 +1191,10 @@ async def dispatch_campaign_stream(
     attachment_filename = campaign.attachment_filename
     
     async def generate_events():
-        from services.whatsapp_client import whatsapp_client
+        from services.whatsapp_client import zapi_client
         import os
         
-        waha_url = os.getenv("WAHA_API_URL", "")
+        zapi_configured = zapi_client.is_configured()
         replit_domain = os.getenv("REPLIT_DEV_DOMAIN", "")
         sent_count = 0
         failed_count = 0
@@ -1228,20 +1228,21 @@ async def dispatch_campaign_stream(
                     error_msg = ""
                     attempt = 1
                     
-                    if phone and waha_url:
+                    if phone and zapi_configured:
                         while attempt <= MAX_RETRY_ATTEMPTS:
                             try:
                                 if attachment_url and attachment_type:
                                     full_attachment_url = f"https://{replit_domain}{attachment_url}" if replit_domain and attachment_url.startswith('/') else attachment_url
-                                    result = await whatsapp_client.send_file(
-                                        phone, 
-                                        full_attachment_url, 
-                                        attachment_type, 
-                                        caption=message,
-                                        filename=attachment_filename or ""
-                                    )
+                                    if attachment_type == "image":
+                                        result = await zapi_client.send_image(phone, full_attachment_url, message)
+                                    elif attachment_type == "video":
+                                        result = await zapi_client.send_video(phone, full_attachment_url, message)
+                                    elif attachment_type == "audio":
+                                        result = await zapi_client.send_audio(phone, full_attachment_url)
+                                    else:
+                                        result = await zapi_client.send_document(phone, full_attachment_url, attachment_filename or "", message)
                                 else:
-                                    result = await whatsapp_client.send_message(phone, message)
+                                    result = await zapi_client.send_text(phone, message, delay_typing=2)
                                 dispatch.api_response = json.dumps(result, ensure_ascii=False, default=str)
                                 
                                 if result.get("success"):
@@ -1319,9 +1320,9 @@ async def dispatch_campaign_stream(
                             failed_count += 1
                             status = "failed"
                             error_msg = "Telefone não informado"
-                        elif not waha_url:
+                        elif not zapi_configured:
                             dispatch.status = "simulated"
-                            dispatch.error_details = "Disparo simulado - WAHA não configurado"
+                            dispatch.error_details = "Disparo simulado - Z-API não configurado"
                             dispatch.sent_at = datetime.utcnow()
                             sent_count += 1
                             status = "simulated"
@@ -1390,7 +1391,7 @@ async def dispatch_campaign_from_base(campaign, db: Session):
     Dispara campanha baseada em assessores selecionados da base.
     Envia mensagem simples para cada assessor sem lista de clientes.
     """
-    from services.whatsapp_client import whatsapp_client
+    from services.whatsapp_client import zapi_client
     import os
     
     template_content = "Ola, {{nome_assessor}}!\n\n"
@@ -1436,7 +1437,7 @@ async def dispatch_campaign_from_base(campaign, db: Session):
     attachment_filename = campaign.attachment_filename
     
     async def generate_events():
-        waha_url = os.getenv("WAHA_API_URL", "")
+        zapi_configured = zapi_client.is_configured()
         replit_domain = os.getenv("REPLIT_DEV_DOMAIN", "")
         sent_count = 0
         failed_count = 0
@@ -1477,20 +1478,21 @@ async def dispatch_campaign_from_base(campaign, db: Session):
                     error_msg = ""
                     attempt = 1
                     
-                    if phone and waha_url:
+                    if phone and zapi_configured:
                         while attempt <= MAX_RETRY_ATTEMPTS:
                             try:
                                 if attachment_url and attachment_type:
                                     full_attachment_url = f"https://{replit_domain}{attachment_url}" if replit_domain and attachment_url.startswith('/') else attachment_url
-                                    result = await whatsapp_client.send_file(
-                                        phone, 
-                                        full_attachment_url, 
-                                        attachment_type, 
-                                        caption=message,
-                                        filename=attachment_filename or ""
-                                    )
+                                    if attachment_type == "image":
+                                        result = await zapi_client.send_image(phone, full_attachment_url, message)
+                                    elif attachment_type == "video":
+                                        result = await zapi_client.send_video(phone, full_attachment_url, message)
+                                    elif attachment_type == "audio":
+                                        result = await zapi_client.send_audio(phone, full_attachment_url)
+                                    else:
+                                        result = await zapi_client.send_document(phone, full_attachment_url, attachment_filename or "", message)
                                 else:
-                                    result = await whatsapp_client.send_message(phone, message)
+                                    result = await zapi_client.send_text(phone, message, delay_typing=2)
                                 dispatch.api_response = json.dumps(result, ensure_ascii=False, default=str)
                                 
                                 if result.get("success"):
@@ -1542,9 +1544,9 @@ async def dispatch_campaign_from_base(campaign, db: Session):
                             failed_count += 1
                             status = "failed"
                             error_msg = "Telefone não informado"
-                        elif not waha_url:
+                        elif not zapi_configured:
                             dispatch.status = "simulated"
-                            dispatch.error_details = "Disparo simulado - WAHA não configurado"
+                            dispatch.error_details = "Disparo simulado - Z-API não configurado"
                             dispatch.sent_at = datetime.utcnow()
                             sent_count += 1
                             status = "simulated"
@@ -1766,7 +1768,7 @@ async def get_campaign_failures(
     summary_parts = []
     for cat, count in sorted(error_categories.items(), key=lambda x: -x[1]):
         if cat == "Conexao":
-            summary_parts.append(f"{count} falha(s) de conexao com o servidor WAHA")
+            summary_parts.append(f"{count} falha(s) de conexao com o servidor Z-API")
         elif cat == "Autenticacao":
             summary_parts.append(f"{count} falha(s) de autenticacao (chave de API)")
         elif cat == "Numero Invalido":
