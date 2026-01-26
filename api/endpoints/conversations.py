@@ -131,6 +131,8 @@ async def start_new_conversation(
     current_user: User = Depends(get_current_user)
 ):
     """Inicia uma nova conversa com um número de telefone ou envia para conversa existente."""
+    from services.whatsapp_client import zapi_client
+    
     phone = normalize_phone(request.phone)
     
     if len(phone) < 10 or len(phone) > 15:
@@ -140,14 +142,10 @@ async def start_new_conversation(
     if not message_text:
         raise HTTPException(status_code=400, detail="A mensagem não pode estar vazia")
     
-    waha_api_key = os.environ.get("WAHA_API_KEY", "")
-    waha_base_url = os.environ.get("WAHA_API_URL", "https://waha-cvm7.onrender.com")
-    
-    if not waha_api_key:
-        raise HTTPException(status_code=500, detail="WAHA API não configurada")
+    if not zapi_client.instance_id or not zapi_client.token:
+        raise HTTPException(status_code=500, detail="Z-API não configurada. Configure em Integrações.")
     
     existing_conv = db.query(Conversation).filter(Conversation.phone == phone).first()
-    is_new_conversation = existing_conv is None
     
     if existing_conv:
         conv = existing_conv
@@ -167,37 +165,18 @@ async def start_new_conversation(
         db.commit()
         db.refresh(conv)
     
-    chat_id = f"{phone}@c.us"
+    result = await zapi_client.send_text(phone, message_text)
     
-    try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.post(
-                f"{waha_base_url}/api/sendText",
-                headers={
-                    "Content-Type": "application/json",
-                    "X-Api-Key": waha_api_key
-                },
-                json={
-                    "session": "default",
-                    "chatId": chat_id,
-                    "text": message_text
-                }
-            )
-            
-            if response.status_code not in [200, 201]:
-                raise HTTPException(
-                    status_code=500,
-                    detail=f"Erro ao enviar mensagem: {response.text}"
-                )
-            
-            response_data = response.json()
-    except httpx.RequestError as e:
-        raise HTTPException(status_code=500, detail=f"Erro de conexão: {str(e)}")
+    if not result.get("success"):
+        error_msg = result.get("error", "Erro desconhecido ao enviar mensagem")
+        raise HTTPException(status_code=500, detail=f"Erro Z-API: {error_msg}")
     
     message = WhatsAppMessage(
-        waha_message_id=response_data.get("key", {}).get("id"),
-        chat_id=chat_id,
+        message_id=result.get("message_id"),
+        zaap_id=result.get("zaap_id"),
+        chat_id=phone,
         phone=phone,
+        from_me=True,
         direction=MessageDirection.OUTBOUND.value,
         message_type="text",
         sender_type=SenderType.HUMAN.value,
@@ -293,47 +272,27 @@ async def send_message(
     current_user: User = Depends(get_current_user)
 ):
     """Envia uma mensagem manualmente (intervenção humana)."""
+    from services.whatsapp_client import zapi_client
+    
     conv = db.query(Conversation).filter(Conversation.id == conversation_id).first()
     if not conv:
         raise HTTPException(status_code=404, detail="Conversa não encontrada")
     
-    waha_api_key = os.environ.get("WAHA_API_KEY", "")
-    waha_base_url = os.environ.get("WAHA_API_URL", "https://waha-cvm7.onrender.com")
+    if not zapi_client.instance_id or not zapi_client.token:
+        raise HTTPException(status_code=500, detail="Z-API não configurada. Configure em Integrações.")
     
-    if not waha_api_key:
-        raise HTTPException(status_code=500, detail="WAHA API não configurada")
+    result = await zapi_client.send_text(conv.phone, request.message)
     
-    chat_id = f"{conv.phone}@c.us"
-    
-    try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.post(
-                f"{waha_base_url}/api/sendText",
-                headers={
-                    "Content-Type": "application/json",
-                    "X-Api-Key": waha_api_key
-                },
-                json={
-                    "session": "default",
-                    "chatId": chat_id,
-                    "text": request.message
-                }
-            )
-            
-            if response.status_code not in [200, 201]:
-                raise HTTPException(
-                    status_code=500,
-                    detail=f"Erro ao enviar mensagem: {response.text}"
-                )
-            
-            response_data = response.json()
-    except httpx.RequestError as e:
-        raise HTTPException(status_code=500, detail=f"Erro de conexão: {str(e)}")
+    if not result.get("success"):
+        error_msg = result.get("error", "Erro desconhecido ao enviar mensagem")
+        raise HTTPException(status_code=500, detail=f"Erro Z-API: {error_msg}")
     
     message = WhatsAppMessage(
-        waha_message_id=response_data.get("key", {}).get("id"),
-        chat_id=chat_id,
+        message_id=result.get("message_id"),
+        zaap_id=result.get("zaap_id"),
+        chat_id=conv.phone,
         phone=conv.phone,
+        from_me=True,
         direction=MessageDirection.OUTBOUND.value,
         message_type="text",
         sender_type=SenderType.HUMAN.value,
