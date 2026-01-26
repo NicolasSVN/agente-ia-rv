@@ -1,7 +1,8 @@
 """
-Webhook para receber mensagens do WhatsApp via WAHA.
+Webhook para receber mensagens do WhatsApp via Z-API.
 Processa mensagens de texto, áudio, imagem, vídeo e documentos.
 Registra todas as mensagens no banco de dados.
+Documentação: https://developer.z-api.io/webhooks/on-message-received
 """
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.orm import Session
@@ -11,9 +12,12 @@ from datetime import datetime
 import json
 
 from database.database import get_db, SessionLocal
-from database.models import WhatsAppMessage, MessageDirection, MessageType, Conversation, ConversationStatus, SenderType, Assessor
+from database.models import (
+    WhatsAppMessage, MessageDirection, MessageType, MessageStatus,
+    Conversation, ConversationStatus, SenderType, Assessor
+)
 from database import crud
-from services.whatsapp_client import whatsapp_client
+from services.whatsapp_client import zapi_client
 from services.openai_agent import openai_agent
 from services.vector_store import get_vector_store
 
@@ -35,8 +39,7 @@ def is_phone_allowed(phone: str, db: Session) -> bool:
     if not allowed_phones.strip():
         return True
     
-    clean_phone = phone.replace("@c.us", "").replace("@s.whatsapp.net", "")
-    clean_phone = clean_phone.replace("+", "").replace("-", "").replace(" ", "")
+    clean_phone = ''.join(filter(str.isdigit, phone))
     
     allowed_list = [p.strip().replace("+", "").replace("-", "").replace(" ", "") 
                     for p in allowed_phones.split(",") if p.strip()]
@@ -50,36 +53,31 @@ def is_phone_allowed(phone: str, db: Session) -> bool:
 conversation_history: Dict[str, list] = {}
 
 
-def get_message_type(payload: Dict[str, Any]) -> str:
+def get_message_type_zapi(payload: Dict[str, Any]) -> str:
     """
-    Determina o tipo de mensagem baseado no payload do WAHA.
+    Determina o tipo de mensagem baseado no payload do Z-API.
     """
-    if payload.get("hasMedia"):
-        mimetype = payload.get("media", {}).get("mimetype", "")
-        
-        if mimetype.startswith("audio/"):
-            return MessageType.AUDIO.value
-        elif mimetype.startswith("image/"):
-            return MessageType.IMAGE.value
-        elif mimetype.startswith("video/"):
-            return MessageType.VIDEO.value
-        elif mimetype.startswith("application/"):
-            return MessageType.DOCUMENT.value
-        elif "sticker" in mimetype or payload.get("type") == "sticker":
-            return MessageType.STICKER.value
-        else:
-            return MessageType.UNKNOWN.value
-    
-    if payload.get("type") == "location":
+    if payload.get("image"):
+        return MessageType.IMAGE.value
+    elif payload.get("audio"):
+        return MessageType.AUDIO.value
+    elif payload.get("video"):
+        return MessageType.VIDEO.value
+    elif payload.get("document"):
+        return MessageType.DOCUMENT.value
+    elif payload.get("sticker"):
+        return MessageType.STICKER.value
+    elif payload.get("location"):
         return MessageType.LOCATION.value
-    
-    if payload.get("type") == "vcard" or payload.get("type") == "contact":
+    elif payload.get("contact"):
         return MessageType.CONTACT.value
+    elif payload.get("text"):
+        return MessageType.TEXT.value
     
     return MessageType.TEXT.value
 
 
-def get_or_create_conversation(db: Session, phone: str) -> Conversation:
+def get_or_create_conversation(db: Session, phone: str, sender_name: str = None, sender_photo: str = None) -> Conversation:
     """Obtém ou cria uma conversa para um número de telefone."""
     conv = db.query(Conversation).filter(Conversation.phone == phone).first()
     
@@ -90,13 +88,16 @@ def get_or_create_conversation(db: Session, phone: str) -> Conversation:
         
         conv = Conversation(
             phone=phone,
-            contact_name=assessor.nome if assessor else None,
+            contact_name=sender_name or (assessor.nome if assessor else None),
             assessor_id=assessor.id if assessor else None,
             status=ConversationStatus.BOT_ACTIVE.value
         )
         db.add(conv)
         db.commit()
         db.refresh(conv)
+    elif sender_name and not conv.contact_name:
+        conv.contact_name = sender_name
+        db.commit()
     
     return conv
 
@@ -113,42 +114,57 @@ def update_conversation_metadata(db: Session, conversation: Conversation, messag
     db.commit()
 
 
-def save_message(
+def save_message_zapi(
     db: Session,
-    waha_message_id: str,
-    chat_id: str,
+    message_id: str,
+    zaap_id: str,
+    phone: str,
     direction: str,
     message_type: str,
+    from_me: bool = False,
+    message_status: str = None,
     body: str = None,
     media_url: str = None,
     media_mimetype: str = None,
     media_filename: str = None,
+    thumbnail_url: str = None,
+    sender_name: str = None,
+    sender_photo: str = None,
     ai_response: str = None,
     ai_intent: str = None,
     ticket_id: int = None,
     sender_type: str = None
 ) -> WhatsAppMessage:
     """
-    Salva uma mensagem no banco de dados e atualiza a conversa.
+    Salva uma mensagem no banco de dados e atualiza a conversa (formato Z-API).
     """
-    phone = chat_id.replace("@c.us", "").replace("@s.whatsapp.net", "")
+    clean_phone = ''.join(filter(str.isdigit, phone))
     
-    conversation = get_or_create_conversation(db, phone)
+    conversation = get_or_create_conversation(db, clean_phone, sender_name, sender_photo)
     
     if sender_type is None:
         sender_type = SenderType.CONTACT.value if direction == MessageDirection.INBOUND.value else SenderType.BOT.value
     
+    if not message_status:
+        message_status = MessageStatus.RECEIVED.value if direction == MessageDirection.INBOUND.value else MessageStatus.SENT.value
+    
     message = WhatsAppMessage(
-        waha_message_id=waha_message_id,
-        chat_id=chat_id,
-        phone=phone,
+        message_id=message_id,
+        zaap_id=zaap_id,
+        chat_id=clean_phone,
+        phone=clean_phone,
+        from_me=from_me,
         direction=direction,
         message_type=message_type,
+        message_status=message_status,
         sender_type=sender_type,
+        sender_name=sender_name,
+        sender_photo=sender_photo,
         body=body,
         media_url=media_url,
         media_mimetype=media_mimetype,
         media_filename=media_filename,
+        thumbnail_url=thumbnail_url,
         ai_response=ai_response,
         ai_intent=ai_intent,
         ticket_id=ticket_id,
@@ -171,8 +187,6 @@ async def process_text_message(phone: str, message: str, db: Session, message_re
     Busca na base de conhecimento para enriquecer o contexto.
     """
     try:
-        await whatsapp_client.start_typing(phone)
-        
         history = conversation_history.get(phone, [])
         
         knowledge_context = ""
@@ -201,14 +215,14 @@ async def process_text_message(phone: str, message: str, db: Session, message_re
         
         ticket = None
         if should_create_ticket:
-            user = crud.get_user_by_phone(db, phone.replace("@c.us", ""))
+            user = crud.get_user_by_phone(db, phone)
             
             ticket = crud.create_ticket(
                 db,
                 title=f"Chamado via WhatsApp - {phone}",
                 description=f"Cliente solicitou atendimento.\n\nÚltima mensagem: {message}",
                 client_id=user.id if user else None,
-                client_phone=phone.replace("@c.us", "")
+                client_phone=phone
             )
             
             response += f"\n\nChamado #{ticket.id} criado com sucesso!"
@@ -220,19 +234,20 @@ async def process_text_message(phone: str, message: str, db: Session, message_re
                 message_record.ticket_id = ticket.id
             db.commit()
         
-        await whatsapp_client.stop_typing(phone)
-        
-        result = await whatsapp_client.send_message(phone, response)
+        result = await zapi_client.send_text(phone, response, delay_typing=2)
         
         if result.get("success"):
-            save_message(
+            save_message_zapi(
                 db,
-                waha_message_id=result.get("message_id"),
-                chat_id=phone,
+                message_id=result.get("message_id"),
+                zaap_id=result.get("zaap_id"),
+                phone=phone,
                 direction=MessageDirection.OUTBOUND.value,
                 message_type=MessageType.TEXT.value,
+                from_me=True,
                 body=response,
-                ticket_id=ticket.id if ticket else None
+                ticket_id=ticket.id if ticket else None,
+                sender_type=SenderType.BOT.value
             )
         
     except Exception as e:
@@ -241,18 +256,15 @@ async def process_text_message(phone: str, message: str, db: Session, message_re
             "Desculpe, ocorreu um erro ao processar sua mensagem. "
             "Por favor, tente novamente mais tarde ou entre em contato com seu assessor."
         )
-        await whatsapp_client.send_message(phone, error_msg)
+        await zapi_client.send_text(phone, error_msg)
 
 
 async def process_audio_message(phone: str, media_url: str, db: Session, message_record: WhatsAppMessage = None):
     """
     Processa mensagem de áudio.
     Por enquanto, informa ao usuário que áudio foi recebido.
-    Futuramente: transcrever usando Whisper API.
     """
     try:
-        await whatsapp_client.start_typing(phone)
-        
         response = (
             "Recebi seu áudio! 🎙️\n\n"
             "No momento, estou processando apenas mensagens de texto. "
@@ -263,8 +275,7 @@ async def process_audio_message(phone: str, media_url: str, db: Session, message
             message_record.ai_response = response
             db.commit()
         
-        await whatsapp_client.stop_typing(phone)
-        await whatsapp_client.send_message(phone, response)
+        await zapi_client.send_text(phone, response, delay_typing=1)
         
     except Exception as e:
         print(f"[WEBHOOK] Erro ao processar áudio: {e}")
@@ -279,8 +290,6 @@ async def process_image_message(phone: str, media_url: str, caption: str, db: Se
         if caption:
             await process_text_message(phone, caption, db, message_record)
         else:
-            await whatsapp_client.start_typing(phone)
-            
             response = (
                 "Recebi sua imagem! 📷\n\n"
                 "Se precisar de ajuda com algo específico relacionado a esta imagem, "
@@ -291,8 +300,7 @@ async def process_image_message(phone: str, media_url: str, caption: str, db: Se
                 message_record.ai_response = response
                 db.commit()
             
-            await whatsapp_client.stop_typing(phone)
-            await whatsapp_client.send_message(phone, response)
+            await zapi_client.send_text(phone, response, delay_typing=1)
             
     except Exception as e:
         print(f"[WEBHOOK] Erro ao processar imagem: {e}")
@@ -304,8 +312,6 @@ async def process_document_message(phone: str, media_url: str, filename: str, db
     Informa ao usuário que o documento foi recebido.
     """
     try:
-        await whatsapp_client.start_typing(phone)
-        
         response = (
             f"Recebi o documento '{filename}' 📄\n\n"
             "Obrigado pelo envio! Se precisar de ajuda com algo relacionado "
@@ -316,76 +322,119 @@ async def process_document_message(phone: str, media_url: str, filename: str, db
             message_record.ai_response = response
             db.commit()
         
-        await whatsapp_client.stop_typing(phone)
-        await whatsapp_client.send_message(phone, response)
+        await zapi_client.send_text(phone, response, delay_typing=1)
         
     except Exception as e:
         print(f"[WEBHOOK] Erro ao processar documento: {e}")
 
 
-@router.post("/whatsapp")
-async def whatsapp_webhook(
+@router.post("/zapi")
+async def zapi_webhook(
     payload: Dict[str, Any],
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db)
 ):
     """
-    Endpoint que recebe mensagens do WAHA.
-    Processa mensagens de texto, áudio, imagem, vídeo e documentos.
-    Registra todas as mensagens no banco de dados.
+    Endpoint que recebe mensagens do Z-API.
+    Formato: ReceivedCallback
+    Documentação: https://developer.z-api.io/webhooks/on-message-received
     """
-    event = payload.get("event", "")
+    event_type = payload.get("type", "")
     
-    if event != "message":
-        return {"status": "ignored", "reason": "not a message event"}
+    if event_type != "ReceivedCallback":
+        return {"status": "ignored", "reason": f"event type: {event_type}"}
     
-    message_payload = payload.get("payload", {})
+    from_me = payload.get("fromMe", False)
+    phone = payload.get("phone", "")
+    message_id = payload.get("messageId", "")
+    is_group = payload.get("isGroup", False)
+    sender_name = payload.get("senderName") or payload.get("chatName")
+    sender_photo = payload.get("senderPhoto") or payload.get("photo")
+    status = payload.get("status", "RECEIVED")
     
-    if message_payload.get("fromMe", False):
-        return {"status": "ignored", "reason": "message from self"}
-    
-    chat_id = message_payload.get("from", "")
-    waha_message_id = message_payload.get("id", "")
-    body = message_payload.get("body", "")
-    has_media = message_payload.get("hasMedia", False)
-    media_info = message_payload.get("media", {})
-    
-    if "@g.us" in chat_id:
+    if is_group:
         return {"status": "ignored", "reason": "group message"}
     
-    if not is_phone_allowed(chat_id, db):
-        print(f"[WEBHOOK] Número não autorizado: {chat_id}")
+    if from_me:
+        try:
+            save_message_zapi(
+                db,
+                message_id=message_id,
+                zaap_id=None,
+                phone=phone,
+                direction=MessageDirection.OUTBOUND.value,
+                message_type=get_message_type_zapi(payload),
+                from_me=True,
+                message_status=status,
+                body=payload.get("text", {}).get("message") if payload.get("text") else None,
+                sender_type=SenderType.HUMAN.value
+            )
+        except Exception as e:
+            print(f"[WEBHOOK] Erro ao salvar mensagem enviada: {e}")
+        return {"status": "saved", "reason": "message from self"}
+    
+    if not is_phone_allowed(phone, db):
+        print(f"[WEBHOOK] Número não autorizado: {phone}")
         return {"status": "ignored", "reason": "phone not allowed"}
     
-    phone = chat_id.replace("@c.us", "").replace("@s.whatsapp.net", "")
     conversation = db.query(Conversation).filter(Conversation.phone == phone).first()
     is_human_takeover = conversation and conversation.status == ConversationStatus.HUMAN_TAKEOVER.value
     
-    message_type = get_message_type(message_payload)
+    message_type = get_message_type_zapi(payload)
+    
+    body = None
+    media_url = None
+    media_mimetype = None
+    media_filename = None
+    thumbnail_url = None
+    
+    if payload.get("text"):
+        body = payload["text"].get("message", "")
+    elif payload.get("image"):
+        media_url = payload["image"].get("imageUrl")
+        media_mimetype = payload["image"].get("mimeType")
+        thumbnail_url = payload["image"].get("thumbnailUrl")
+        body = payload["image"].get("caption", "")
+    elif payload.get("audio"):
+        media_url = payload["audio"].get("audioUrl")
+        media_mimetype = payload["audio"].get("mimeType")
+    elif payload.get("video"):
+        media_url = payload["video"].get("videoUrl")
+        media_mimetype = payload["video"].get("mimeType")
+        body = payload["video"].get("caption", "")
+    elif payload.get("document"):
+        media_url = payload["document"].get("documentUrl")
+        media_mimetype = payload["document"].get("mimeType")
+        media_filename = payload["document"].get("fileName")
+        thumbnail_url = payload["document"].get("thumbnailUrl")
+    elif payload.get("sticker"):
+        media_url = payload["sticker"].get("stickerUrl")
+        media_mimetype = payload["sticker"].get("mimeType")
     
     try:
-        message_record = save_message(
+        message_record = save_message_zapi(
             db,
-            waha_message_id=waha_message_id,
-            chat_id=chat_id,
+            message_id=message_id,
+            zaap_id=None,
+            phone=phone,
             direction=MessageDirection.INBOUND.value,
             message_type=message_type,
-            body=body if body else None,
-            media_url=media_info.get("url") if has_media else None,
-            media_mimetype=media_info.get("mimetype") if has_media else None,
-            media_filename=media_info.get("filename") if has_media else None
+            from_me=False,
+            message_status=status,
+            body=body,
+            media_url=media_url,
+            media_mimetype=media_mimetype,
+            media_filename=media_filename,
+            thumbnail_url=thumbnail_url,
+            sender_name=sender_name,
+            sender_photo=sender_photo
         )
     except Exception as e:
         print(f"[WEBHOOK] Erro ao salvar mensagem: {e}")
         message_record = None
     
-    try:
-        await whatsapp_client.send_seen(chat_id)
-    except Exception as e:
-        print(f"[WEBHOOK] Erro ao marcar como visto: {e}")
-    
     if is_human_takeover:
-        print(f"[WEBHOOK] Conversa em modo humano, não respondendo automaticamente: {chat_id}")
+        print(f"[WEBHOOK] Conversa em modo humano, não respondendo automaticamente: {phone}")
         return {
             "status": "received",
             "message_type": message_type,
@@ -396,15 +445,15 @@ async def whatsapp_webhook(
     
     if message_type == MessageType.TEXT.value:
         if body:
-            background_tasks.add_task(process_text_message, chat_id, body, db, message_record)
+            background_tasks.add_task(process_text_message, phone, body, db, message_record)
         else:
             return {"status": "ignored", "reason": "empty text message"}
             
     elif message_type == MessageType.AUDIO.value:
         background_tasks.add_task(
             process_audio_message, 
-            chat_id, 
-            media_info.get("url"), 
+            phone, 
+            media_url, 
             db, 
             message_record
         )
@@ -412,8 +461,8 @@ async def whatsapp_webhook(
     elif message_type == MessageType.IMAGE.value:
         background_tasks.add_task(
             process_image_message, 
-            chat_id, 
-            media_info.get("url"),
+            phone, 
+            media_url,
             body,
             db, 
             message_record
@@ -422,9 +471,9 @@ async def whatsapp_webhook(
     elif message_type == MessageType.DOCUMENT.value:
         background_tasks.add_task(
             process_document_message, 
-            chat_id, 
-            media_info.get("url"),
-            media_info.get("filename", "documento"),
+            phone, 
+            media_url,
+            media_filename or "documento",
             db, 
             message_record
         )
@@ -434,7 +483,7 @@ async def whatsapp_webhook(
         if message_record:
             message_record.ai_response = response
             db.commit()
-        background_tasks.add_task(whatsapp_client.send_message, chat_id, response)
+        background_tasks.add_task(zapi_client.send_text, phone, response)
         
     elif message_type == MessageType.STICKER.value:
         return {"status": "ignored", "reason": "sticker message"}
@@ -449,12 +498,53 @@ async def whatsapp_webhook(
     }
 
 
+@router.post("/whatsapp")
+async def whatsapp_webhook_legacy(
+    payload: Dict[str, Any],
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db)
+):
+    """
+    Endpoint legado para WAHA. Redireciona para o novo formato se detectar Z-API.
+    """
+    if payload.get("type") == "ReceivedCallback":
+        return await zapi_webhook(payload, background_tasks, db)
+    
+    return {"status": "ignored", "reason": "legacy endpoint - use /api/webhook/zapi"}
+
+
+@router.post("/status")
+async def status_webhook(
+    payload: Dict[str, Any],
+    db: Session = Depends(get_db)
+):
+    """
+    Webhook para atualizações de status de mensagens (Z-API).
+    Atualiza o status da mensagem no banco de dados.
+    """
+    message_id = payload.get("messageId")
+    status = payload.get("status")
+    
+    if message_id and status:
+        message = db.query(WhatsAppMessage).filter(
+            WhatsAppMessage.message_id == message_id
+        ).first()
+        
+        if message:
+            message.message_status = status
+            db.commit()
+            return {"status": "updated", "message_id": message_id, "new_status": status}
+    
+    return {"status": "ignored"}
+
+
 @router.get("/health")
 async def health_check():
     """Endpoint de verificação de saúde do webhook."""
     return {
         "status": "ok",
-        "ai_available": openai_agent.is_available()
+        "ai_available": openai_agent.is_available(),
+        "api": "z-api"
     }
 
 
@@ -480,9 +570,12 @@ async def list_messages(
         "messages": [
             {
                 "id": m.id,
+                "message_id": m.message_id,
                 "phone": m.phone,
+                "from_me": m.from_me,
                 "direction": m.direction,
                 "type": m.message_type,
+                "status": m.message_status,
                 "body": m.body[:100] if m.body else None,
                 "ai_response": m.ai_response[:100] if m.ai_response else None,
                 "created_at": m.created_at.isoformat() if m.created_at else None
