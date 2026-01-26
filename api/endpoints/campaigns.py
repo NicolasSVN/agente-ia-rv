@@ -102,6 +102,10 @@ class TemplateCreate(BaseModel):
     name: str
     content: str
     description: Optional[str] = None
+    attachment_url: Optional[str] = None
+    attachment_type: Optional[str] = None
+    attachment_filename: Optional[str] = None
+    variables_used: Optional[List[str]] = None
 
 
 class TemplateUpdate(BaseModel):
@@ -109,6 +113,10 @@ class TemplateUpdate(BaseModel):
     content: Optional[str] = None
     description: Optional[str] = None
     is_active: Optional[bool] = None
+    attachment_url: Optional[str] = None
+    attachment_type: Optional[str] = None
+    attachment_filename: Optional[str] = None
+    variables_used: Optional[List[str]] = None
 
 
 class ColumnMapping(BaseModel):
@@ -163,6 +171,10 @@ async def list_templates(
             "name": t.name,
             "content": t.content,
             "description": t.description,
+            "attachment_url": t.attachment_url,
+            "attachment_type": t.attachment_type,
+            "attachment_filename": t.attachment_filename,
+            "variables_used": json.loads(t.variables_used) if t.variables_used else [],
             "created_at": t.created_at.isoformat() if t.created_at else None,
             "updated_at": t.updated_at.isoformat() if t.updated_at else None
         }
@@ -187,8 +199,19 @@ async def get_template(
         "content": template.content,
         "description": template.description,
         "is_active": template.is_active == 1,
+        "attachment_url": template.attachment_url,
+        "attachment_type": template.attachment_type,
+        "attachment_filename": template.attachment_filename,
+        "variables_used": json.loads(template.variables_used) if template.variables_used else [],
         "created_at": template.created_at.isoformat() if template.created_at else None
     }
+
+
+def extract_variables_from_content(content: str) -> List[str]:
+    """Extrai variáveis no formato {{variavel}} do conteúdo."""
+    pattern = r'\{\{\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}'
+    matches = re.findall(pattern, content)
+    return list(set(matches))
 
 
 @router.post("/templates")
@@ -198,10 +221,16 @@ async def create_template(
     current_user: User = Depends(require_admin_or_gestao())
 ):
     """Cria um novo template de mensagem."""
+    variables = data.variables_used or extract_variables_from_content(data.content)
+    
     template = MessageTemplate(
         name=data.name,
         content=data.content,
         description=data.description,
+        attachment_url=data.attachment_url,
+        attachment_type=data.attachment_type,
+        attachment_filename=data.attachment_filename,
+        variables_used=json.dumps(variables),
         created_by=int(current_user.id),
         is_active=1
     )
@@ -212,6 +241,7 @@ async def create_template(
     return {
         "id": template.id,
         "name": template.name,
+        "variables_used": variables,
         "message": "Template criado com sucesso"
     }
 
@@ -232,15 +262,27 @@ async def update_template(
         template.name = data.name
     if data.content is not None:
         template.content = data.content
+        template.variables_used = json.dumps(extract_variables_from_content(data.content))
     if data.description is not None:
         template.description = data.description
     if data.is_active is not None:
         template.is_active = 1 if data.is_active else 0
+    if data.attachment_url is not None:
+        template.attachment_url = data.attachment_url
+    if data.attachment_type is not None:
+        template.attachment_type = data.attachment_type
+    if data.attachment_filename is not None:
+        template.attachment_filename = data.attachment_filename
+    if data.variables_used is not None:
+        template.variables_used = json.dumps(data.variables_used)
     
     db.commit()
     db.refresh(template)
     
-    return {"message": "Template atualizado com sucesso"}
+    return {
+        "message": "Template atualizado com sucesso",
+        "variables_used": json.loads(template.variables_used) if template.variables_used else []
+    }
 
 
 @router.delete("/templates/{template_id}")
@@ -258,6 +300,106 @@ async def delete_template(
     db.commit()
     
     return {"message": "Template removido com sucesso"}
+
+
+import os
+import uuid
+from pathlib import Path
+
+ATTACHMENTS_DIR = Path("uploads/attachments")
+ALLOWED_ATTACHMENT_TYPES = {
+    'image/jpeg': 'image',
+    'image/png': 'image',
+    'image/gif': 'image',
+    'image/webp': 'image',
+    'video/mp4': 'video',
+    'video/quicktime': 'video',
+    'audio/mpeg': 'audio',
+    'audio/mp3': 'audio',
+    'audio/ogg': 'audio',
+    'audio/wav': 'audio',
+    'application/pdf': 'document',
+    'application/msword': 'document',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'document',
+    'application/vnd.ms-excel': 'document',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'document',
+    'text/plain': 'document',
+}
+
+
+@router.post("/attachments/upload")
+async def upload_attachment(
+    file: UploadFile = File(...),
+    current_user: User = Depends(require_admin_or_gestao())
+):
+    """
+    Faz upload de anexo (imagem, vídeo, áudio ou documento) para campanhas/templates.
+    Retorna a URL do arquivo para ser usada no template ou campanha.
+    """
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="Nome do arquivo inválido")
+    
+    content_type = file.content_type or 'application/octet-stream'
+    
+    if content_type not in ALLOWED_ATTACHMENT_TYPES:
+        allowed_types = list(ALLOWED_ATTACHMENT_TYPES.keys())
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Tipo de arquivo não permitido. Tipos aceitos: imagem (JPEG, PNG, GIF, WebP), vídeo (MP4), áudio (MP3, OGG, WAV), documento (PDF, DOC, DOCX, XLS, XLSX, TXT)"
+        )
+    
+    attachment_type = ALLOWED_ATTACHMENT_TYPES[content_type]
+    
+    file_ext = Path(file.filename).suffix.lower()
+    unique_filename = f"{uuid.uuid4().hex}{file_ext}"
+    
+    ATTACHMENTS_DIR.mkdir(parents=True, exist_ok=True)
+    file_path = ATTACHMENTS_DIR / unique_filename
+    
+    try:
+        contents = await file.read()
+        max_size = 50 * 1024 * 1024
+        if len(contents) > max_size:
+            raise HTTPException(status_code=400, detail="Arquivo muito grande. Tamanho máximo: 50MB")
+        
+        with open(file_path, 'wb') as f:
+            f.write(contents)
+        
+        file_url = f"/uploads/attachments/{unique_filename}"
+        
+        return {
+            "success": True,
+            "url": file_url,
+            "type": attachment_type,
+            "filename": file.filename,
+            "size": len(contents),
+            "message": "Arquivo enviado com sucesso"
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        if file_path.exists():
+            file_path.unlink()
+        raise HTTPException(status_code=500, detail=f"Erro ao salvar arquivo: {str(e)}")
+
+
+@router.delete("/attachments")
+async def delete_attachment(
+    url: str,
+    current_user: User = Depends(require_admin_or_gestao())
+):
+    """Remove um anexo pelo URL."""
+    if not url or not url.startswith("/uploads/attachments/"):
+        raise HTTPException(status_code=400, detail="URL de anexo inválida")
+    
+    filename = url.replace("/uploads/attachments/", "")
+    file_path = ATTACHMENTS_DIR / filename
+    
+    if file_path.exists():
+        file_path.unlink()
+        return {"message": "Anexo removido com sucesso"}
+    else:
+        raise HTTPException(status_code=404, detail="Anexo não encontrado")
 
 
 @router.post("/upload")
@@ -453,6 +595,9 @@ async def set_campaign_template(
 
 class CustomTemplateRequest(BaseModel):
     content: str
+    attachment_url: Optional[str] = None
+    attachment_type: Optional[str] = None
+    attachment_filename: Optional[str] = None
 
 
 @router.put("/{campaign_id}/custom-template")
@@ -467,11 +612,10 @@ async def set_custom_template(
     if not campaign:
         raise HTTPException(status_code=404, detail="Campanha não encontrada")
     
-    print(f"[DEBUG CUSTOM_TEMPLATE] campaign_id={campaign_id}")
-    print(f"[DEBUG CUSTOM_TEMPLATE] content length={len(request.content)}")
-    print(f"[DEBUG CUSTOM_TEMPLATE] content first 300 chars: '{request.content[:300]}'")
-    
     campaign.custom_template_content = request.content
+    campaign.attachment_url = request.attachment_url
+    campaign.attachment_type = request.attachment_type
+    campaign.attachment_filename = request.attachment_filename
     db.commit()
     
     return {"message": "Template customizado salvo com sucesso"}
@@ -1042,11 +1186,16 @@ async def dispatch_campaign_stream(
     campaign.total_assessors = total_assessors
     db.commit()
     
+    attachment_url = campaign.attachment_url
+    attachment_type = campaign.attachment_type
+    attachment_filename = campaign.attachment_filename
+    
     async def generate_events():
         from services.whatsapp_client import whatsapp_client
         import os
         
         waha_url = os.getenv("WAHA_API_URL", "")
+        replit_domain = os.getenv("REPLIT_DEV_DOMAIN", "")
         sent_count = 0
         failed_count = 0
         current_index = 0
@@ -1082,7 +1231,17 @@ async def dispatch_campaign_stream(
                     if phone and waha_url:
                         while attempt <= MAX_RETRY_ATTEMPTS:
                             try:
-                                result = await whatsapp_client.send_message(phone, message)
+                                if attachment_url and attachment_type:
+                                    full_attachment_url = f"https://{replit_domain}{attachment_url}" if replit_domain and attachment_url.startswith('/') else attachment_url
+                                    result = await whatsapp_client.send_file(
+                                        phone, 
+                                        full_attachment_url, 
+                                        attachment_type, 
+                                        caption=message,
+                                        filename=attachment_filename or ""
+                                    )
+                                else:
+                                    result = await whatsapp_client.send_message(phone, message)
                                 dispatch.api_response = json.dumps(result, ensure_ascii=False, default=str)
                                 
                                 if result.get("success"):
@@ -1272,8 +1431,13 @@ async def dispatch_campaign_from_base(campaign, db: Session):
     campaign.total_assessors = total_assessors
     db.commit()
     
+    attachment_url = campaign.attachment_url
+    attachment_type = campaign.attachment_type
+    attachment_filename = campaign.attachment_filename
+    
     async def generate_events():
         waha_url = os.getenv("WAHA_API_URL", "")
+        replit_domain = os.getenv("REPLIT_DEV_DOMAIN", "")
         sent_count = 0
         failed_count = 0
         current_index = 0
@@ -1287,12 +1451,13 @@ async def dispatch_campaign_from_base(campaign, db: Session):
                 assessor_name = assessor.get("nome", "")
                 phone = assessor.get("telefone_whatsapp", "")
                 
-                message = template_content.replace("{{nome_assessor}}", assessor_name)
-                message = message.replace("{{ nome_assessor }}", assessor_name)
-                message = message.replace("{nome_assessor}", assessor_name)
-                message = message.replace("{{lista_clientes}}", "(Campanha sem recomendacoes de ativos)")
-                message = message.replace("{{ lista_clientes }}", "(Campanha sem recomendacoes de ativos)")
-                message = message.replace("{lista_clientes}", "(Campanha sem recomendacoes de ativos)")
+                message = template_content
+                for key, value in assessor.items():
+                    message = message.replace(f"{{{{{key}}}}}", str(value) if value else "")
+                    message = message.replace(f"{{{{ {key} }}}}", str(value) if value else "")
+                message = message.replace("{{lista_clientes}}", "(Campanha informativa)")
+                message = message.replace("{{ lista_clientes }}", "(Campanha informativa)")
+                message = message.replace("{lista_clientes}", "(Campanha informativa)")
                 
                 db_session = SessionLocal()
                 try:
@@ -1315,7 +1480,17 @@ async def dispatch_campaign_from_base(campaign, db: Session):
                     if phone and waha_url:
                         while attempt <= MAX_RETRY_ATTEMPTS:
                             try:
-                                result = await whatsapp_client.send_message(phone, message)
+                                if attachment_url and attachment_type:
+                                    full_attachment_url = f"https://{replit_domain}{attachment_url}" if replit_domain and attachment_url.startswith('/') else attachment_url
+                                    result = await whatsapp_client.send_file(
+                                        phone, 
+                                        full_attachment_url, 
+                                        attachment_type, 
+                                        caption=message,
+                                        filename=attachment_filename or ""
+                                    )
+                                else:
+                                    result = await whatsapp_client.send_message(phone, message)
                                 dispatch.api_response = json.dumps(result, ensure_ascii=False, default=str)
                                 
                                 if result.get("success"):

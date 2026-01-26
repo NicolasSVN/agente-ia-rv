@@ -707,48 +707,88 @@
                     </div>
 
                     <div class="step-content" id="step3">
-                        <h3>Escolher Template de Mensagem</h3>
+                        <h3>Compor Mensagem</h3>
                         <p style="color: var(--text-secondary); margin-bottom: 24px;">
-                            Selecione um template existente ou crie um novo para personalizar a mensagem.
+                            Escreva sua mensagem ou selecione um template existente. Use as variáveis disponíveis para personalizar.
                         </p>
 
-                        <div class="template-selector">
-                            <label class="form-label">Selecione um Template (opcional)</label>
-                            <div style="display: flex; gap: 12px;">
-                                <select id="templateSelect" class="form-input" style="flex: 1;" onchange="loadTemplatePreview()">
-                                    <option value="">-- Usar mensagem padrao --</option>
-                                </select>
-                                <button class="btn btn-secondary" onclick="openTemplateModal()">Gerenciar Templates</button>
+                        <div style="display: grid; grid-template-columns: 1fr 300px; gap: 24px;">
+                            <div>
+                                <div class="template-selector" style="margin-bottom: 16px;">
+                                    <label class="form-label">Usar Template Existente</label>
+                                    <div style="display: flex; gap: 12px;">
+                                        <select id="templateSelect" class="form-input" style="flex: 1;" onchange="loadTemplatePreview()">
+                                            <option value="">-- Escrever mensagem personalizada --</option>
+                                        </select>
+                                        <button class="btn btn-primary" onclick="openCreateTemplateModal()" style="white-space: nowrap;">
+                                            <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                                            Criar Template
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div id="templatePreviewContainer">
+                                    <label class="form-label">Conteúdo da Mensagem</label>
+                                    <textarea id="templatePreview" class="form-input" rows="10" style="font-family: monospace; font-size: 0.9rem;" oninput="onMessageContentChange()" placeholder="Digite sua mensagem aqui...&#10;&#10;Use variáveis como {{nome}} para personalizar."></textarea>
+                                </div>
+
+                                <div id="variableValidationAlert" style="display: none; margin-top: 12px; padding: 12px 16px; background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; color: #991b1b;">
+                                    <div style="display: flex; align-items: flex-start; gap: 8px;">
+                                        <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="flex-shrink: 0; margin-top: 2px;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+                                        <div>
+                                            <strong>Variáveis não disponíveis:</strong>
+                                            <span id="missingVariablesList"></span>
+                                            <p style="margin: 4px 0 0 0; font-size: 0.85rem;">Essas variáveis não existem nos dados importados e aparecerão em branco na mensagem.</p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div id="attachmentSection" style="margin-top: 20px; padding: 16px; background: #f8fafc; border-radius: 8px; border: 1px solid var(--border-color);">
+                                    <label class="form-label" style="margin-bottom: 12px;">Anexo (opcional)</label>
+                                    <div id="attachmentPreview" style="display: none; margin-bottom: 12px; padding: 12px; background: white; border-radius: 6px; border: 1px solid var(--border-color);">
+                                        <div style="display: flex; align-items: center; justify-content: space-between;">
+                                            <div style="display: flex; align-items: center; gap: 8px;">
+                                                <span id="attachmentIcon"></span>
+                                                <span id="attachmentName" style="font-size: 0.9rem;"></span>
+                                                <span id="attachmentType" style="font-size: 0.75rem; padding: 2px 6px; background: #e0e7ff; color: #4338ca; border-radius: 4px;"></span>
+                                            </div>
+                                            <button type="button" class="btn btn-secondary" style="padding: 4px 8px;" onclick="removeAttachment()">
+                                                <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div id="attachmentUploadArea">
+                                        <input type="file" id="attachmentInput" style="display: none;" onchange="handleAttachmentUpload(event)" accept="image/*,video/mp4,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.txt">
+                                        <button type="button" class="btn btn-secondary" onclick="document.getElementById('attachmentInput').click()" style="width: 100%;">
+                                            <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"/></svg>
+                                            Anexar Arquivo
+                                        </button>
+                                        <p style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 8px; text-align: center;">
+                                            Imagens, vídeos, áudios ou documentos (máx. 50MB)
+                                        </p>
+                                    </div>
+                                </div>
                             </div>
-                            <p style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 8px;">
-                                Se nenhum template for selecionado, sera usada uma mensagem padrao de recomendacao de troca de ativos.
-                            </p>
+
+                            <div class="variables-panel" style="background: #f0f9ff; padding: 16px; border-radius: 8px; border: 1px solid #bae6fd; height: fit-content;">
+                                <h4 style="margin: 0 0 12px 0; color: #0369a1; font-size: 0.95rem;">
+                                    <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="vertical-align: middle; margin-right: 4px;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14"/></svg>
+                                    Variáveis Disponíveis
+                                </h4>
+                                <p style="font-size: 0.8rem; color: #0369a1; margin-bottom: 12px;">Clique para inserir na mensagem:</p>
+                                <div id="availableVariables" style="display: flex; flex-wrap: wrap; gap: 6px;">
+                                </div>
+                                <div id="noVariablesMessage" style="display: none; font-size: 0.85rem; color: #64748b; font-style: italic;">
+                                    Nenhuma variável disponível para esta origem de dados.
+                                </div>
+                            </div>
                         </div>
 
-                        <div id="templatePreviewContainer">
-                            <label class="form-label">Conteudo da Mensagem (editavel)</label>
-                            <textarea id="templatePreview" class="form-input" rows="12" style="font-family: monospace; font-size: 0.9rem;" onchange="updateCustomTemplate()"></textarea>
-                            <p style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 8px;">
-                                Voce pode editar o conteudo acima livremente. As alteracoes serao aplicadas ao disparo.
-                            </p>
-                        </div>
-
-                        <div class="variables-help">
-                            <h4>Variaveis Disponiveis</h4>
-                            <p style="font-size: 0.85rem; color: #1e40af; margin-top: 8px;">
-                                <code>{{nome_assessor}}</code>
-                                <code>{{assessor_id}}</code>
-                                <code>{{lista_clientes}}</code>
-                                <span id="customVariables"></span>
-                            </p>
-                        </div>
-
-                        <div style="margin-top: 24px; padding-top: 24px; border-top: 1px solid var(--border-color);">
-                            <h4 style="margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center;">
-                                Gerenciar Templates
-                                <button class="btn btn-secondary" style="padding: 6px 12px; font-size: 0.85rem;" onclick="openTemplateModal()">+ Novo Template</button>
-                            </h4>
-                            <div id="templateListInline" style="max-height: 200px; overflow-y: auto;"></div>
+                        <div style="margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--border-color);">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                                <h4 style="margin: 0; font-size: 0.95rem; color: var(--text-secondary);">Templates Salvos</h4>
+                            </div>
+                            <div id="templateListInline" style="max-height: 180px; overflow-y: auto;"></div>
                         </div>
 
                         <div class="wizard-actions">
@@ -756,8 +796,8 @@
                                 <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
                                 Voltar
                             </button>
-                            <button class="btn btn-primary" id="btnStep3Next" disabled onclick="goToStep(4)">
-                                Proximo Passo
+                            <button class="btn btn-primary" id="btnStep3Next" disabled onclick="validateAndGoToStep4()">
+                                Próximo Passo
                                 <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
                             </button>
                         </div>
@@ -886,37 +926,65 @@
     </div>
 
     <div class="modal-overlay" id="templateModal" style="display: none;">
-        <div class="modal" style="max-width: 700px;">
+        <div class="modal" style="max-width: 800px; max-height: 90vh;">
             <div class="modal-header">
-                <h3 id="modalTitle">Gerenciar Templates</h3>
+                <h3 id="modalTitle">Criar Novo Template</h3>
                 <button class="modal-close" onclick="closeTemplateModal()">&times;</button>
             </div>
-            <div class="modal-body">
-                <div id="templateList"></div>
-                <hr style="margin: 24px 0; border: none; border-top: 1px solid var(--border-color);">
-                <h4 style="margin-bottom: 16px;" id="templateFormTitle">Criar Novo Template</h4>
+            <div class="modal-body" style="overflow-y: auto; max-height: calc(90vh - 140px);">
                 <div class="form-group">
-                    <label class="form-label">Nome do Template</label>
-                    <input type="text" id="templateName" class="form-input" placeholder="Ex: Recomendacao Padrao">
+                    <label class="form-label">Nome do Template *</label>
+                    <input type="text" id="templateName" class="form-input" placeholder="Ex: Boas-vindas, Aviso Importante, etc.">
                 </div>
                 <div class="form-group">
-                    <label class="form-label">Descricao (opcional)</label>
-                    <input type="text" id="templateDescription" class="form-input" placeholder="Breve descricao do template">
+                    <label class="form-label">Descrição (opcional)</label>
+                    <input type="text" id="templateDescription" class="form-input" placeholder="Breve descrição do uso deste template">
                 </div>
                 <div class="form-group">
-                    <label class="form-label">Conteudo da Mensagem</label>
-                    <textarea id="templateContent" class="form-input" rows="10" placeholder="Ola, {{nome_assessor}}!
-
-Aqui estao as recomendacoes de hoje:
-
-{{lista_clientes}}
-
-Se precisar do racional de investimento ou de materiais de apoio para qualquer uma dessas operacoes, e so me pedir!"></textarea>
+                    <label class="form-label">Conteúdo da Mensagem *</label>
+                    <textarea id="templateContent" class="form-input" rows="8" style="font-family: monospace;" oninput="updateTemplateVariables()" placeholder="Olá, {{nome}}!&#10;&#10;Escreva sua mensagem aqui usando variáveis entre chaves duplas."></textarea>
+                    <p style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 6px;">
+                        Use <code>{{variavel}}</code> para inserir dados dinâmicos. Ex: <code>{{nome}}</code>, <code>{{email}}</code>
+                    </p>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Variáveis Detectadas</label>
+                    <div id="templateDetectedVariables" style="display: flex; flex-wrap: wrap; gap: 6px; min-height: 32px; padding: 8px; background: #f8fafc; border-radius: 6px; border: 1px solid var(--border-color);">
+                        <span style="color: var(--text-secondary); font-size: 0.85rem;">Nenhuma variável detectada</span>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Anexo do Template (opcional)</label>
+                    <div id="templateAttachmentPreview" style="display: none; margin-bottom: 12px; padding: 12px; background: #f0f9ff; border-radius: 6px; border: 1px solid #bae6fd;">
+                        <div style="display: flex; align-items: center; justify-content: space-between;">
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <span id="templateAttachmentIcon"></span>
+                                <span id="templateAttachmentName" style="font-size: 0.9rem;"></span>
+                                <span id="templateAttachmentType" style="font-size: 0.75rem; padding: 2px 6px; background: #e0e7ff; color: #4338ca; border-radius: 4px;"></span>
+                            </div>
+                            <button type="button" class="btn btn-secondary" style="padding: 4px 8px;" onclick="removeTemplateAttachment()">
+                                <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                            </button>
+                        </div>
+                    </div>
+                    <input type="file" id="templateAttachmentInput" style="display: none;" onchange="handleTemplateAttachmentUpload(event)" accept="image/*,video/mp4,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.txt">
+                    <button type="button" class="btn btn-secondary" id="templateAttachmentBtn" onclick="document.getElementById('templateAttachmentInput').click()" style="width: 100%;">
+                        <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"/></svg>
+                        Anexar Arquivo ao Template
+                    </button>
+                </div>
+                
+                <div style="margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border-color);">
+                    <h4 style="margin-bottom: 12px; font-size: 0.95rem; color: var(--text-secondary);">Templates Existentes</h4>
+                    <div id="templateList" style="max-height: 200px; overflow-y: auto;"></div>
                 </div>
             </div>
             <div class="modal-footer">
                 <button class="btn btn-secondary" onclick="closeTemplateModal()">Cancelar</button>
-                <button class="btn btn-primary" id="saveTemplateBtn" onclick="saveTemplate()">Salvar Template</button>
+                <button class="btn btn-primary" id="saveTemplateBtn" onclick="saveTemplate()">
+                    <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                    Salvar Template
+                </button>
             </div>
         </div>
     </div>
@@ -933,6 +1001,11 @@ Se precisar do racional de investimento ou de materiais de apoio para qualquer u
         let allAssessors = [];
         let filteredAssessors = [];
         let assessorFilters = { unidades: [], equipes: [] };
+        
+        let availableVariables = [];
+        let currentAttachment = null;
+        let templateAttachment = null;
+        let allTemplates = [];
 
         function toggleSidebar() {
             const sidebar = document.getElementById('sidebar');
@@ -1369,6 +1442,12 @@ Se precisar do racional de investimento ou de materiais de apoio para qualquer u
 
             currentStep = step;
 
+            if (step === 3) {
+                updateAvailableVariablesPanel();
+                updateAttachmentPreview();
+                validateStep3();
+            }
+
             if (step === 4) {
                 const templateContent = document.getElementById('templatePreview').value;
                 if (templateContent && campaignId) {
@@ -1376,7 +1455,7 @@ Se precisar do racional de investimento ou de materiais de apoio para qualquer u
                         await fetch(`${API_BASE}/${campaignId}/custom-template`, {
                             method: 'PUT',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ content: templateContent }),
+                            body: JSON.stringify({ content: templateContent, attachment_url: currentAttachment?.url, attachment_type: currentAttachment?.type, attachment_filename: currentAttachment?.filename }),
                             credentials: 'include'
                         });
                     } catch (error) {
@@ -1390,18 +1469,18 @@ Se precisar do racional de investimento ou de materiais de apoio para qualquer u
         async function loadTemplates() {
             try {
                 const response = await fetch(`${API_BASE}/templates`, { credentials: 'include' });
-                const templates = await response.json();
+                allTemplates = await response.json();
 
                 const select = document.getElementById('templateSelect');
-                select.innerHTML = '<option value="">-- Usar mensagem padrao --</option>';
-                templates.forEach(t => {
-                    select.innerHTML += `<option value="${t.id}">${t.name}</option>`;
+                select.innerHTML = '<option value="">-- Escrever mensagem personalizada --</option>';
+                allTemplates.forEach(t => {
+                    const hasAttachment = t.attachment_url ? ' 📎' : '';
+                    select.innerHTML += `<option value="${t.id}">${t.name}${hasAttachment}</option>`;
                 });
 
-                renderTemplateList(templates);
-                
-                // Mostra preview da mensagem padrao e habilita botao
-                loadTemplatePreview();
+                renderTemplateList(allTemplates);
+                updateAvailableVariablesPanel();
+                validateStep3();
             } catch (error) {
                 console.error('Erro ao carregar templates:', error);
             }
@@ -1411,7 +1490,7 @@ Se precisar do racional de investimento ou de materiais de apoio para qualquer u
             const list = document.getElementById('templateList');
             const listInline = document.getElementById('templateListInline');
             
-            const emptyMessage = '<p style="color: var(--text-secondary);">Nenhum template cadastrado.</p>';
+            const emptyMessage = '<p style="color: var(--text-secondary); font-style: italic;">Nenhum template cadastrado.</p>';
             
             if (templates.length === 0) {
                 if (list) list.innerHTML = emptyMessage;
@@ -1419,82 +1498,327 @@ Se precisar do racional de investimento ou de materiais de apoio para qualquer u
                 return;
             }
 
-            const templateHtml = templates.map(t => `
-                <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px; background: var(--bg-color); border-radius: 8px; margin-bottom: 8px;">
-                    <div>
-                        <strong>${t.name}</strong>
+            const templateHtml = templates.map(t => {
+                const hasAttachment = t.attachment_url ? '<span style="margin-left: 6px; color: #6366f1;">📎</span>' : '';
+                const varsCount = t.variables_used && t.variables_used.length > 0 
+                    ? `<span style="margin-left: 8px; font-size: 0.75rem; padding: 2px 6px; background: #e0e7ff; color: #4338ca; border-radius: 4px;">${t.variables_used.length} var</span>` 
+                    : '';
+                return `
+                <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px; background: white; border-radius: 8px; margin-bottom: 8px; border: 1px solid var(--border-color);">
+                    <div style="flex: 1;">
+                        <strong>${t.name}</strong>${hasAttachment}${varsCount}
                         ${t.description ? `<br><small style="color: var(--text-secondary);">${t.description}</small>` : ''}
                     </div>
                     <div style="display: flex; gap: 8px;">
-                        <button class="btn btn-secondary" style="padding: 6px 12px;" onclick="editTemplate(${t.id})">Editar</button>
-                        <button class="btn btn-danger" style="padding: 6px 12px;" onclick="deleteTemplate(${t.id})">Excluir</button>
+                        <button class="btn btn-secondary" style="padding: 4px 10px; font-size: 0.8rem;" onclick="useTemplate(${t.id})">Usar</button>
+                        <button class="btn btn-secondary" style="padding: 4px 10px; font-size: 0.8rem;" onclick="editTemplate(${t.id})">Editar</button>
+                        <button class="btn btn-danger" style="padding: 4px 10px; font-size: 0.8rem;" onclick="deleteTemplate(${t.id})">Excluir</button>
                     </div>
                 </div>
-            `).join('');
+            `}).join('');
             
             if (list) list.innerHTML = templateHtml;
             if (listInline) listInline.innerHTML = templateHtml;
         }
 
-        const DEFAULT_TEMPLATE = `Ola, {{nome_assessor}}!
-
-Seguem as recomendacoes de troca de ativos para seus clientes:
-
-{{lista_clientes}}
-
-Por favor, entre em contato com cada cliente para alinhar as operacoes.
-
-Atenciosamente,
-Equipe de Gestao`;
-
         let customTemplateContent = null;
 
-        function updateCustomTemplate() {
+        function extractVariables(content) {
+            const pattern = /\{\{\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g;
+            const variables = [];
+            let match;
+            while ((match = pattern.exec(content)) !== null) {
+                if (!variables.includes(match[1])) {
+                    variables.push(match[1]);
+                }
+            }
+            return variables;
+        }
+
+        function updateAvailableVariablesPanel() {
+            const container = document.getElementById('availableVariables');
+            const noVarsMessage = document.getElementById('noVariablesMessage');
+            
+            if (!container) return;
+            
+            if (campaignSource === 'base') {
+                availableVariables = ['nome', 'email', 'telefone_whatsapp', 'unidade', 'equipe', 'broker_responsavel'];
+            } else if (uploadedColumns.length > 0) {
+                availableVariables = [...uploadedColumns];
+            } else {
+                availableVariables = ['nome_assessor', 'assessor_id', 'lista_clientes'];
+            }
+            
+            if (availableVariables.length === 0) {
+                container.innerHTML = '';
+                noVarsMessage.style.display = 'block';
+            } else {
+                noVarsMessage.style.display = 'none';
+                container.innerHTML = availableVariables.map(v => `
+                    <button type="button" class="variable-tag" onclick="insertVariable('${v}')" 
+                        style="padding: 4px 10px; background: white; border: 1px solid #93c5fd; color: #1d4ed8; border-radius: 4px; cursor: pointer; font-size: 0.8rem; font-family: monospace;">
+                        {{${v}}}
+                    </button>
+                `).join('');
+            }
+        }
+
+        function insertVariable(varName) {
+            const textarea = document.getElementById('templatePreview');
+            const cursorPos = textarea.selectionStart;
+            const textBefore = textarea.value.substring(0, cursorPos);
+            const textAfter = textarea.value.substring(textarea.selectionEnd);
+            textarea.value = textBefore + `{{${varName}}}` + textAfter;
+            textarea.focus();
+            textarea.setSelectionRange(cursorPos + varName.length + 4, cursorPos + varName.length + 4);
+            onMessageContentChange();
+        }
+
+        function onMessageContentChange() {
             customTemplateContent = document.getElementById('templatePreview').value;
+            validateMessageVariables();
+            validateStep3();
+        }
+
+        function validateMessageVariables() {
+            const content = document.getElementById('templatePreview').value;
+            const usedVariables = extractVariables(content);
+            const missingVariables = usedVariables.filter(v => !availableVariables.includes(v));
+            
+            const alertEl = document.getElementById('variableValidationAlert');
+            const missingListEl = document.getElementById('missingVariablesList');
+            
+            if (missingVariables.length > 0) {
+                alertEl.style.display = 'block';
+                missingListEl.innerHTML = missingVariables.map(v => `<code style="margin: 0 4px;">{{${v}}}</code>`).join(', ');
+            } else {
+                alertEl.style.display = 'none';
+            }
+            
+            return missingVariables.length === 0;
+        }
+
+        function validateStep3() {
+            const content = document.getElementById('templatePreview').value.trim();
+            const btn = document.getElementById('btnStep3Next');
+            btn.disabled = content.length === 0;
+        }
+
+        function validateAndGoToStep4() {
+            const content = document.getElementById('templatePreview').value.trim();
+            if (!content) {
+                alert('Por favor, escreva uma mensagem ou selecione um template.');
+                return;
+            }
+            
+            const usedVariables = extractVariables(content);
+            const missingVariables = usedVariables.filter(v => !availableVariables.includes(v));
+            
+            if (missingVariables.length > 0) {
+                const proceed = confirm(`Atenção: As variáveis ${missingVariables.map(v => '{{' + v + '}}').join(', ')} não estão disponíveis nos dados importados e aparecerão em branco.\n\nDeseja continuar mesmo assim?`);
+                if (!proceed) return;
+            }
+            
+            goToStep(4);
         }
 
         async function loadTemplatePreview() {
             const templateId = document.getElementById('templateSelect').value;
             
-            // Sempre habilita o botao - template e opcional
-            document.getElementById('btnStep3Next').disabled = false;
-            
             if (!templateId) {
-                // Mostra preview da mensagem padrao
-                document.getElementById('templatePreview').value = customTemplateContent || DEFAULT_TEMPLATE;
-                document.getElementById('templatePreviewContainer').style.display = 'block';
+                if (!customTemplateContent) {
+                    document.getElementById('templatePreview').value = '';
+                }
+                currentAttachment = null;
+                updateAttachmentPreview();
+                validateStep3();
                 return;
             }
 
-            try {
-                const response = await fetch(`${API_BASE}/templates/${templateId}`, { credentials: 'include' });
-                const template = await response.json();
-
+            const template = allTemplates.find(t => t.id == templateId);
+            if (template) {
                 document.getElementById('templatePreview').value = template.content;
                 customTemplateContent = template.content;
-                document.getElementById('templatePreviewContainer').style.display = 'block';
-
-                await fetch(`${API_BASE}/${campaignId}/template?template_id=${templateId}`, {
-                    method: 'PUT',
-                    credentials: 'include'
-                });
-            } catch (error) {
-                console.error('Erro ao carregar template:', error);
+                
+                if (template.attachment_url) {
+                    currentAttachment = {
+                        url: template.attachment_url,
+                        type: template.attachment_type,
+                        filename: template.attachment_filename
+                    };
+                } else {
+                    currentAttachment = null;
+                }
+                updateAttachmentPreview();
+                
+                validateMessageVariables();
+                validateStep3();
+                
+                if (campaignId) {
+                    await fetch(`${API_BASE}/${campaignId}/template?template_id=${templateId}`, {
+                        method: 'PUT',
+                        credentials: 'include'
+                    });
+                }
             }
         }
 
-        function openTemplateModal() {
+        function useTemplate(id) {
+            document.getElementById('templateSelect').value = id;
+            loadTemplatePreview();
+        }
+
+        function getAttachmentIcon(type) {
+            const icons = {
+                'image': '🖼️',
+                'video': '🎬',
+                'audio': '🎵',
+                'document': '📄'
+            };
+            return icons[type] || '📎';
+        }
+
+        function updateAttachmentPreview() {
+            const previewEl = document.getElementById('attachmentPreview');
+            const uploadArea = document.getElementById('attachmentUploadArea');
+            
+            if (currentAttachment) {
+                document.getElementById('attachmentIcon').textContent = getAttachmentIcon(currentAttachment.type);
+                document.getElementById('attachmentName').textContent = currentAttachment.filename || 'Anexo';
+                document.getElementById('attachmentType').textContent = currentAttachment.type || 'arquivo';
+                previewEl.style.display = 'block';
+                uploadArea.style.display = 'none';
+            } else {
+                previewEl.style.display = 'none';
+                uploadArea.style.display = 'block';
+            }
+        }
+
+        async function handleAttachmentUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            const formData = new FormData();
+            formData.append('file', file);
+            
+            try {
+                const response = await fetch(`${API_BASE}/attachments/upload`, {
+                    method: 'POST',
+                    body: formData,
+                    credentials: 'include'
+                });
+                
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.detail || 'Erro ao enviar anexo');
+                }
+                
+                const data = await response.json();
+                currentAttachment = {
+                    url: data.url,
+                    type: data.type,
+                    filename: data.filename
+                };
+                updateAttachmentPreview();
+            } catch (error) {
+                alert(error.message);
+            }
+            
+            event.target.value = '';
+        }
+
+        function removeAttachment() {
+            currentAttachment = null;
+            updateAttachmentPreview();
+        }
+
+        function openCreateTemplateModal() {
             editingTemplateId = null;
-            document.getElementById('templateFormTitle').textContent = 'Criar Novo Template';
+            document.getElementById('modalTitle').textContent = 'Criar Novo Template';
             document.getElementById('templateName').value = '';
             document.getElementById('templateDescription').value = '';
             document.getElementById('templateContent').value = '';
-            document.getElementById('saveTemplateBtn').textContent = 'Salvar Template';
+            templateAttachment = null;
+            updateTemplateAttachmentPreview();
+            updateTemplateVariables();
             document.getElementById('templateModal').style.display = 'flex';
+        }
+
+        function openTemplateModal() {
+            openCreateTemplateModal();
         }
 
         function closeTemplateModal() {
             document.getElementById('templateModal').style.display = 'none';
+            templateAttachment = null;
+        }
+
+        function updateTemplateVariables() {
+            const content = document.getElementById('templateContent').value;
+            const variables = extractVariables(content);
+            const container = document.getElementById('templateDetectedVariables');
+            
+            if (variables.length === 0) {
+                container.innerHTML = '<span style="color: var(--text-secondary); font-size: 0.85rem;">Nenhuma variável detectada</span>';
+            } else {
+                container.innerHTML = variables.map(v => `
+                    <span style="padding: 3px 8px; background: #dbeafe; color: #1e40af; border-radius: 4px; font-size: 0.8rem; font-family: monospace;">{{${v}}}</span>
+                `).join('');
+            }
+        }
+
+        function updateTemplateAttachmentPreview() {
+            const previewEl = document.getElementById('templateAttachmentPreview');
+            const btn = document.getElementById('templateAttachmentBtn');
+            
+            if (templateAttachment) {
+                document.getElementById('templateAttachmentIcon').textContent = getAttachmentIcon(templateAttachment.type);
+                document.getElementById('templateAttachmentName').textContent = templateAttachment.filename || 'Anexo';
+                document.getElementById('templateAttachmentType').textContent = templateAttachment.type || 'arquivo';
+                previewEl.style.display = 'block';
+                btn.style.display = 'none';
+            } else {
+                previewEl.style.display = 'none';
+                btn.style.display = 'flex';
+            }
+        }
+
+        async function handleTemplateAttachmentUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            const formData = new FormData();
+            formData.append('file', file);
+            
+            try {
+                const response = await fetch(`${API_BASE}/attachments/upload`, {
+                    method: 'POST',
+                    body: formData,
+                    credentials: 'include'
+                });
+                
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.detail || 'Erro ao enviar anexo');
+                }
+                
+                const data = await response.json();
+                templateAttachment = {
+                    url: data.url,
+                    type: data.type,
+                    filename: data.filename
+                };
+                updateTemplateAttachmentPreview();
+            } catch (error) {
+                alert(error.message);
+            }
+            
+            event.target.value = '';
+        }
+
+        function removeTemplateAttachment() {
+            templateAttachment = null;
+            updateTemplateAttachmentPreview();
         }
 
         async function editTemplate(id) {
@@ -1503,11 +1827,23 @@ Equipe de Gestao`;
                 const template = await response.json();
 
                 editingTemplateId = id;
-                document.getElementById('templateFormTitle').textContent = 'Editar Template';
+                document.getElementById('modalTitle').textContent = 'Editar Template';
                 document.getElementById('templateName').value = template.name;
                 document.getElementById('templateDescription').value = template.description || '';
                 document.getElementById('templateContent').value = template.content;
-                document.getElementById('saveTemplateBtn').textContent = 'Atualizar Template';
+                
+                if (template.attachment_url) {
+                    templateAttachment = {
+                        url: template.attachment_url,
+                        type: template.attachment_type,
+                        filename: template.attachment_filename
+                    };
+                } else {
+                    templateAttachment = null;
+                }
+                updateTemplateAttachmentPreview();
+                updateTemplateVariables();
+                
                 document.getElementById('templateModal').style.display = 'flex';
             } catch (error) {
                 alert('Erro ao carregar template');
@@ -1520,9 +1856,19 @@ Equipe de Gestao`;
             const content = document.getElementById('templateContent').value.trim();
 
             if (!name || !content) {
-                alert('Nome e conteudo sao obrigatorios');
+                alert('Nome e conteúdo são obrigatórios');
                 return;
             }
+
+            const payload = { 
+                name, 
+                description, 
+                content,
+                attachment_url: templateAttachment?.url || null,
+                attachment_type: templateAttachment?.type || null,
+                attachment_filename: templateAttachment?.filename || null,
+                variables_used: extractVariables(content)
+            };
 
             try {
                 const method = editingTemplateId ? 'PUT' : 'POST';
@@ -1531,7 +1877,7 @@ Equipe de Gestao`;
                 const response = await fetch(url, {
                     method,
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ name, description, content }),
+                    body: JSON.stringify(payload),
                     credentials: 'include'
                 });
 
@@ -1539,6 +1885,7 @@ Equipe de Gestao`;
 
                 closeTemplateModal();
                 loadTemplates();
+                alert('Template salvo com sucesso!');
             } catch (error) {
                 alert(error.message);
             }

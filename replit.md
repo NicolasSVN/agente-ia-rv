@@ -39,7 +39,9 @@ The application is built using FastAPI, leveraging a modular project structure.
     - **Campaign Management:** A 4-step wizard for mass WhatsApp message campaigns with two origin modes:
         - **Upload Mode:** Import CSV/Excel with data for personalized messages with variable mapping
         - **Base Selection Mode:** Select assessors directly from the database with filters (unidade, equipe) and checkboxes for quick informational broadcasts
-        - Features: Reusable templates, dynamic variables, intelligent grouping, and real-time dispatch progress via Server-Sent Events (SSE) with retry mechanisms.
+        - **Step 3 Message Composer:** Blank message by default, dynamic variable panel showing available fields from data source, click-to-insert variables, attachment upload (images, videos, audio, documents up to 50MB), real-time variable validation with warnings for unavailable variables
+        - **Template System:** Create, edit, and reuse message templates with attachments, automatic variable detection, and usage tracking
+        - Features: Reusable templates, dynamic variables, intelligent grouping, attachment support via WAHA API, and real-time dispatch progress via Server-Sent Events (SSE) with retry mechanisms.
     - **Conversations System:** Full conversation history grouped by phone number, human takeover capability, and ability to start new conversations with any phone number via modal.
     - **Knowledge Base Management:** Upload, index, categorize, and reindex documents (PDF, DOCX, TXT, images) for the AI agent to consult.
 

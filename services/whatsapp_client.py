@@ -99,6 +99,100 @@ class WhatsAppClient:
                     "error_code": "HTTP_ERROR"
                 }
     
+    async def send_file(self, to: str, file_url: str, file_type: str, caption: str = "", filename: str = "") -> dict:
+        """
+        Envia um arquivo (imagem, documento, vídeo ou áudio) para um número de WhatsApp.
+        
+        Args:
+            to: Número de telefone no formato internacional
+            file_url: URL do arquivo a ser enviado
+            file_type: Tipo do arquivo (image, document, video, audio)
+            caption: Legenda do arquivo (opcional)
+            filename: Nome do arquivo (para documentos)
+            
+        Returns:
+            Resposta da API WAHA
+        """
+        phone_clean = ''.join(filter(str.isdigit, to))
+        chat_id = to if "@c.us" in to else f"{phone_clean}@c.us"
+        
+        endpoint_map = {
+            'image': '/api/sendImage',
+            'video': '/api/sendVideo',
+            'audio': '/api/sendVoice',
+            'document': '/api/sendFile'
+        }
+        
+        endpoint = endpoint_map.get(file_type, '/api/sendFile')
+        url = f"{self.base_url}{endpoint}"
+        
+        payload = {
+            "chatId": chat_id,
+            "session": self.session
+        }
+        
+        if file_type == 'document':
+            payload["file"] = {"url": file_url}
+            if filename:
+                payload["file"]["filename"] = filename
+            if caption:
+                payload["caption"] = caption
+        elif file_type == 'audio':
+            payload["file"] = {"url": file_url}
+        else:
+            payload["file"] = {"url": file_url}
+            if caption:
+                payload["caption"] = caption
+        
+        async with httpx.AsyncClient() as client:
+            try:
+                response = await client.post(url, json=payload, headers=self._get_headers(), timeout=60.0)
+                raw_data = response.json() if response.content else {}
+                
+                if response.status_code >= 400:
+                    error_msg = raw_data.get("message", raw_data.get("error", f"HTTP {response.status_code}"))
+                    return {
+                        "success": False,
+                        "error": error_msg,
+                        "error_code": f"HTTP_{response.status_code}",
+                        "raw_response": raw_data,
+                        "status_code": response.status_code
+                    }
+                
+                if raw_data.get("error"):
+                    return {
+                        "success": False,
+                        "error": raw_data.get("error"),
+                        "error_code": raw_data.get("code", "API_ERROR"),
+                        "raw_response": raw_data
+                    }
+                
+                return {
+                    "success": True,
+                    "raw_response": raw_data,
+                    "message_id": raw_data.get("id", raw_data.get("key", {}).get("id"))
+                }
+                
+            except httpx.TimeoutException:
+                return {
+                    "success": False,
+                    "error": "Timeout ao enviar arquivo",
+                    "error_code": "TIMEOUT"
+                }
+            except httpx.ConnectError as e:
+                return {
+                    "success": False,
+                    "error": f"Não foi possível conectar ao servidor WAHA: {self.base_url}",
+                    "error_code": "CONNECTION_ERROR",
+                    "details": str(e)
+                }
+            except httpx.HTTPError as e:
+                return {
+                    "success": False,
+                    "error": str(e),
+                    "error_code": "HTTP_ERROR"
+                }
+
     async def send_seen(self, chat_id: str) -> dict:
         """Marca uma mensagem como lida."""
         url = f"{self.base_url}/api/sendSeen"

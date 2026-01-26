@@ -67,6 +67,7 @@ templates = Jinja2Templates(directory="frontend/templates")
 
 # Monta arquivos estáticos
 app.mount("/static", StaticFiles(directory="frontend/static"), name="static")
+app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 # Inclui routers da API
 app.include_router(auth.router)

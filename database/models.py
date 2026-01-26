@@ -233,6 +233,7 @@ class MessageTemplate(Base):
     """
     Templates de mensagem reutilizáveis para campanhas.
     Suporta variáveis como {{nome_assessor}}, {{lista_clientes}}, etc.
+    Pode incluir anexos (imagem, documento, vídeo, áudio).
     """
     __tablename__ = "message_templates"
     
@@ -241,6 +242,10 @@ class MessageTemplate(Base):
     content = Column(Text, nullable=False)
     description = Column(String(500), nullable=True)
     is_active = Column(Integer, default=1)
+    attachment_url = Column(String(1000), nullable=True)
+    attachment_type = Column(String(50), nullable=True)
+    attachment_filename = Column(String(255), nullable=True)
+    variables_used = Column(Text, default="[]")
     created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
@@ -262,6 +267,9 @@ class Campaign(Base):
     source_type = Column(String(50), default="upload")
     template_id = Column(Integer, ForeignKey("message_templates.id"), nullable=True)
     custom_template_content = Column(Text, nullable=True)
+    attachment_url = Column(String(1000), nullable=True)
+    attachment_type = Column(String(50), nullable=True)
+    attachment_filename = Column(String(255), nullable=True)
     column_mapping = Column(Text, default="{}")
     custom_fields_mapping = Column(Text, default="{}")
     original_filename = Column(String(255), nullable=True)
