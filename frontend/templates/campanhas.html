@@ -1006,6 +1006,36 @@
         let currentAttachment = null;
         let templateAttachment = null;
         let allTemplates = [];
+        
+        const variableLabels = {
+            'nome': 'Nome',
+            'email': 'E-mail',
+            'telefone_whatsapp': 'Telefone WhatsApp',
+            'unidade': 'Unidade',
+            'equipe': 'Equipe',
+            'broker_responsavel': 'Broker Responsável',
+            'nome_assessor': 'Nome do Assessor',
+            'assessor_id': 'ID do Assessor',
+            'lista_clientes': 'Lista de Clientes',
+            'cpf': 'CPF',
+            'cnpj': 'CNPJ',
+            'codigo': 'Código',
+            'telefone': 'Telefone',
+            'celular': 'Celular',
+            'endereco': 'Endereço',
+            'cidade': 'Cidade',
+            'estado': 'Estado',
+            'cep': 'CEP',
+            'data_nascimento': 'Data de Nascimento',
+            'data_admissao': 'Data de Admissão',
+            'cargo': 'Cargo',
+            'departamento': 'Departamento',
+            'observacoes': 'Observações'
+        };
+        
+        function getVariableLabel(varName) {
+            return variableLabels[varName.toLowerCase()] || varName.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+        }
 
         function toggleSidebar() {
             const sidebar = document.getElementById('sidebar');
@@ -1554,12 +1584,18 @@
                 noVarsMessage.style.display = 'block';
             } else {
                 noVarsMessage.style.display = 'none';
-                container.innerHTML = availableVariables.map(v => `
-                    <button type="button" class="variable-tag" onclick="insertVariable('${v}')" 
-                        style="padding: 4px 10px; background: white; border: 1px solid #93c5fd; color: #1d4ed8; border-radius: 4px; cursor: pointer; font-size: 0.8rem; font-family: monospace;">
-                        ` + '{{' + v + '}}' + `
-                    </button>
-                `).join('');
+                var buttonsHtml = '';
+                for (var i = 0; i < availableVariables.length; i++) {
+                    var v = availableVariables[i];
+                    var label = getVariableLabel(v);
+                    buttonsHtml += '<button type="button" class="variable-tag" onclick="insertVariable(\'' + v + '\')" ' +
+                        'style="padding: 6px 12px; background: white; border: 1px solid #93c5fd; color: #1d4ed8; border-radius: 6px; cursor: pointer; font-size: 0.85rem; display: flex; flex-direction: column; align-items: center; gap: 2px;" ' +
+                        'title="Clique para inserir ' + '{' + '{' + v + '}' + '}' + '">' +
+                        '<span style="font-weight: 500;">' + label + '</span>' +
+                        '<span style="font-size: 0.7rem; color: #6b7280; font-family: monospace;">' + '{' + '{' + v + '}' + '}' + '</span>' +
+                        '</button>';
+                }
+                container.innerHTML = buttonsHtml;
             }
         }
 
@@ -1590,7 +1626,13 @@
             
             if (missingVariables.length > 0) {
                 alertEl.style.display = 'block';
-                missingListEl.innerHTML = missingVariables.map(v => '<code style="margin: 0 4px;">' + '{{' + v + '}}' + '</code>').join(', ');
+                var missingHtml = '';
+                for (var i = 0; i < missingVariables.length; i++) {
+                    var v = missingVariables[i];
+                    if (i > 0) missingHtml += ', ';
+                    missingHtml += '<code style="margin: 0 4px;">' + '{' + '{' + v + '}' + '}' + '</code>';
+                }
+                missingListEl.innerHTML = missingHtml;
             } else {
                 alertEl.style.display = 'none';
             }
@@ -1615,7 +1657,12 @@
             const missingVariables = usedVariables.filter(v => !availableVariables.includes(v));
             
             if (missingVariables.length > 0) {
-                const proceed = confirm(`Atenção: As variáveis ${missingVariables.map(v => '{{' + v + '}}').join(', ')} não estão disponíveis nos dados importados e aparecerão em branco.\n\nDeseja continuar mesmo assim?`);
+                var missingVarsText = '';
+                for (var i = 0; i < missingVariables.length; i++) {
+                    if (i > 0) missingVarsText += ', ';
+                    missingVarsText += '{' + '{' + missingVariables[i] + '}' + '}';
+                }
+                var proceed = confirm('Atenção: As variáveis ' + missingVarsText + ' não estão disponíveis nos dados importados e aparecerão em branco.\n\nDeseja continuar mesmo assim?');
                 if (!proceed) return;
             }
             
@@ -1761,9 +1808,12 @@
             if (variables.length === 0) {
                 container.innerHTML = '<span style="color: var(--text-secondary); font-size: 0.85rem;">Nenhuma variável detectada</span>';
             } else {
-                container.innerHTML = variables.map(v => 
-                    '<span style="padding: 3px 8px; background: #dbeafe; color: #1e40af; border-radius: 4px; font-size: 0.8rem; font-family: monospace;">' + '{{' + v + '}}' + '</span>'
-                ).join('');
+                var varsHtml = '';
+                for (var i = 0; i < variables.length; i++) {
+                    var v = variables[i];
+                    varsHtml += '<span style="padding: 3px 8px; background: #dbeafe; color: #1e40af; border-radius: 4px; font-size: 0.8rem; font-family: monospace;">' + '{' + '{' + v + '}' + '}' + '</span> ';
+                }
+                container.innerHTML = varsHtml;
             }
         }
 
