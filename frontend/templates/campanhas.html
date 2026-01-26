@@ -925,7 +925,7 @@
         </div>
     </div>
 
-    <div class="modal-overlay" id="templateModal" style="display: none;">
+    <div class="modal-overlay" id="templateModal">
         <div class="modal" style="max-width: 800px; max-height: 90vh;">
             <div class="modal-header">
                 <h3 id="modalTitle">Criar Novo Template</h3>
@@ -1788,7 +1788,7 @@
             templateAttachment = null;
             updateTemplateAttachmentPreview();
             updateTemplateVariables();
-            document.getElementById('templateModal').style.display = 'flex';
+            document.getElementById('templateModal').classList.add('show');
         }
 
         function openTemplateModal() {
@@ -1796,7 +1796,7 @@
         }
 
         function closeTemplateModal() {
-            document.getElementById('templateModal').style.display = 'none';
+            document.getElementById('templateModal').classList.remove('show');
             templateAttachment = null;
         }
 
@@ -1894,7 +1894,7 @@
                 updateTemplateAttachmentPreview();
                 updateTemplateVariables();
                 
-                document.getElementById('templateModal').style.display = 'flex';
+                document.getElementById('templateModal').classList.add('show');
             } catch (error) {
                 alert('Erro ao carregar template');
             }
