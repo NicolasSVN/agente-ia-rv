@@ -335,6 +335,20 @@ class KnowledgeDocument(Base):
     uploader = relationship("User", foreign_keys=[uploaded_by])
 
 
+class ConversationStatus(str, enum.Enum):
+    """Status da conversa."""
+    BOT_ACTIVE = "bot_active"
+    HUMAN_TAKEOVER = "human_takeover"
+    CLOSED = "closed"
+
+
+class SenderType(str, enum.Enum):
+    """Tipo de remetente da mensagem."""
+    BOT = "bot"
+    HUMAN = "human"
+    CONTACT = "contact"
+
+
 class MessageDirection(str, enum.Enum):
     """Direção da mensagem."""
     INBOUND = "inbound"
@@ -354,6 +368,30 @@ class MessageType(str, enum.Enum):
     UNKNOWN = "unknown"
 
 
+class Conversation(Base):
+    """
+    Agrupa mensagens de uma conversa por número de telefone.
+    Permite controle de takeover humano e histórico.
+    """
+    __tablename__ = "conversations"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    phone = Column(String(20), nullable=False, unique=True, index=True)
+    contact_name = Column(String(255), nullable=True)
+    assessor_id = Column(Integer, ForeignKey("assessores.id"), nullable=True)
+    status = Column(String(30), default=ConversationStatus.BOT_ACTIVE.value)
+    assigned_to = Column(Integer, ForeignKey("users.id"), nullable=True)
+    last_message_at = Column(DateTime(timezone=True), server_default=func.now())
+    last_message_preview = Column(String(255), nullable=True)
+    unread_count = Column(Integer, default=0)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    
+    assessor = relationship("Assessor", foreign_keys=[assessor_id])
+    assigned_user = relationship("User", foreign_keys=[assigned_to])
+    messages = relationship("WhatsAppMessage", back_populates="conversation", order_by="WhatsAppMessage.created_at")
+
+
 class WhatsAppMessage(Base):
     """
     Registro de mensagens do WhatsApp.
@@ -367,6 +405,7 @@ class WhatsAppMessage(Base):
     phone = Column(String(20), nullable=True, index=True)
     direction = Column(String(20), default=MessageDirection.INBOUND.value)
     message_type = Column(String(20), default=MessageType.TEXT.value)
+    sender_type = Column(String(20), default=SenderType.CONTACT.value)
     body = Column(Text, nullable=True)
     media_url = Column(String(500), nullable=True)
     media_mimetype = Column(String(100), nullable=True)
@@ -377,7 +416,9 @@ class WhatsAppMessage(Base):
     ticket_id = Column(Integer, ForeignKey("tickets.id"), nullable=True)
     is_from_campaign = Column(Boolean, default=False)
     campaign_id = Column(Integer, ForeignKey("campaigns.id"), nullable=True)
+    conversation_id = Column(Integer, ForeignKey("conversations.id"), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     
     ticket = relationship("Ticket", foreign_keys=[ticket_id])
     campaign = relationship("Campaign", foreign_keys=[campaign_id])
+    conversation = relationship("Conversation", back_populates="messages")

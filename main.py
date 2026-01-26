@@ -10,7 +10,7 @@ from contextlib import asynccontextmanager
 
 from database.database import engine, Base, SessionLocal
 from database import crud
-from api.endpoints import auth, users, tickets, whatsapp_webhook, integrations, analytics, agent_config, assessores, campaigns, knowledge, agent_test
+from api.endpoints import auth, users, tickets, whatsapp_webhook, integrations, analytics, agent_config, assessores, campaigns, knowledge, agent_test, conversations
 from core.security import decode_token
 
 
@@ -82,6 +82,7 @@ app.include_router(assessores.upload_router)
 app.include_router(campaigns.router)
 app.include_router(knowledge.router)
 app.include_router(agent_test.router)
+app.include_router(conversations.router)
 
 
 # ========== Rotas de Páginas HTML ==========
@@ -295,6 +296,29 @@ async def teste_agente_page(request: Request):
         return RedirectResponse(url="/login?error=permission")
     
     return templates.TemplateResponse("teste_agente.html", {"request": request, "user_role": user_role})
+
+
+@app.get("/conversas", response_class=HTMLResponse)
+async def conversas_page(request: Request):
+    """
+    Página de gerenciamento de Conversas.
+    Mostra histórico de todas as conversas e permite intervenção humana.
+    Requer autenticação como admin, gestao_rv ou broker.
+    """
+    token = request.cookies.get("access_token")
+    
+    if not token:
+        return RedirectResponse(url="/login")
+    
+    payload = decode_token(token)
+    if not payload:
+        return RedirectResponse(url="/login")
+    
+    user_role = payload.get("role")
+    if user_role not in ["admin", "gestao_rv", "broker"]:
+        return RedirectResponse(url="/login?error=permission")
+    
+    return templates.TemplateResponse("conversas.html", {"request": request, "user_role": user_role})
 
 
 # ========== Health Check ==========
