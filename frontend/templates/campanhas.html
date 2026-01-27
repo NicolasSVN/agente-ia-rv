@@ -1125,7 +1125,7 @@ Equipe de Gestao" oninput="updateMessagePreview()"></textarea>
                                 </p>
                                 <div style="display: flex; gap: 16px; align-items: center;">
                                     <label style="font-weight: 500; color: #0369a1; min-width: 180px;">Coluna com Codigo do Assessor:</label>
-                                    <select id="assessorCodeColumn" class="form-select" style="flex: 1;" onchange="validateAssessorLink()">
+                                    <select id="assessorCodeColumn" class="form-select" style="flex: 1;" onchange="validateAssessorLink(); updateColumnMapping()">
                                         <option value="">Selecione uma coluna...</option>
                                     </select>
                                 </div>
@@ -1154,7 +1154,7 @@ Equipe de Gestao" oninput="updateMessagePreview()"></textarea>
                                 <div id="clientColumnWrapper" style="display: none;">
                                     <div style="display: flex; gap: 16px; align-items: center;">
                                         <label style="font-weight: 500; color: #7e22ce; min-width: 180px;">Coluna com ID do Cliente:</label>
-                                        <select id="clientIdColumn" class="form-select" style="flex: 1;">
+                                        <select id="clientIdColumn" class="form-select" style="flex: 1;" onchange="updateColumnMapping()">
                                             <option value="">Selecione uma coluna...</option>
                                         </select>
                                     </div>
