@@ -52,6 +52,30 @@ The application is built using FastAPI, leveraging a modular project structure.
 - **Customizable Fields:** Dynamic custom fields for assessor profiles and campaign data.
 - **Automated Bootstrap:** Admin user creation and configuration via environment variables.
 
+**AI Agent Response Framework (services/conversation_flow.py):**
+- **Conversation State Machine:** Uses `ConversationState` enum with 3 states:
+  - `IDENTIFICATION_PENDING`: Contato desconhecido, aguardando identificação
+  - `READY`: Contato identificado, pronto para processar mensagens
+  - `IN_PROGRESS`: Conversa em andamento com contexto ativo
+- **Message Normalization:** `normalize_message()` remove ruídos, emojis, espaços extras antes de processar
+- **Contact Identification Flow:**
+  - `identify_contact()` busca por telefone ou LID na tabela Assessor
+  - `persist_new_contact()` cria novo contato com email/codigo_ai automáticos (whatsapp_{digits}@auto.contato)
+  - Variações de frases para solicitar identificação de forma natural
+- **Integrated Classification:** Prompt do agente classifica internamente em 4 categorias:
+  - SAUDAÇÃO: Cumprimentos e mensagens iniciais
+  - ESCOPO: Perguntas dentro do domínio do agente
+  - DOCUMENTAL: Questões que requerem consulta à base de conhecimento
+  - FORA_ESCOPO: Perguntas fora do domínio do agente
+- **Human Transfer Criteria:** `should_transfer_to_human()` avalia:
+  - Solicitação explícita do usuário
+  - Fricção emocional (frustração, reclamações)
+  - Contador de interações sem progresso (stalled_interactions)
+- **Response Variations:** Funções para evitar respostas mecânicas:
+  - `get_identification_prompt()`: Variações para solicitar identificação
+  - `get_transfer_message()`: Variações para comunicar transferência
+  - `get_out_of_scope_redirect()`: Variações para redirecionar perguntas fora do escopo
+
 ## External Dependencies
 
 - **OpenAI API:** Used for AI agent interactions (chat models) and generating text embeddings for semantic search.
