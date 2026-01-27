@@ -78,9 +78,10 @@ O agente de IA se chama **Stevan** e possui identidade bem definida:
   - `IN_PROGRESS`: Conversa em andamento com contexto ativo
 - **Message Normalization:** `normalize_message()` remove ruídos, emojis, espaços extras antes de processar
 - **Contact Identification Flow:**
-  - `identify_contact()` busca por telefone ou LID na tabela Assessor
-  - `persist_new_contact()` cria novo contato com email/codigo_ai automáticos (whatsapp_{digits}@auto.contato)
-  - Variações de frases para solicitar identificação de forma natural (Stevan se apresenta)
+  - `identify_contact()` busca por telefone na tabela Assessor usando normalização flexível (com/sem 9 após DDD)
+  - Função `normalize_phone_variants()` gera múltiplas variantes do número para busca flexível
+  - **NUNCA cria novos assessores automaticamente** - apenas identifica assessores existentes
+  - Contatos não identificados podem conversar normalmente, mas sem vínculo a assessor
 - **Integrated Classification:** Prompt do agente classifica internamente em 4 categorias:
   - SAUDAÇÃO: Cumprimentos e mensagens iniciais
   - ESCOPO: Perguntas dentro do domínio do agente (RV)

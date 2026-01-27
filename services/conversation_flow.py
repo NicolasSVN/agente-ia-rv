@@ -240,29 +240,37 @@ def identify_contact(
     Identifica contato na base de assessores.
     Usa busca flexível considerando variações de número (com/sem 9 após DDD).
     
+    IMPORTANTE: Esta função apenas IDENTIFICA assessores existentes.
+    Nunca cria novos assessores.
+    
+    Aceita telefones em qualquer formato (+55, parênteses, hífens, etc.)
+    e normaliza automaticamente para comparação.
+    
     Returns:
         Tuple de (Assessor ou None, is_known: bool)
     """
     if not phone:
         return None, False
     
-    phone_variants = normalize_phone_variants(phone)
+    clean_phone = re.sub(r'\D', '', phone)
+    if len(clean_phone) < 8:
+        return None, False
     
-    for variant in phone_variants:
-        if len(variant) >= 8:
-            assessors = db.query(Assessor).filter(
-                Assessor.telefone_whatsapp.isnot(None)
-            ).all()
+    phone_variants = set(normalize_phone_variants(clean_phone))
+    if not phone_variants:
+        return None, False
+    
+    assessors = db.query(Assessor).filter(
+        Assessor.telefone_whatsapp.isnot(None)
+    ).all()
+    
+    for assessor in assessors:
+        if assessor.telefone_whatsapp:
+            assessor_clean = re.sub(r'\D', '', assessor.telefone_whatsapp)
+            assessor_variants = set(normalize_phone_variants(assessor_clean))
             
-            for assessor in assessors:
-                if assessor.telefone_whatsapp:
-                    assessor_clean = re.sub(r'\D', '', assessor.telefone_whatsapp)
-                    assessor_variants = normalize_phone_variants(assessor_clean)
-                    
-                    if variant in assessor_variants or any(
-                        v in assessor_variants for v in phone_variants
-                    ):
-                        return assessor, True
+            if phone_variants & assessor_variants:
+                return assessor, True
     
     return None, False
 

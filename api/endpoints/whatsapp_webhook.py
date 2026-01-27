@@ -244,7 +244,6 @@ async def process_text_message(phone: str, message: str, db: Session, message_re
     """
     from services.conversation_flow import (
         normalize_message, extract_first_name, identify_contact,
-        persist_new_contact, get_identification_prompt, get_identification_confirmation,
         get_transfer_message, should_transfer_to_human, update_conversation_state,
         increment_stalled_counter, reset_stalled_counter
     )
@@ -278,47 +277,32 @@ async def process_text_message(phone: str, message: str, db: Session, message_re
         
         if not is_known:
             if conv_state == ConversationState.IDENTIFICATION_PENDING.value:
-                extracted_name = extract_first_name(normalized_message)
+                update_conversation_state(db, conversation, ConversationState.READY.value)
+                conv_state = ConversationState.READY.value
                 
+                extracted_name = extract_first_name(normalized_message)
                 if extracted_name:
-                    assessor = persist_new_contact(db, phone, extracted_name)
-                    conversation.assessor_id = assessor.id
                     conversation.contact_name = extracted_name
-                    update_conversation_state(db, conversation, ConversationState.READY.value)
+                    db.commit()
                     
-                    response = get_identification_confirmation(extracted_name)
-                    
-                    if message_record:
-                        message_record.ai_response = response
-                        message_record.ai_intent = "identification_complete"
-                        db.commit()
-                    
-                    result = await zapi_client.send_text(phone, response, delay_typing=1)
-                    if result.get("success"):
-                        save_message_zapi(
-                            db, message_id=result.get("message_id"), zaap_id=result.get("zaap_id"),
-                            phone=phone, direction=MessageDirection.OUTBOUND.value,
-                            message_type=MessageType.TEXT.value, from_me=True, body=response,
-                            sender_type=SenderType.BOT.value
-                        )
-                    return
+                    response = f"Oi, {extracted_name}! Sou o Stevan, suporte de RV. Nao encontrei seu cadastro na base, mas posso ajudar com duvidas sobre renda variavel. O que precisa?"
                 else:
-                    response = get_identification_prompt()
-                    
-                    if message_record:
-                        message_record.ai_response = response
-                        message_record.ai_intent = "identification_request"
-                        db.commit()
-                    
-                    result = await zapi_client.send_text(phone, response, delay_typing=1)
-                    if result.get("success"):
-                        save_message_zapi(
-                            db, message_id=result.get("message_id"), zaap_id=result.get("zaap_id"),
-                            phone=phone, direction=MessageDirection.OUTBOUND.value,
-                            message_type=MessageType.TEXT.value, from_me=True, body=response,
-                            sender_type=SenderType.BOT.value
-                        )
-                    return
+                    response = "Oi! Sou o Stevan, suporte de RV. Nao encontrei seu cadastro na nossa base, mas posso ajudar com duvidas sobre renda variavel. Como posso ajudar?"
+                
+                if message_record:
+                    message_record.ai_response = response
+                    message_record.ai_intent = "unidentified_contact_greeting"
+                    db.commit()
+                
+                result = await zapi_client.send_text(phone, response, delay_typing=1)
+                if result.get("success"):
+                    save_message_zapi(
+                        db, message_id=result.get("message_id"), zaap_id=result.get("zaap_id"),
+                        phone=phone, direction=MessageDirection.OUTBOUND.value,
+                        message_type=MessageType.TEXT.value, from_me=True, body=response,
+                        sender_type=SenderType.BOT.value
+                    )
+                return
         else:
             if conv_state == ConversationState.IDENTIFICATION_PENDING.value:
                 update_conversation_state(db, conversation, ConversationState.READY.value)
