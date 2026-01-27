@@ -46,6 +46,7 @@ class AssessorCreate(AssessorBase):
 
 
 class AssessorUpdate(BaseModel):
+    codigo_ai: Optional[str] = None
     nome: Optional[str] = None
     email: Optional[str] = None
     telefone_whatsapp: Optional[str] = None
