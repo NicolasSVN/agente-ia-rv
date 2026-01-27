@@ -1724,6 +1724,7 @@
                 noVarsMessage.style.display = availableVariables.length === 0 ? 'block' : 'none';
             }
             
+            setupVariableButtonEvents();
             setupDragAndDrop();
         }
         
@@ -1732,21 +1733,31 @@
             for (var i = 0; i < variables.length; i++) {
                 var v = variables[i];
                 var label = getVariableLabel(v);
+                var escapedV = v.replace(/'/g, "\\'").replace(/"/g, '&quot;');
                 buttonsHtml += '<button type="button" class="variable-tag" draggable="true" ' +
-                    'onclick="insertVariable(\'' + v + '\')" ' +
-                    'ondragstart="onVariableDragStart(event, \'' + v + '\')" ' +
+                    'data-varname="' + escapedV + '" ' +
                     'style="padding: 6px 10px; background: ' + bgColor + '; border: 1px solid ' + borderColor + '; color: ' + color + '; border-radius: 6px; cursor: grab; font-size: 0.8rem; display: flex; flex-direction: column; align-items: center; gap: 2px; transition: all 0.2s;" ' +
-                    'title="Arraste ou clique para inserir ' + '{' + '{' + v + '}' + '}' + '">' +
+                    'title="Arraste ou clique para inserir {{' + escapedV + '}}">' +
                     '<span style="font-weight: 500; font-size: 0.75rem;">' + label + '</span>' +
-                    '<span style="font-size: 0.65rem; color: #6b7280; font-family: monospace;">' + '{' + '{' + v + '}' + '}' + '</span>' +
+                    '<span style="font-size: 0.65rem; color: #6b7280; font-family: monospace;">{{' + v + '}}</span>' +
                     '</button>';
             }
             return buttonsHtml;
         }
         
-        function onVariableDragStart(event, varName) {
-            event.dataTransfer.setData('text/plain', '{{' + varName + '}}');
-            event.dataTransfer.effectAllowed = 'copy';
+        function setupVariableButtonEvents() {
+            document.querySelectorAll('.variable-tag[data-varname]').forEach(function(btn) {
+                var varName = btn.getAttribute('data-varname');
+                
+                btn.onclick = function() {
+                    insertVariable(varName);
+                };
+                
+                btn.ondragstart = function(event) {
+                    event.dataTransfer.setData('text/plain', '{{' + varName + '}}');
+                    event.dataTransfer.effectAllowed = 'copy';
+                };
+            });
         }
         
         function setupDragAndDrop() {
