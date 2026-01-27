@@ -1135,11 +1135,16 @@ def build_clients_block(clients: dict) -> str:
     
     lines = []
     
-    for client_id, recommendations in clients.items():
+    for client_id, client_data in clients.items():
         if not client_id:
             client_id = "Sem ID"
         
         lines.append(f"**Cliente: {client_id}**")
+        
+        if isinstance(client_data, dict):
+            recommendations = client_data.get("recommendations", [])
+        else:
+            recommendations = client_data if isinstance(client_data, list) else []
         
         for rec in recommendations:
             ativo_saida = rec.get('ativo_saida', 'N/A')
