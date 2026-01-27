@@ -359,6 +359,7 @@ class ConversationState(str, enum.Enum):
     IDENTIFICATION_PENDING = "identification_pending"
     READY = "ready"
     IN_PROGRESS = "in_progress"
+    HUMAN_TAKEOVER = "human_takeover"
 
 
 class ConversationStatus(str, enum.Enum):

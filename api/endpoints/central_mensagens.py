@@ -17,7 +17,7 @@ import base64
 from database.database import get_db
 from database.models import (
     Conversation, WhatsAppMessage, Assessor, User,
-    ConversationStatus, SenderType, MessageDirection, MessageType, MessageStatus
+    ConversationStatus, ConversationState, SenderType, MessageDirection, MessageType, MessageStatus
 )
 from api.endpoints.auth import get_current_user
 from services.whatsapp_client import zapi_client
@@ -276,6 +276,7 @@ async def send_text_message(
         conv.last_message_preview = request.message[:100] if len(request.message) > 100 else request.message
         if conv.status != ConversationStatus.HUMAN_TAKEOVER.value:
             conv.status = ConversationStatus.HUMAN_TAKEOVER.value
+            conv.conversation_state = ConversationState.HUMAN_TAKEOVER.value
         
         db.commit()
         db.refresh(message)
@@ -412,6 +413,7 @@ async def start_new_conversation(
         conv.last_message_at = datetime.utcnow()
         conv.last_message_preview = request.message[:100]
         conv.status = ConversationStatus.HUMAN_TAKEOVER.value
+        conv.conversation_state = ConversationState.HUMAN_TAKEOVER.value
         
         db.commit()
         
@@ -433,23 +435,36 @@ async def toggle_takeover(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Alterna entre modo bot e modo humano."""
+    """
+    Alterna entre modo bot e modo humano.
+    Atualiza conversation_state para bloquear respostas automáticas quando em HUMAN_TAKEOVER.
+    """
+    from database.models import ConversationState
+    from datetime import datetime
+    
     conv = db.query(Conversation).filter(Conversation.id == conversation_id).first()
     if not conv:
         raise HTTPException(status_code=404, detail="Conversa não encontrada")
     
     if conv.status == ConversationStatus.HUMAN_TAKEOVER.value:
         conv.status = ConversationStatus.BOT_ACTIVE.value
+        conv.conversation_state = ConversationState.IN_PROGRESS.value
         conv.assigned_to = None
+        conv.transfer_reason = None
+        conv.transfer_notes = None
+        conv.stalled_interactions = 0
     else:
         conv.status = ConversationStatus.HUMAN_TAKEOVER.value
+        conv.conversation_state = ConversationState.HUMAN_TAKEOVER.value
         conv.assigned_to = current_user.id
+        conv.transferred_at = datetime.utcnow()
     
     db.commit()
     
     return {
         "success": True,
         "status": conv.status,
+        "conversation_state": conv.conversation_state,
         "assigned_to": conv.assigned_to
     }
 

@@ -14,7 +14,7 @@ import httpx
 from database.database import get_db
 from database.models import (
     Conversation, WhatsAppMessage, Assessor, User,
-    ConversationStatus, SenderType, MessageDirection
+    ConversationStatus, ConversationState, SenderType, MessageDirection
 )
 from api.endpoints.auth import get_current_user
 
@@ -306,6 +306,7 @@ async def start_new_conversation(
             contact_name=assessor.nome if assessor else None,
             assessor_id=assessor.id if assessor else None,
             status=ConversationStatus.HUMAN_TAKEOVER.value,
+            conversation_state=ConversationState.HUMAN_TAKEOVER.value,
             assigned_to=current_user.id
         )
         db.add(conv)
@@ -335,6 +336,7 @@ async def start_new_conversation(
     conv.last_message_at = datetime.utcnow()
     conv.last_message_preview = message_text[:100] if len(message_text) > 100 else message_text
     conv.status = ConversationStatus.HUMAN_TAKEOVER.value
+    conv.conversation_state = ConversationState.HUMAN_TAKEOVER.value
     conv.assigned_to = current_user.id
     
     db.commit()
@@ -575,25 +577,37 @@ async def takeover_conversation(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Assume ou libera uma conversa para atendimento humano."""
+    """
+    Assume ou libera uma conversa para atendimento humano.
+    Atualiza tanto o status quanto o conversation_state conforme framework.
+    """
+    from database.models import ConversationState
+    from datetime import datetime
+    
     conv = db.query(Conversation).filter(Conversation.id == conversation_id).first()
     if not conv:
         raise HTTPException(status_code=404, detail="Conversa não encontrada")
     
     if request.action == "takeover":
         conv.status = ConversationStatus.HUMAN_TAKEOVER.value
+        conv.conversation_state = ConversationState.HUMAN_TAKEOVER.value
         conv.assigned_to = current_user.id
+        conv.transferred_at = datetime.utcnow()
         message = f"Conversa assumida por {current_user.username}"
     elif request.action == "release":
         conv.status = ConversationStatus.BOT_ACTIVE.value
+        conv.conversation_state = ConversationState.IN_PROGRESS.value
         conv.assigned_to = None
+        conv.transfer_reason = None
+        conv.transfer_notes = None
+        conv.stalled_interactions = 0
         message = "Conversa devolvida ao agente"
     else:
         raise HTTPException(status_code=400, detail="Ação inválida")
     
     db.commit()
     
-    return {"success": True, "message": message, "status": conv.status}
+    return {"success": True, "message": message, "status": conv.status, "conversation_state": conv.conversation_state}
 
 
 @router.get("/by-phone/{phone}")

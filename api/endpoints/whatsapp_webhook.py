@@ -257,6 +257,18 @@ async def process_text_message(phone: str, message: str, db: Session, message_re
         
         conv_state = conversation.conversation_state or ConversationState.IDENTIFICATION_PENDING.value
         
+        is_human_mode = (
+            conv_state == ConversationState.HUMAN_TAKEOVER.value or 
+            conversation.status == ConversationStatus.HUMAN_TAKEOVER.value
+        )
+        if is_human_mode:
+            print(f"[WEBHOOK] Conversa em HUMAN_TAKEOVER - bot não responde, aguardando humano")
+            if message_record:
+                message_record.ai_response = None
+                message_record.ai_intent = "blocked_human_takeover"
+                db.commit()
+            return
+        
         assessor, is_known = identify_contact(db, phone)
         
         if not is_known:
@@ -317,7 +329,7 @@ async def process_text_message(phone: str, message: str, db: Session, message_re
         if should_transfer:
             response = get_transfer_message(transfer_reason)
             update_conversation_state(
-                db, conversation, ConversationState.IN_PROGRESS.value,
+                db, conversation, ConversationState.HUMAN_TAKEOVER.value,
                 transfer_reason=transfer_reason,
                 transfer_notes=f"Última mensagem: {normalized_message[:200]}"
             )
