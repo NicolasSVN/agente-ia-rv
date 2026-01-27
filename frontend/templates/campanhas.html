@@ -1568,11 +1568,9 @@
         }
 
         function validateStep2() {
-            const codigoAiColumn = document.getElementById('map_codigo_ai')?.value;
-            const content = document.getElementById('templatePreview').value.trim();
             const btn = document.getElementById('btnStep2Next');
             if (btn) {
-                btn.disabled = !codigoAiColumn || content.length === 0;
+                btn.disabled = false;
             }
         }
 
@@ -1580,20 +1578,10 @@
             const codigoAiColumn = document.getElementById('map_codigo_ai')?.value;
             const content = document.getElementById('templatePreview').value.trim();
             
-            if (!codigoAiColumn) {
-                alert('Por favor, selecione a coluna que contém o Código AI.');
-                return;
-            }
-            
-            if (!content) {
-                alert('Por favor, escreva uma mensagem ou selecione um template.');
-                return;
-            }
-            
             const usedVariables = extractVariables(content);
             const missingVariables = usedVariables.filter(v => !availableVariables.includes(v));
             
-            if (missingVariables.length > 0) {
+            if (content && missingVariables.length > 0) {
                 var missingVarsText = '';
                 for (var i = 0; i < missingVariables.length; i++) {
                     if (i > 0) missingVarsText += ', ';
@@ -1603,9 +1591,10 @@
                 if (!proceed) return;
             }
             
-            const mapping = {
-                codigo_ai: codigoAiColumn
-            };
+            const mapping = {};
+            if (codigoAiColumn) {
+                mapping.codigo_ai = codigoAiColumn;
+            }
             
             const allColumnsAsVariables = uploadedColumns.map(col => ({
                 column_name: col,
@@ -1613,16 +1602,18 @@
             }));
 
             try {
-                const response = await fetch(`${API_BASE}/${campaignId}/mapping`, {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ column_mapping: mapping, custom_fields: allColumnsAsVariables }),
-                    credentials: 'include'
-                });
+                if (campaignId) {
+                    const response = await fetch(`${API_BASE}/${campaignId}/mapping`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ column_mapping: mapping, custom_fields: allColumnsAsVariables }),
+                        credentials: 'include'
+                    });
 
-                if (!response.ok) {
-                    const error = await response.json();
-                    throw new Error(error.detail || 'Erro ao salvar mapeamento');
+                    if (!response.ok) {
+                        const error = await response.json();
+                        throw new Error(error.detail || 'Erro ao salvar mapeamento');
+                    }
                 }
 
                 goToStep(3);
@@ -1721,15 +1712,17 @@
             
             if (campaignSource === 'upload' && uploadedColumns.length > 0) {
                 importedContainer.innerHTML = renderVariableButtons(uploadedColumns, '#1d4ed8', '#dbeafe', '#1e40af');
-                importedContainer.parentElement.style.display = 'block';
+                if (importedContainer.parentElement) importedContainer.parentElement.style.display = 'block';
             } else if (campaignSource === 'base') {
                 importedContainer.innerHTML = '<p style="font-size: 0.8rem; color: #64748b; font-style: italic;">Usando base de assessores interna</p>';
-                importedContainer.parentElement.style.display = 'block';
+                if (importedContainer.parentElement) importedContainer.parentElement.style.display = 'block';
             } else {
-                importedContainer.parentElement.style.display = 'none';
+                if (importedContainer.parentElement) importedContainer.parentElement.style.display = 'none';
             }
             
-            noVarsMessage.style.display = availableVariables.length === 0 ? 'block' : 'none';
+            if (noVarsMessage) {
+                noVarsMessage.style.display = availableVariables.length === 0 ? 'block' : 'none';
+            }
             
             setupDragAndDrop();
         }

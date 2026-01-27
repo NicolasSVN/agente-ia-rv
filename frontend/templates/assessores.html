@@ -277,6 +277,7 @@
                         <table class="table" id="assessores-table" style="display: none;">
                             <thead>
                                 <tr>
+                                    <th>Código</th>
                                     <th>Nome</th>
                                     <th>E-mail</th>
                                     <th>WhatsApp</th>
@@ -546,6 +547,7 @@
 
             tbody.innerHTML = assessores.map(a => `
                 <tr>
+                    <td><code style="background: #f1f5f9; padding: 2px 8px; border-radius: 4px; font-size: 0.85rem;">${a.codigo_ai || '-'}</code></td>
                     <td style="font-weight: 500;">${a.nome || '-'}</td>
                     <td>${a.email || '-'}</td>
                     <td>${a.telefone_whatsapp || '-'}</td>
