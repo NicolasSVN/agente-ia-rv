@@ -1521,7 +1521,7 @@ Equipe de Gestao" oninput="updateMessagePreview()"></textarea>
             vars.forEach(varName => {
                 const item = document.createElement('div');
                 item.className = 'var-dropdown-item';
-                item.innerHTML = `<code>{{${varName}}}</code> <span style="color: var(--text-secondary); font-size: 0.8rem;">${getVariableLabel(varName)}</span>`;
+                item.innerHTML = `<code>` + '{{' + varName + '}}' + `</code> <span style="color: var(--text-secondary); font-size: 0.8rem;">${getVariableLabel(varName)}</span>`;
                 item.onclick = () => insertVariable(blockType, varName);
                 listContainer.appendChild(item);
             });
@@ -1544,7 +1544,7 @@ Equipe de Gestao" oninput="updateMessagePreview()"></textarea>
             const start = textarea.selectionStart;
             const end = textarea.selectionEnd;
             const text = textarea.value;
-            const varText = `{{${varName}}}`;
+            const varText = '{{' + varName + '}}';
             
             textarea.value = text.substring(0, start) + varText + text.substring(end);
             textarea.focus();
