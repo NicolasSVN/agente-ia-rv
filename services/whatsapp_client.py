@@ -519,6 +519,58 @@ class ZAPIClient:
                 return {"success": False, "error": str(e), "messages": []}
 
 
+    async def enable_notify_sent_by_me(self, enable: bool = True) -> dict:
+        """
+        Habilita/desabilita notificações de mensagens enviadas pelo próprio celular.
+        Quando habilitado, o webhook on-message-received também recebe mensagens com fromMe=true.
+        
+        Args:
+            enable: True para habilitar, False para desabilitar
+            
+        Returns:
+            Resultado da operação
+        """
+        url = f"{self.base_url}/update-notify-sent-by-me"
+        payload = {"value": enable}
+        
+        async with httpx.AsyncClient() as client:
+            try:
+                response = await client.put(url, json=payload, headers=self._get_headers(), timeout=30.0)
+                data = response.json() if response.content else {}
+                
+                if response.status_code == 200:
+                    return {
+                        "success": True,
+                        "enabled": enable,
+                        "message": f"Notificação de mensagens enviadas {'habilitada' if enable else 'desabilitada'}"
+                    }
+                else:
+                    return {
+                        "success": False,
+                        "error": data.get("error", f"HTTP {response.status_code}")
+                    }
+            except httpx.HTTPError as e:
+                return {"success": False, "error": str(e)}
+    
+    async def get_webhook_settings(self) -> dict:
+        """
+        Busca configurações atuais dos webhooks da instância.
+        """
+        url = f"{self.base_url}/webhooks"
+        
+        async with httpx.AsyncClient() as client:
+            try:
+                response = await client.get(url, headers=self._get_headers(), timeout=30.0)
+                data = response.json() if response.content else {}
+                
+                if response.status_code == 200:
+                    return {"success": True, "settings": data}
+                else:
+                    return {"success": False, "error": data.get("error", f"HTTP {response.status_code}")}
+            except httpx.HTTPError as e:
+                return {"success": False, "error": str(e)}
+
+
 zapi_client = ZAPIClient()
 
 

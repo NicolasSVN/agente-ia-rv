@@ -236,6 +236,41 @@ async def sync_chats_from_zapi(
     }
 
 
+@router.post("/enable-sent-notifications")
+async def enable_sent_by_me_notifications(
+    enable: bool = True,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Habilita notificações de mensagens enviadas pelo próprio celular.
+    Quando habilitado, todas as mensagens enviadas pelo app WhatsApp também
+    aparecem no sistema.
+    """
+    from services.whatsapp_client import zapi_client
+    
+    if not zapi_client.instance_id or not zapi_client.token:
+        raise HTTPException(status_code=500, detail="Z-API não configurada")
+    
+    result = await zapi_client.enable_notify_sent_by_me(enable)
+    return result
+
+
+@router.get("/webhook-settings")
+async def get_webhook_settings(
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Retorna as configurações atuais dos webhooks da instância Z-API.
+    """
+    from services.whatsapp_client import zapi_client
+    
+    if not zapi_client.instance_id or not zapi_client.token:
+        raise HTTPException(status_code=500, detail="Z-API não configurada")
+    
+    result = await zapi_client.get_webhook_settings()
+    return result
+
+
 @router.post("/start")
 async def start_new_conversation(
     request: StartConversationRequest,
