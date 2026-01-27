@@ -17,6 +17,7 @@ from database.database import get_db
 from database.models import KnowledgeDocument, DocumentType, User
 from api.endpoints.auth import get_current_user
 from services.vector_store import get_vector_store
+from services.document_processor import get_document_processor
 
 router = APIRouter(prefix="/api/knowledge", tags=["Knowledge Base"])
 
@@ -208,6 +209,80 @@ async def index_document_background(doc_id: int, file_path: str, file_type: str,
         db.close()
 
 
+async def index_document_smart(doc_id: int, file_path: str, file_type: str, title: str, category: str):
+    """
+    Processa e indexa um documento usando GPT-4 Vision para análise inteligente.
+    Ideal para documentos com tabelas, infográficos e conteúdo visual.
+    """
+    from database.database import SessionLocal
+    
+    db = SessionLocal()
+    try:
+        doc = db.query(KnowledgeDocument).filter(KnowledgeDocument.id == doc_id).first()
+        if not doc:
+            return
+        
+        try:
+            processor = get_document_processor()
+            vector_store = get_vector_store()
+            
+            if file_type in [DocumentType.PDF.value]:
+                print(f"[KNOWLEDGE] Processando PDF com IA: {title}")
+                processed_data = processor.process_pdf(pdf_path=file_path, document_title=title)
+            elif file_type in [DocumentType.IMAGE.value]:
+                print(f"[KNOWLEDGE] Processando imagem com IA: {title}")
+                processed_data = processor.process_image(image_path=file_path, document_title=title)
+            else:
+                print(f"[KNOWLEDGE] Tipo {file_type} não suportado para processamento inteligente, usando método padrão")
+                await index_document_background(doc_id, file_path, file_type, title, category)
+                return
+            
+            if "error" in processed_data and not processed_data.get("all_facts"):
+                doc.is_indexed = False
+                doc.index_error = processed_data.get("error", "Erro desconhecido no processamento")
+                db.commit()
+                return
+            
+            chunks = processor.generate_indexable_chunks(processed_data)
+            
+            if not chunks:
+                doc.is_indexed = False
+                doc.index_error = "Nenhum conteúdo extraído do documento"
+                db.commit()
+                return
+            
+            for i, chunk in enumerate(chunks):
+                chunk_id = f"doc_{doc_id}_smart_{i}"
+                metadata = {
+                    "document_id": doc_id,
+                    "document_title": title,
+                    "category": category or "Outros",
+                    "chunk_index": i,
+                    "total_chunks": len(chunks),
+                    "processing_type": "smart",
+                    **chunk.get("metadata", {})
+                }
+                vector_store.add_document(chunk_id, chunk["content"], metadata)
+            
+            doc.chunks_count = len(chunks)
+            doc.is_indexed = True
+            doc.index_error = None
+            db.commit()
+            
+            print(f"[KNOWLEDGE] Documento {doc_id} indexado com IA: {len(chunks)} fatos extraídos de {processed_data.get('total_pages', 1)} página(s)")
+            
+        except Exception as e:
+            doc.is_indexed = False
+            doc.index_error = f"Erro no processamento inteligente: {str(e)}"
+            db.commit()
+            print(f"[KNOWLEDGE] Erro ao indexar documento {doc_id} com IA: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            
+    finally:
+        db.close()
+
+
 @router.get("/", response_model=DocumentListResponse)
 async def list_documents(
     category: Optional[str] = None,
@@ -246,12 +321,17 @@ async def upload_document(
     title: str = Form(...),
     description: str = Form(None),
     category: str = Form(None),
+    smart_processing: bool = Form(False),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """
     Faz upload de um documento e inicia indexação em background.
     Suporta PDF, DOCX, TXT e imagens.
+    
+    Args:
+        smart_processing: Se True, usa GPT-4 Vision para extrair dados estruturados
+                         de tabelas e infográficos. Ideal para documentos visuais.
     """
     if current_user.role not in ["admin", "gestao_rv"]:
         raise HTTPException(status_code=403, detail="Acesso negado")
@@ -291,7 +371,17 @@ async def upload_document(
     db.commit()
     db.refresh(doc)
     
-    if file_type in [DocumentType.PDF.value, DocumentType.DOCX.value, DocumentType.TXT.value]:
+    if smart_processing and file_type in [DocumentType.PDF.value, DocumentType.IMAGE.value]:
+        background_tasks.add_task(
+            index_document_smart,
+            doc.id,
+            file_path,
+            file_type,
+            title,
+            category
+        )
+        processing_msg = "Processamento inteligente com IA em andamento."
+    elif file_type in [DocumentType.PDF.value, DocumentType.DOCX.value, DocumentType.TXT.value]:
         background_tasks.add_task(
             index_document_background,
             doc.id,
@@ -300,11 +390,15 @@ async def upload_document(
             title,
             category
         )
+        processing_msg = "Indexação em andamento."
+    else:
+        processing_msg = "Documento salvo (sem indexação de texto)."
     
     return {
         "success": True,
-        "message": "Documento enviado com sucesso. Indexação em andamento.",
-        "document": DocumentResponse.model_validate(doc)
+        "message": f"Documento enviado com sucesso. {processing_msg}",
+        "document": DocumentResponse.model_validate(doc),
+        "smart_processing": smart_processing
     }
 
 
@@ -332,14 +426,24 @@ async def delete_document(
     return {"success": True, "message": "Documento removido com sucesso"}
 
 
+class ReindexRequest(BaseModel):
+    smart_processing: bool = False
+
+
 @router.post("/{doc_id}/reindex")
 async def reindex_document(
     doc_id: int,
     background_tasks: BackgroundTasks,
+    request: Optional[ReindexRequest] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Reindexa um documento existente."""
+    """
+    Reindexa um documento existente.
+    
+    Args:
+        smart_processing: Se True, usa processamento inteligente com GPT-4 Vision
+    """
     if current_user.role not in ["admin", "gestao_rv"]:
         raise HTTPException(status_code=403, detail="Acesso negado")
     
@@ -348,21 +452,49 @@ async def reindex_document(
     if not doc:
         raise HTTPException(status_code=404, detail="Documento não encontrado")
     
+    vector_store = get_vector_store()
+    try:
+        for i in range(doc.chunks_count or 100):
+            try:
+                vector_store.collection.delete(ids=[f"doc_{doc_id}_chunk_{i}"])
+            except:
+                pass
+            try:
+                vector_store.collection.delete(ids=[f"doc_{doc_id}_smart_{i}"])
+            except:
+                pass
+    except Exception as e:
+        print(f"[KNOWLEDGE] Erro ao limpar chunks antigos: {e}")
+    
     doc.is_indexed = False
     doc.index_error = None
     doc.chunks_count = 0
     db.commit()
     
-    background_tasks.add_task(
-        index_document_background,
-        doc.id,
-        doc.file_path,
-        doc.file_type,
-        doc.title,
-        doc.category
-    )
+    smart = request.smart_processing if request else False
     
-    return {"success": True, "message": "Reindexação iniciada"}
+    if smart and doc.file_type in [DocumentType.PDF.value, DocumentType.IMAGE.value]:
+        background_tasks.add_task(
+            index_document_smart,
+            doc.id,
+            doc.file_path,
+            doc.file_type,
+            doc.title,
+            doc.category
+        )
+        msg = "Reindexação inteligente com IA iniciada"
+    else:
+        background_tasks.add_task(
+            index_document_background,
+            doc.id,
+            doc.file_path,
+            doc.file_type,
+            doc.title,
+            doc.category
+        )
+        msg = "Reindexação iniciada"
+    
+    return {"success": True, "message": msg, "smart_processing": smart}
 
 
 @router.get("/search")
