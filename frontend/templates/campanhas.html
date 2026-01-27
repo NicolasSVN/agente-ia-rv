@@ -674,24 +674,36 @@
                     </div>
 
                     <div class="step-content" id="step2">
-                        <h3>Mapear Colunas do Arquivo</h3>
+                        <h3>Vincular com Base de Assessores</h3>
                         <p style="color: var(--text-secondary); margin-bottom: 24px;">
-                            Indique qual coluna do seu arquivo corresponde a cada campo obrigatorio.
+                            Indique qual coluna do seu arquivo contém o Código AI para vincular com a base interna de assessores.
                         </p>
 
-                        <h4 style="margin-bottom: 16px;">Campos Obrigatorios</h4>
                         <div class="mapping-grid" id="mappingGrid"></div>
 
-                        <div class="custom-fields-section">
-                            <h4 style="margin-bottom: 16px;">Campos Customizados (Opcional)</h4>
-                            <p style="color: var(--text-secondary); margin-bottom: 16px; font-size: 0.9rem;">
-                                Adicione colunas extras para usar como variaveis no seu template de mensagem.
-                            </p>
-                            <div id="customFieldsContainer"></div>
-                            <button class="btn btn-secondary" onclick="addCustomField()">
-                                <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
-                                Adicionar Campo
-                            </button>
+                        <div style="margin-top: 24px; padding: 16px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px;">
+                            <div style="display: flex; align-items: flex-start; gap: 12px;">
+                                <svg width="24" height="24" fill="none" stroke="#16a34a" viewBox="0 0 24 24" style="flex-shrink: 0;">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                                </svg>
+                                <div>
+                                    <strong style="color: #166534;">Como funciona:</strong>
+                                    <p style="margin: 4px 0 0 0; font-size: 0.9rem; color: #15803d;">
+                                        O Código AI vincula cada linha da sua planilha com um assessor da base interna. 
+                                        Assim, você poderá usar variáveis tanto da planilha importada quanto da base de assessores.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div style="margin-top: 24px; padding: 16px; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px;">
+                            <h4 style="margin: 0 0 12px 0; font-size: 0.95rem; color: #1e40af;">
+                                <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="vertical-align: middle; margin-right: 4px;">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                                </svg>
+                                Colunas detectadas na planilha:
+                            </h4>
+                            <div id="detectedColumnsPreview" style="display: flex; flex-wrap: wrap; gap: 6px;"></div>
                         </div>
 
                         <div class="wizard-actions">
@@ -700,7 +712,7 @@
                                 Voltar
                             </button>
                             <button class="btn btn-primary" onclick="saveMapping()">
-                                Proximo Passo
+                                Próximo Passo
                                 <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
                             </button>
                         </div>
@@ -770,16 +782,35 @@
                                 </div>
                             </div>
 
-                            <div class="variables-panel" style="background: #f0f9ff; padding: 16px; border-radius: 8px; border: 1px solid #bae6fd; height: fit-content;">
+                            <div class="variables-panel" style="background: #f0f9ff; padding: 16px; border-radius: 8px; border: 1px solid #bae6fd; height: fit-content; min-width: 280px;">
                                 <h4 style="margin: 0 0 12px 0; color: #0369a1; font-size: 0.95rem;">
                                     <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="vertical-align: middle; margin-right: 4px;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14"/></svg>
                                     Variáveis Disponíveis
                                 </h4>
-                                <p style="font-size: 0.8rem; color: #0369a1; margin-bottom: 12px;">Clique para inserir na mensagem:</p>
-                                <div id="availableVariables" style="display: flex; flex-wrap: wrap; gap: 6px;">
+                                <p style="font-size: 0.8rem; color: #0369a1; margin-bottom: 12px;">Arraste ou clique para inserir:</p>
+                                
+                                <div style="margin-bottom: 16px;">
+                                    <h5 style="margin: 0 0 8px 0; font-size: 0.8rem; color: #166534; text-transform: uppercase; letter-spacing: 0.5px;">
+                                        <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="vertical-align: middle; margin-right: 4px;">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/>
+                                        </svg>
+                                        Base de Assessores
+                                    </h5>
+                                    <div id="assessorVariables" style="display: flex; flex-wrap: wrap; gap: 6px;"></div>
                                 </div>
-                                <div id="noVariablesMessage" style="display: none; font-size: 0.85rem; color: #64748b; font-style: italic;">
-                                    Nenhuma variável disponível para esta origem de dados.
+                                
+                                <div>
+                                    <h5 style="margin: 0 0 8px 0; font-size: 0.8rem; color: #1e40af; text-transform: uppercase; letter-spacing: 0.5px;">
+                                        <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="vertical-align: middle; margin-right: 4px;">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                                        </svg>
+                                        Planilha Importada
+                                    </h5>
+                                    <div id="importedVariables" style="display: flex; flex-wrap: wrap; gap: 6px;"></div>
+                                </div>
+                                
+                                <div id="noVariablesMessage" style="display: none; font-size: 0.85rem; color: #64748b; font-style: italic; margin-top: 12px;">
+                                    Nenhuma variável disponível.
                                 </div>
                             </div>
                         </div>
@@ -1008,6 +1039,7 @@
         let allTemplates = [];
         
         const variableLabels = {
+            'codigo_ai': 'Código AI',
             'nome': 'Nome',
             'email': 'E-mail',
             'telefone_whatsapp': 'Telefone WhatsApp',
@@ -1409,32 +1441,27 @@
         }
 
         async function saveMapping() {
-            const mapping = {
-                assessor_id: document.getElementById('map_assessor_id').value,
-                assessor_email: document.getElementById('map_assessor_email').value,
-                client_id: document.getElementById('map_client_id').value,
-                ativo_saida: document.getElementById('map_ativo_saida').value,
-                valor_saida: document.getElementById('map_valor_saida').value,
-                ativo_compra: document.getElementById('map_ativo_compra').value,
-                valor_compra: document.getElementById('map_valor_compra').value
-            };
-
-            const missing = Object.entries(mapping).filter(([k, v]) => !v).map(([k]) => k);
-            if (missing.length > 0) {
-                alert('Preencha todos os campos obrigatorios: ' + missing.join(', '));
+            const codigoAiColumn = document.getElementById('map_codigo_ai').value;
+            
+            if (!codigoAiColumn) {
+                alert('Por favor, selecione a coluna que contém o Código AI.');
                 return;
             }
-
-            const customFieldsData = customFields.filter(f => f && f.column && f.variable).map(f => ({
-                column_name: f.column,
-                variable_name: f.variable
+            
+            const mapping = {
+                codigo_ai: codigoAiColumn
+            };
+            
+            const allColumnsAsVariables = uploadedColumns.map(col => ({
+                column_name: col,
+                variable_name: col
             }));
 
             try {
                 const response = await fetch(`${API_BASE}/${campaignId}/mapping`, {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ column_mapping: mapping, custom_fields: customFieldsData }),
+                    body: JSON.stringify({ column_mapping: mapping, custom_fields: allColumnsAsVariables }),
                     credentials: 'include'
                 });
 
@@ -1565,38 +1592,92 @@
             return variables;
         }
 
+        const assessorBaseVariables = ['codigo_ai', 'nome', 'email', 'telefone_whatsapp', 'unidade', 'equipe', 'broker_responsavel'];
+        
         function updateAvailableVariablesPanel() {
-            const container = document.getElementById('availableVariables');
+            const assessorContainer = document.getElementById('assessorVariables');
+            const importedContainer = document.getElementById('importedVariables');
             const noVarsMessage = document.getElementById('noVariablesMessage');
             
-            if (!container) return;
+            if (!assessorContainer || !importedContainer) return;
+            
+            availableVariables = [...assessorBaseVariables];
             
             if (campaignSource === 'base') {
-                availableVariables = ['nome', 'email', 'telefone_whatsapp', 'unidade', 'equipe', 'broker_responsavel'];
+                availableVariables = [...assessorBaseVariables];
             } else if (uploadedColumns.length > 0) {
-                availableVariables = [...uploadedColumns];
-            } else {
-                availableVariables = ['nome_assessor', 'assessor_id', 'lista_clientes'];
+                availableVariables = [...assessorBaseVariables, ...uploadedColumns];
             }
             
-            if (availableVariables.length === 0) {
-                container.innerHTML = '';
-                noVarsMessage.style.display = 'block';
+            assessorContainer.innerHTML = renderVariableButtons(assessorBaseVariables, '#16a34a', '#dcfce7', '#166534');
+            
+            if (campaignSource === 'upload' && uploadedColumns.length > 0) {
+                importedContainer.innerHTML = renderVariableButtons(uploadedColumns, '#1d4ed8', '#dbeafe', '#1e40af');
+                importedContainer.parentElement.style.display = 'block';
+            } else if (campaignSource === 'base') {
+                importedContainer.innerHTML = '<p style="font-size: 0.8rem; color: #64748b; font-style: italic;">Usando base de assessores interna</p>';
+                importedContainer.parentElement.style.display = 'block';
             } else {
-                noVarsMessage.style.display = 'none';
-                var buttonsHtml = '';
-                for (var i = 0; i < availableVariables.length; i++) {
-                    var v = availableVariables[i];
-                    var label = getVariableLabel(v);
-                    buttonsHtml += '<button type="button" class="variable-tag" onclick="insertVariable(\'' + v + '\')" ' +
-                        'style="padding: 6px 12px; background: white; border: 1px solid #93c5fd; color: #1d4ed8; border-radius: 6px; cursor: pointer; font-size: 0.85rem; display: flex; flex-direction: column; align-items: center; gap: 2px;" ' +
-                        'title="Clique para inserir ' + '{' + '{' + v + '}' + '}' + '">' +
-                        '<span style="font-weight: 500;">' + label + '</span>' +
-                        '<span style="font-size: 0.7rem; color: #6b7280; font-family: monospace;">' + '{' + '{' + v + '}' + '}' + '</span>' +
-                        '</button>';
-                }
-                container.innerHTML = buttonsHtml;
+                importedContainer.parentElement.style.display = 'none';
             }
+            
+            noVarsMessage.style.display = availableVariables.length === 0 ? 'block' : 'none';
+            
+            setupDragAndDrop();
+        }
+        
+        function renderVariableButtons(variables, color, bgColor, borderColor) {
+            var buttonsHtml = '';
+            for (var i = 0; i < variables.length; i++) {
+                var v = variables[i];
+                var label = getVariableLabel(v);
+                buttonsHtml += '<button type="button" class="variable-tag" draggable="true" ' +
+                    'onclick="insertVariable(\'' + v + '\')" ' +
+                    'ondragstart="onVariableDragStart(event, \'' + v + '\')" ' +
+                    'style="padding: 6px 10px; background: ' + bgColor + '; border: 1px solid ' + borderColor + '; color: ' + color + '; border-radius: 6px; cursor: grab; font-size: 0.8rem; display: flex; flex-direction: column; align-items: center; gap: 2px; transition: all 0.2s;" ' +
+                    'title="Arraste ou clique para inserir ' + '{' + '{' + v + '}' + '}' + '">' +
+                    '<span style="font-weight: 500; font-size: 0.75rem;">' + label + '</span>' +
+                    '<span style="font-size: 0.65rem; color: #6b7280; font-family: monospace;">' + '{' + '{' + v + '}' + '}' + '</span>' +
+                    '</button>';
+            }
+            return buttonsHtml;
+        }
+        
+        function onVariableDragStart(event, varName) {
+            event.dataTransfer.setData('text/plain', '{{' + varName + '}}');
+            event.dataTransfer.effectAllowed = 'copy';
+        }
+        
+        function setupDragAndDrop() {
+            const textarea = document.getElementById('templatePreview');
+            if (!textarea) return;
+            
+            textarea.addEventListener('dragover', function(e) {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'copy';
+                textarea.style.borderColor = 'var(--primary-color)';
+                textarea.style.background = 'rgba(79, 70, 229, 0.05)';
+            });
+            
+            textarea.addEventListener('dragleave', function(e) {
+                textarea.style.borderColor = '';
+                textarea.style.background = '';
+            });
+            
+            textarea.addEventListener('drop', function(e) {
+                e.preventDefault();
+                textarea.style.borderColor = '';
+                textarea.style.background = '';
+                
+                const varText = e.dataTransfer.getData('text/plain');
+                const cursorPos = textarea.selectionStart;
+                const textBefore = textarea.value.substring(0, cursorPos);
+                const textAfter = textarea.value.substring(cursorPos);
+                textarea.value = textBefore + varText + textAfter;
+                textarea.focus();
+                textarea.setSelectionRange(cursorPos + varText.length, cursorPos + varText.length);
+                onMessageContentChange();
+            });
         }
 
         function insertVariable(varName) {
@@ -2419,33 +2500,37 @@
         }
         
         function renderMappingGrid(columns, savedMapping) {
-            const fields = [
-                { key: 'assessor_id', label: 'Nome do Assessor', required: true },
-                { key: 'assessor_email', label: 'E-mail do Assessor', required: true },
-                { key: 'client_id', label: 'Nome do Cliente', required: true },
-                { key: 'ativo_saida', label: 'Ativo de Saida', required: true },
-                { key: 'valor_saida', label: 'Valor de Saida', required: true },
-                { key: 'ativo_compra', label: 'Ativo de Compra', required: true },
-                { key: 'valor_compra', label: 'Valor de Compra', required: true }
-            ];
-
             const grid = document.getElementById('mappingGrid');
-            grid.innerHTML = fields.map(field => `
-                <div class="mapping-item">
-                    <label>
-                        ${field.label}
-                        ${field.required ? '<span class="required">*</span>' : ''}
+            grid.innerHTML = `
+                <div class="mapping-item" style="max-width: 400px;">
+                    <label style="display: flex; align-items: center; gap: 8px;">
+                        <svg width="20" height="20" fill="none" stroke="var(--primary-color)" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/>
+                        </svg>
+                        Coluna do Código AI <span class="required">*</span>
                     </label>
-                    <select class="form-input" id="map_${field.key}">
-                        <option value="">-- Selecione --</option>
+                    <p style="font-size: 0.85rem; color: var(--text-secondary); margin: 4px 0 8px 0;">
+                        Selecione a coluna que contém o código identificador do assessor
+                    </p>
+                    <select class="form-input" id="map_codigo_ai">
+                        <option value="">-- Selecione a coluna --</option>
                         ${columns.map(col => `
-                            <option value="${col}" ${savedMapping[field.key] === col ? 'selected' : ''}>
+                            <option value="${col}" ${savedMapping['codigo_ai'] === col ? 'selected' : ''}>
                                 ${col}
                             </option>
                         `).join('')}
                     </select>
                 </div>
-            `).join('');
+            `;
+            
+            const preview = document.getElementById('detectedColumnsPreview');
+            if (preview) {
+                preview.innerHTML = columns.map(col => `
+                    <span style="padding: 4px 10px; background: #dbeafe; color: #1e40af; border-radius: 4px; font-size: 0.85rem; font-family: monospace;">
+                        ${col}
+                    </span>
+                `).join('');
+            }
         }
 
         async function deleteCampaign(id) {

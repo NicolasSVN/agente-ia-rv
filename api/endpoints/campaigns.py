@@ -761,19 +761,17 @@ async def preview_campaign_from_base(campaign, db: Session):
 
 def group_recommendations_by_assessor(data: List[dict], mapping: dict, custom_mapping: dict, db: Session) -> dict:
     """
-    Agrupa recomendações por assessor e, dentro de cada assessor, por cliente.
+    Agrupa recomendações por assessor.
     
-    Retorna um dicionário onde cada chave é o ID do assessor e o valor contém:
-    - assessor_id: identificador do assessor
-    - nome_assessor: nome do assessor (buscado na base ou usando o ID)
-    - telefone: telefone do assessor
-    - clients: dicionário de clientes com suas recomendações
-    - total_recommendations: total de recomendações para este assessor
-    - custom_fields: campos customizados mapeados
+    Suporta dois modos:
+    1. Modo legado: usa assessor_id/assessor_email para identificar assessores e constrói lista_clientes
+    2. Modo codigo_ai: usa codigo_ai para vincular com base interna e disponibiliza variáveis da planilha
+    
+    Retorna um dicionário com dados do assessor e recomendações agrupadas.
     """
     grouped = {}
     
-    # Extrai os nomes das colunas do mapeamento
+    col_codigo_ai = mapping.get("codigo_ai", "")
     col_assessor = mapping.get("assessor_id", "")
     col_assessor_email = mapping.get("assessor_email", "")
     col_client = mapping.get("client_id", "")
@@ -782,103 +780,136 @@ def group_recommendations_by_assessor(data: List[dict], mapping: dict, custom_ma
     col_ativo_compra = mapping.get("ativo_compra", "")
     col_valor_compra = mapping.get("valor_compra", "")
     
-    print(f"[GROUPING] Column mapping: assessor={col_assessor}, client={col_client}")
+    use_codigo_ai_mode = bool(col_codigo_ai) and not col_assessor
+    
+    print(f"[GROUPING] Column mapping: codigo_ai={col_codigo_ai}, assessor={col_assessor}")
+    print(f"[GROUPING] Mode: {'codigo_ai' if use_codigo_ai_mode else 'legacy'}")
     print(f"[GROUPING] Total rows to process: {len(data)}")
     
     for idx, row in enumerate(data):
-        # Obtém o ID do assessor da linha
-        assessor_val = row.get(col_assessor, "")
-        if assessor_val is None:
-            assessor_val = ""
-        assessor_id = str(assessor_val).strip()
+        if use_codigo_ai_mode:
+            codigo_ai_val = row.get(col_codigo_ai, "")
+            if codigo_ai_val is None:
+                codigo_ai_val = ""
+            key = str(codigo_ai_val).strip()
+        else:
+            assessor_val = row.get(col_assessor, "")
+            if assessor_val is None:
+                assessor_val = ""
+            key = str(assessor_val).strip()
         
-        if not assessor_id:
-            print(f"[GROUPING] Row {idx}: No assessor_id found, skipping")
+        if not key:
+            print(f"[GROUPING] Row {idx}: No key found, skipping")
             continue
         
-        # Inicializa o grupo do assessor se ainda não existe
-        if assessor_id not in grouped:
-            # Tenta buscar o assessor na base de dados
-            assessor = None
-            
-            # Primeiro tenta buscar por email (se disponível na planilha)
-            email_from_sheet = ""
-            if col_assessor_email:
-                email_val = row.get(col_assessor_email, "")
-                if email_val:
-                    email_from_sheet = str(email_val).strip()
-                    assessor = db.query(Assessor).filter(Assessor.email == email_from_sheet).first()
-            
-            # Se não encontrou por email, tenta como ID numérico
-            if not assessor:
-                try:
-                    assessor_id_int = int(assessor_id)
-                    assessor = db.query(Assessor).filter(Assessor.id == assessor_id_int).first()
-                except (ValueError, TypeError):
-                    pass
-            
-            # Se não encontrou, tenta por telefone ou nome
-            if not assessor:
-                assessor = db.query(Assessor).filter(
-                    (Assessor.telefone_whatsapp == assessor_id) |
-                    (Assessor.nome.ilike(f"%{assessor_id}%"))
-                ).first()
-            
-            # Define o nome do assessor
-            if assessor:
-                nome = assessor.nome
-                telefone = assessor.telefone_whatsapp or ""
-                email_assessor = assessor.email or email_from_sheet
+        if key not in grouped:
+            if use_codigo_ai_mode:
+                assessor = db.query(Assessor).filter(Assessor.codigo_ai == key).first()
             else:
-                nome = assessor_id
-                telefone = ""
-                email_assessor = email_from_sheet
+                assessor = None
+                email_from_sheet = ""
+                if col_assessor_email:
+                    email_val = row.get(col_assessor_email, "")
+                    if email_val:
+                        email_from_sheet = str(email_val).strip()
+                        assessor = db.query(Assessor).filter(Assessor.email == email_from_sheet).first()
+                
+                if not assessor:
+                    try:
+                        assessor_id_int = int(key)
+                        assessor = db.query(Assessor).filter(Assessor.id == assessor_id_int).first()
+                    except (ValueError, TypeError):
+                        pass
+                
+                if not assessor:
+                    assessor = db.query(Assessor).filter(
+                        (Assessor.telefone_whatsapp == key) |
+                        (Assessor.nome.ilike(f"%{key}%"))
+                    ).first()
             
-            grouped[assessor_id] = {
-                "assessor_id": assessor_id,
-                "email_assessor": email_assessor,
-                "nome_assessor": nome,
-                "telefone": telefone,
-                "clients": {},
-                "total_recommendations": 0,
-                "custom_fields": {}
+            if assessor:
+                grouped[key] = {
+                    "codigo_ai": assessor.codigo_ai or "",
+                    "nome": assessor.nome or "",
+                    "email": assessor.email or "",
+                    "telefone_whatsapp": assessor.telefone_whatsapp or "",
+                    "telefone": assessor.telefone_whatsapp or "",
+                    "unidade": assessor.unidade or "",
+                    "equipe": assessor.equipe or "",
+                    "broker_responsavel": assessor.broker_responsavel or "",
+                    "nome_assessor": assessor.nome or "",
+                    "assessor_id": key,
+                    "email_assessor": assessor.email or "",
+                    "clients": {},
+                    "total_recommendations": 0,
+                    "custom_fields": {},
+                    "spreadsheet_data": {}
+                }
+            else:
+                grouped[key] = {
+                    "codigo_ai": key if use_codigo_ai_mode else "",
+                    "nome": key if not use_codigo_ai_mode else "",
+                    "email": "",
+                    "telefone_whatsapp": "",
+                    "telefone": "",
+                    "unidade": "",
+                    "equipe": "",
+                    "broker_responsavel": "",
+                    "nome_assessor": key if not use_codigo_ai_mode else "",
+                    "assessor_id": key,
+                    "email_assessor": "",
+                    "clients": {},
+                    "total_recommendations": 0,
+                    "custom_fields": {},
+                    "spreadsheet_data": {}
+                }
+                print(f"[GROUPING] Warning: Assessor not found for key={key}")
+            
+            print(f"[GROUPING] New assessor: {key} -> nome={grouped[key]['nome']}")
+        
+        for col_name, col_val in row.items():
+            if col_name not in grouped[key]["spreadsheet_data"]:
+                grouped[key]["spreadsheet_data"][col_name] = col_val
+        
+        if isinstance(custom_mapping, dict):
+            for col_name, var_name in custom_mapping.items():
+                if col_name in row and row[col_name]:
+                    grouped[key]["custom_fields"][var_name] = str(row[col_name])
+        elif isinstance(custom_mapping, list):
+            for custom_item in custom_mapping:
+                if isinstance(custom_item, dict):
+                    col_name = custom_item.get("column_name", "")
+                    var_name = custom_item.get("variable_name", "")
+                    if col_name in row and row[col_name]:
+                        grouped[key]["custom_fields"][var_name] = str(row[col_name])
+        
+        if col_client and not use_codigo_ai_mode:
+            client_val = row.get(col_client, "")
+            if client_val is None:
+                client_val = ""
+            client_id = str(client_val).strip()
+            
+            if not client_id:
+                client_id = "Sem ID"
+            
+            if client_id not in grouped[key]["clients"]:
+                grouped[key]["clients"][client_id] = []
+            
+            recommendation = {
+                "ativo_saida": str(row.get(col_ativo_saida, "") or ""),
+                "valor_saida": format_currency(row.get(col_valor_saida, 0)),
+                "ativo_compra": str(row.get(col_ativo_compra, "") or ""),
+                "valor_compra": format_currency(row.get(col_valor_compra, 0))
             }
             
-            # Processa campos customizados
-            if custom_mapping:
-                for col_name, var_name in custom_mapping.items():
-                    if col_name in row and row[col_name]:
-                        grouped[assessor_id]["custom_fields"][var_name] = str(row[col_name])
-            
-            print(f"[GROUPING] New assessor: {assessor_id} -> nome={nome}")
-        
-        # Obtém o ID do cliente
-        client_val = row.get(col_client, "")
-        if client_val is None:
-            client_val = ""
-        client_id = str(client_val).strip()
-        
-        if not client_id:
-            client_id = "Sem ID"
-        
-        # Inicializa a lista de recomendações do cliente
-        if client_id not in grouped[assessor_id]["clients"]:
-            grouped[assessor_id]["clients"][client_id] = []
-        
-        # Cria a recomendação
-        recommendation = {
-            "ativo_saida": str(row.get(col_ativo_saida, "") or ""),
-            "valor_saida": format_currency(row.get(col_valor_saida, 0)),
-            "ativo_compra": str(row.get(col_ativo_compra, "") or ""),
-            "valor_compra": format_currency(row.get(col_valor_compra, 0))
-        }
-        
-        grouped[assessor_id]["clients"][client_id].append(recommendation)
-        grouped[assessor_id]["total_recommendations"] += 1
+            grouped[key]["clients"][client_id].append(recommendation)
+            grouped[key]["total_recommendations"] += 1
     
     print(f"[GROUPING] Final result: {len(grouped)} assessors")
     for aid, adata in grouped.items():
-        print(f"[GROUPING]   {aid}: nome={adata['nome_assessor']}, clients={len(adata['clients'])}, recs={adata['total_recommendations']}")
+        client_count = len(adata.get('clients', {}))
+        rec_count = adata.get('total_recommendations', 0)
+        print(f"[GROUPING]   {aid}: nome={adata['nome']}, clients={client_count}, recs={rec_count}")
     
     return grouped
 
@@ -904,62 +935,60 @@ def build_message(template_content: str, assessor_data: dict, custom_mapping: di
     Constrói a mensagem final substituindo as variáveis do template.
     
     Variáveis suportadas:
-    - {{nome_assessor}} - Nome do assessor
-    - {{assessor_id}} - ID do assessor
-    - {{data_atual}} - Data atual (DD/MM/YYYY)
-    - {{lista_clientes}} - Bloco formatado com recomendações por cliente
+    - Variáveis da base interna: {{codigo_ai}}, {{nome}}, {{email}}, {{telefone_whatsapp}}, 
+      {{unidade}}, {{equipe}}, {{broker_responsavel}}
+    - Variáveis da planilha importada: qualquer coluna detectada
     - Campos customizados definidos no mapeamento
+    - {{data_atual}} - Data atual (DD/MM/YYYY)
     """
-    # Garante que temos uma string válida
     if not template_content:
         template_content = DEFAULT_TEMPLATE_CONTENT
     
     message = str(template_content)
     
-    # Extrai dados do assessor
-    nome_assessor = str(assessor_data.get("nome_assessor", "") or "")
-    assessor_id_val = str(assessor_data.get("assessor_id", "") or "")
-    clients = assessor_data.get("clients", {})
-    custom_fields = assessor_data.get("custom_fields", {})
-    
     print(f"[BUILD_MSG] Input template (first 200 chars): {message[:200]}")
-    print(f"[BUILD_MSG] nome_assessor='{nome_assessor}'")
-    print(f"[BUILD_MSG] assessor_id='{assessor_id_val}'")
-    print(f"[BUILD_MSG] clients count={len(clients)}")
-    print(f"[BUILD_MSG] custom_fields={custom_fields}")
     
-    # SUBSTITUIÇÕES PRINCIPAIS
-    # Tenta múltiplas variações de formatação para máxima compatibilidade
+    base_vars = {
+        "codigo_ai": str(assessor_data.get("codigo_ai", "") or ""),
+        "nome": str(assessor_data.get("nome", "") or ""),
+        "email": str(assessor_data.get("email", "") or ""),
+        "telefone_whatsapp": str(assessor_data.get("telefone_whatsapp", "") or ""),
+        "telefone": str(assessor_data.get("telefone", "") or ""),
+        "unidade": str(assessor_data.get("unidade", "") or ""),
+        "equipe": str(assessor_data.get("equipe", "") or ""),
+        "broker_responsavel": str(assessor_data.get("broker_responsavel", "") or ""),
+        "nome_assessor": str(assessor_data.get("nome", "") or ""),
+        "assessor_id": str(assessor_data.get("codigo_ai", "") or ""),
+    }
     
-    # 1. Nome do assessor
-    for pattern in ["{{nome_assessor}}", "{{ nome_assessor }}", "{nome_assessor}"]:
-        message = message.replace(pattern, nome_assessor)
+    for var_name, value in base_vars.items():
+        for pattern in [f"{{{{{var_name}}}}}", f"{{{{ {var_name} }}}}", f"{{{var_name}}}"]:
+            message = message.replace(pattern, value)
     
-    # 2. ID do assessor
-    for pattern in ["{{assessor_id}}", "{{ assessor_id }}", "{assessor_id}"]:
-        message = message.replace(pattern, assessor_id_val)
-    
-    # 3. Data atual
     data_atual = datetime.now().strftime("%d/%m/%Y")
     for pattern in ["{{data_atual}}", "{{ data_atual }}", "{data_atual}"]:
         message = message.replace(pattern, data_atual)
     
-    # 4. Campos customizados
+    spreadsheet_data = assessor_data.get("spreadsheet_data", {})
+    if spreadsheet_data:
+        print(f"[BUILD_MSG] Spreadsheet data keys: {list(spreadsheet_data.keys())}")
+        for col_name, col_value in spreadsheet_data.items():
+            val_str = str(col_value) if col_value is not None else ""
+            for pattern in [f"{{{{{col_name}}}}}", f"{{{{ {col_name} }}}}", f"{{{col_name}}}"]:
+                message = message.replace(pattern, val_str)
+    
+    custom_fields = assessor_data.get("custom_fields", {})
     for var_name, value in custom_fields.items():
         val_str = str(value) if value else ""
         for pattern in [f"{{{{{var_name}}}}}", f"{{{{ {var_name} }}}}", f"{{{var_name}}}"]:
             message = message.replace(pattern, val_str)
     
-    # 5. Lista de clientes (mais importante!)
-    clients_block = build_clients_block(clients)
-    print(f"[BUILD_MSG] clients_block length={len(clients_block)}")
-    if clients_block:
-        print(f"[BUILD_MSG] clients_block preview: {clients_block[:300]}")
+    clients = assessor_data.get("clients", {})
+    if clients:
+        clients_block = build_clients_block(clients)
+        for pattern in ["{{lista_clientes}}", "{{ lista_clientes }}", "{lista_clientes}"]:
+            message = message.replace(pattern, clients_block)
     
-    for pattern in ["{{lista_clientes}}", "{{ lista_clientes }}", "{lista_clientes}"]:
-        message = message.replace(pattern, clients_block)
-    
-    # Remove variáveis não substituídas
     message = re.sub(r'\{\{[^}]+\}\}', '', message)
     
     print(f"[BUILD_MSG] Final message (first 300 chars): {message[:300]}")

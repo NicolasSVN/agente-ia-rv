@@ -190,10 +190,12 @@ class Assessor(Base):
     Base de Assessores.
     Armazena informações dos assessores para disparo de mensagens e identificação.
     Suporta LID do WhatsApp para identificação por privacidade.
+    O campo codigo_ai é obrigatório e usado para vincular campanhas à base de assessores.
     """
     __tablename__ = "assessores"
     
     id = Column(Integer, primary_key=True, index=True)
+    codigo_ai = Column(String(50), nullable=False, unique=True, index=True)
     nome = Column(String(255), nullable=False, index=True)
     email = Column(String(255), nullable=False, unique=True, index=True)
     telefone_whatsapp = Column(String(20), nullable=True, index=True)
