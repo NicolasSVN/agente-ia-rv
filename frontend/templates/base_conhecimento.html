@@ -681,8 +681,10 @@
                 const statusClass = doc.is_indexed ? 'indexed' : (doc.index_error ? 'error' : 'pending');
                 let statusText = doc.is_indexed ? 'Indexado' : (doc.index_error ? 'Erro' : 'Processando');
                 
-                if (!doc.is_indexed && !doc.index_error && doc.progress_total > 0) {
-                    statusText = `Pg ${doc.progress_current}/${doc.progress_total}`;
+                const progressCurrent = doc.progress_current || 0;
+                const progressTotal = doc.progress_total || 0;
+                if (!doc.is_indexed && !doc.index_error && progressTotal > 0) {
+                    statusText = `Pg ${progressCurrent}/${progressTotal}`;
                 }
                 
                 const date = new Date(doc.created_at).toLocaleDateString('pt-BR');
