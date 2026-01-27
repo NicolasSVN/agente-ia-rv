@@ -593,8 +593,21 @@ async def set_campaign_template(
     return {"message": "Template definido com sucesso"}
 
 
+class MessageBlocksModel(BaseModel):
+    header: Optional[str] = ""
+    content: Optional[str] = ""
+    footer: Optional[str] = ""
+
+
 class CustomTemplateRequest(BaseModel):
-    content: str
+    content: Optional[str] = None
+    message_blocks: Optional[MessageBlocksModel] = None
+    message_header: Optional[str] = None
+    message_content_template: Optional[str] = None
+    message_footer: Optional[str] = None
+    content_line_template: Optional[str] = None
+    group_by_client: Optional[bool] = False
+    client_id_column: Optional[str] = None
     attachment_url: Optional[str] = None
     attachment_type: Optional[str] = None
     attachment_filename: Optional[str] = None
@@ -612,10 +625,44 @@ async def set_custom_template(
     if not campaign:
         raise HTTPException(status_code=404, detail="Campanha não encontrada")
     
-    campaign.custom_template_content = request.content
-    campaign.attachment_url = request.attachment_url
-    campaign.attachment_type = request.attachment_type
-    campaign.attachment_filename = request.attachment_filename
+    header = None
+    content_template = None
+    footer = None
+    
+    if request.message_blocks:
+        header = request.message_blocks.header or ""
+        content_template = request.message_blocks.content or request.content_line_template or ""
+        footer = request.message_blocks.footer or ""
+    elif request.message_header is not None or request.message_content_template is not None or request.message_footer is not None:
+        header = request.message_header or ""
+        content_template = request.message_content_template or request.content_line_template or ""
+        footer = request.message_footer or ""
+    
+    if header is not None or content_template is not None or footer is not None:
+        campaign.message_header = header
+        campaign.message_content_template = content_template or request.content_line_template
+        campaign.message_footer = footer
+        campaign.group_by_client = 1 if request.group_by_client else 0
+        campaign.client_id_column = request.client_id_column
+        
+        full_content_parts = []
+        if header:
+            full_content_parts.append(header)
+        if content_template:
+            full_content_parts.append(content_template)
+        if footer:
+            full_content_parts.append(footer)
+        campaign.custom_template_content = "\n\n".join(full_content_parts) if full_content_parts else request.content
+    elif request.content:
+        campaign.custom_template_content = request.content
+    
+    if request.attachment_url is not None:
+        campaign.attachment_url = request.attachment_url
+    if request.attachment_type is not None:
+        campaign.attachment_type = request.attachment_type
+    if request.attachment_filename is not None:
+        campaign.attachment_filename = request.attachment_filename
+    
     db.commit()
     
     return {"message": "Template customizado salvo com sucesso"}
@@ -1033,6 +1080,101 @@ def build_clients_block(clients: dict) -> str:
     result = "\n".join(lines).strip()
     print(f"[BUILD_CLIENTS] Generated block with {len(lines)} lines for {len(clients)} clients")
     return result
+
+
+def build_structured_message(
+    header: str,
+    content_template: str,
+    footer: str,
+    assessor_data: dict,
+    data_rows: list,
+    group_by_client: bool = False,
+    client_id_column: str = None
+) -> str:
+    """
+    Constrói mensagem estruturada com 3 blocos: cabeçalho, conteúdo repetível, rodapé.
+    
+    Args:
+        header: Texto do cabeçalho (pode conter variáveis do assessor)
+        content_template: Template de uma linha de conteúdo (repetido para cada linha/grupo)
+        footer: Texto do rodapé (pode conter variáveis do assessor)
+        assessor_data: Dados do assessor (codigo_ai, nome, email, etc.)
+        data_rows: Lista de linhas de dados do arquivo
+        group_by_client: Se True, agrupa linhas por cliente antes de construir
+        client_id_column: Nome da coluna para agrupar por cliente
+    
+    Returns:
+        Mensagem final consolidada
+    """
+    from datetime import datetime
+    
+    def replace_vars(text: str, vars_dict: dict) -> str:
+        """Substitui variáveis no texto."""
+        if not text:
+            return ""
+        result = str(text)
+        for var_name, value in vars_dict.items():
+            val_str = str(value) if value is not None else ""
+            for pattern in [f"{{{{{var_name}}}}}", f"{{{{ {var_name} }}}}", f"{{{var_name}}}"]:
+                result = result.replace(pattern, val_str)
+        return result
+    
+    base_vars = {
+        "codigo_ai": str(assessor_data.get("codigo_ai", "") or ""),
+        "nome": str(assessor_data.get("nome", "") or ""),
+        "nome_assessor": str(assessor_data.get("nome", "") or ""),
+        "email": str(assessor_data.get("email", "") or ""),
+        "telefone_whatsapp": str(assessor_data.get("telefone_whatsapp", "") or ""),
+        "telefone": str(assessor_data.get("telefone", "") or ""),
+        "unidade": str(assessor_data.get("unidade", "") or ""),
+        "equipe": str(assessor_data.get("equipe", "") or ""),
+        "broker_responsavel": str(assessor_data.get("broker_responsavel", "") or ""),
+        "data_atual": datetime.now().strftime("%d/%m/%Y"),
+    }
+    
+    header_text = replace_vars(header or "", base_vars)
+    footer_text = replace_vars(footer or "", base_vars)
+    
+    content_lines = []
+    
+    if group_by_client and client_id_column and data_rows:
+        grouped = {}
+        for row in data_rows:
+            client_id = str(row.get(client_id_column, "Sem ID") or "Sem ID")
+            if client_id not in grouped:
+                grouped[client_id] = []
+            grouped[client_id].append(row)
+        
+        for client_id, client_rows in grouped.items():
+            content_lines.append(f"**Cliente: {client_id}**")
+            for row in client_rows:
+                row_vars = {**base_vars, **row}
+                line = replace_vars(content_template or "", row_vars)
+                if line.strip():
+                    content_lines.append(line)
+            content_lines.append("")
+    else:
+        for row in data_rows:
+            row_vars = {**base_vars, **row}
+            line = replace_vars(content_template or "", row_vars)
+            if line.strip():
+                content_lines.append(line)
+    
+    content_block = "\n".join(content_lines).strip()
+    
+    message_parts = []
+    if header_text.strip():
+        message_parts.append(header_text.strip())
+    if content_block:
+        message_parts.append(content_block)
+    if footer_text.strip():
+        message_parts.append(footer_text.strip())
+    
+    final_message = "\n\n".join(message_parts)
+    
+    final_message = re.sub(r'\{\{[^}]+\}\}', '', final_message)
+    
+    return final_message
 
 
 @router.post("/{campaign_id}/dispatch")

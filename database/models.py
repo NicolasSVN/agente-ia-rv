@@ -262,6 +262,7 @@ class Campaign(Base):
     """
     Campanha de disparo em massa de mensagens.
     Armazena dados do arquivo, mapeamento e status.
+    Suporta estrutura de 3 blocos: cabeçalho, conteúdo repetível, rodapé.
     """
     __tablename__ = "campaigns"
     
@@ -271,6 +272,11 @@ class Campaign(Base):
     source_type = Column(String(50), default="upload")
     template_id = Column(Integer, ForeignKey("message_templates.id"), nullable=True)
     custom_template_content = Column(Text, nullable=True)
+    message_header = Column(Text, nullable=True)
+    message_content_template = Column(Text, nullable=True)
+    message_footer = Column(Text, nullable=True)
+    group_by_client = Column(Integer, default=0)
+    client_id_column = Column(String(255), nullable=True)
     attachment_url = Column(String(1000), nullable=True)
     attachment_type = Column(String(50), nullable=True)
     attachment_filename = Column(String(255), nullable=True)
