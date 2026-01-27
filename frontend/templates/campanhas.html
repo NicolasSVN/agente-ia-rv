@@ -159,6 +159,18 @@
             background: rgba(79, 70, 229, 0.08);
         }
 
+        .upload-zone-content {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .upload-zone-success {
+            display: none;
+            flex-direction: column;
+            align-items: center;
+        }
+
         .upload-zone h3 {
             color: var(--text-primary);
             margin-bottom: 8px;
@@ -1142,20 +1154,24 @@
         });
 
         function setupDragDrop() {
-            const zone = document.getElementById('uploadZone');
-            zone.addEventListener('dragover', (e) => {
-                e.preventDefault();
-                zone.classList.add('drag-over');
-            });
-            zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
-            zone.addEventListener('drop', (e) => {
-                e.preventDefault();
-                zone.classList.remove('drag-over');
-                if (e.dataTransfer.files.length) {
-                    document.getElementById('fileInput').files = e.dataTransfer.files;
-                    handleFileSelect({ target: { files: e.dataTransfer.files } });
-                }
-            });
+            const zone = document.getElementById('uploadZoneLarge');
+            if (!zone) return;
+        }
+
+        function removeUploadedFile() {
+            const uploadZoneContent = document.getElementById('uploadZoneContent');
+            const uploadZoneSuccess = document.getElementById('uploadZoneSuccess');
+            const uploadZoneLarge = document.getElementById('uploadZoneLarge');
+            const fileInput = document.getElementById('fileInput');
+            
+            if (uploadZoneContent) uploadZoneContent.style.display = 'flex';
+            if (uploadZoneSuccess) uploadZoneSuccess.style.display = 'none';
+            if (uploadZoneLarge) uploadZoneLarge.classList.remove('has-file');
+            if (fileInput) fileInput.value = '';
+            
+            campaignId = null;
+            uploadedColumns = [];
+            validateStep1();
         }
 
         function handleDragOver(event) {
@@ -1184,17 +1200,19 @@
         function selectCampaignSource(source) {
             campaignSource = source;
             
-            document.getElementById('sourceUpload').classList.remove('selected');
-            document.getElementById('sourceBase').classList.remove('selected');
-            document.getElementById('uploadContainer').classList.remove('active');
-            document.getElementById('assessorSelectionContainer').classList.remove('active');
+            const uploadZone = document.getElementById('uploadZoneLarge');
+            const baseCard = document.getElementById('baseSelectionCard');
+            const assessorContainer = document.getElementById('assessorSelectionContainer');
+            
+            if (uploadZone) uploadZone.classList.remove('selected');
+            if (baseCard) baseCard.classList.remove('selected');
+            if (assessorContainer) assessorContainer.classList.remove('active');
             
             if (source === 'upload') {
-                document.getElementById('sourceUpload').classList.add('selected');
-                document.getElementById('uploadContainer').classList.add('active');
+                if (uploadZone) uploadZone.classList.add('selected');
             } else if (source === 'base') {
-                document.getElementById('sourceBase').classList.add('selected');
-                document.getElementById('assessorSelectionContainer').classList.add('active');
+                if (baseCard) baseCard.classList.add('selected');
+                if (assessorContainer) assessorContainer.classList.add('active');
                 loadAssessorsForSelection();
             }
             
@@ -1446,21 +1464,21 @@
                 campaignId = data.campaign_id;
                 uploadedColumns = data.columns;
 
-                document.getElementById('fileInfo').innerHTML = `
-                    <div class="file-info">
-                        <svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                        </svg>
-                        <div class="file-info-text">
-                            <strong>${data.filename}</strong>
-                            <span>${data.row_count} registros encontrados</span>
-                        </div>
-                    </div>
-                `;
-                document.getElementById('fileInfo').style.display = 'block';
+                const uploadZoneContent = document.getElementById('uploadZoneContent');
+                const uploadZoneSuccess = document.getElementById('uploadZoneSuccess');
+                const uploadedFileName = document.getElementById('uploadedFileName');
+                const uploadedFileInfo = document.getElementById('uploadedFileInfo');
+                const uploadZoneLarge = document.getElementById('uploadZoneLarge');
+                
+                if (uploadZoneContent) uploadZoneContent.style.display = 'none';
+                if (uploadZoneSuccess) uploadZoneSuccess.style.display = 'flex';
+                if (uploadedFileName) uploadedFileName.textContent = data.filename;
+                if (uploadedFileInfo) uploadedFileInfo.textContent = `${data.row_count} linhas detectadas`;
+                if (uploadZoneLarge) uploadZoneLarge.classList.add('has-file');
+                
                 validateStep1();
 
-                renderMappingGrid(data.columns, data.suggested_mapping);
+                renderMappingGrid(data.columns, data.suggested_mapping || {});
 
             } catch (error) {
                 alert(error.message);
