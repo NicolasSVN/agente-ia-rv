@@ -395,8 +395,7 @@ async def upload_document(
     return {
         "success": True,
         "message": f"Documento enviado com sucesso. {processing_msg}",
-        "document": DocumentResponse.model_validate(doc),
-        "smart_processing": smart_processing
+        "document": DocumentResponse.model_validate(doc)
     }
 
 
