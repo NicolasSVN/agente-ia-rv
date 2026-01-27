@@ -306,6 +306,10 @@
                     <input type="hidden" id="form-id">
                     <div class="grid grid-2" style="gap: 16px;">
                         <div class="form-group">
+                            <label class="form-label">Código AI</label>
+                            <input type="text" class="form-input" id="form-codigo-ai" placeholder="Código identificador único">
+                        </div>
+                        <div class="form-group">
                             <label class="form-label">Nome do Assessor *</label>
                             <input type="text" class="form-input" id="form-nome" required>
                         </div>
@@ -595,6 +599,7 @@
             document.getElementById('form-title').textContent = assessor ? 'Editar Assessor' : 'Novo Assessor';
             
             document.getElementById('form-id').value = assessor?.id || '';
+            document.getElementById('form-codigo-ai').value = assessor?.codigo_ai || '';
             document.getElementById('form-nome').value = assessor?.nome || '';
             document.getElementById('form-email').value = assessor?.email || '';
             document.getElementById('form-telefone').value = assessor?.telefone_whatsapp || '';
@@ -650,6 +655,7 @@
             });
 
             const data = {
+                codigo_ai: document.getElementById('form-codigo-ai').value || null,
                 nome: document.getElementById('form-nome').value,
                 email: document.getElementById('form-email').value,
                 telefone_whatsapp: document.getElementById('form-telefone').value || null,
