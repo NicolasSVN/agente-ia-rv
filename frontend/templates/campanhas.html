@@ -1093,17 +1093,6 @@ Equipe de Gestao" oninput="updateMessagePreview()"></textarea>
                             </div>
                         </div>
 
-                        <!-- Opcao de Agrupamento (so aparece para upload) -->
-                        <div class="grouping-option" id="groupingOption" style="display: none;">
-                            <label>
-                                <input type="checkbox" id="groupByClient" onchange="toggleGroupingOption()">
-                                <div class="grouping-text">
-                                    <h5>Agrupar conteudo por cliente</h5>
-                                    <p>Se marcado, as linhas serao agrupadas por ID do Cliente antes de serem inseridas no conteudo principal. Isso permite enviar todas as recomendacoes de um cliente em uma unica mensagem.</p>
-                                </div>
-                            </label>
-                        </div>
-
                         <!-- Mapeamento de Campos (so aparece para upload) -->
                         <div class="mapping-section" id="mappingSection" style="display: none;">
                             <h4>Configuracao da Planilha</h4>
@@ -1191,12 +1180,12 @@ Equipe de Gestao" oninput="updateMessagePreview()"></textarea>
                                     Variaveis da Base de Assessores
                                 </div>
                                 <div class="variables-list" id="assessorVariables">
-                                    <span class="variable-tag assessor" onclick="insertVariableLegacy('nome_assessor')">{{nome_assessor}}</span>
-                                    <span class="variable-tag assessor" onclick="insertVariableLegacy('codigo_ai')">{{codigo_ai}}</span>
-                                    <span class="variable-tag assessor" onclick="insertVariableLegacy('email')">{{email}}</span>
-                                    <span class="variable-tag assessor" onclick="insertVariableLegacy('telefone_whatsapp')">{{telefone_whatsapp}}</span>
-                                    <span class="variable-tag assessor" onclick="insertVariableLegacy('unidade')">{{unidade}}</span>
-                                    <span class="variable-tag assessor" onclick="insertVariableLegacy('equipe')">{{equipe}}</span>
+                                    <span class="variable-tag assessor" onclick="insertVariableLegacy('nome_assessor')">{<!-- -->{nome_assessor}<!-- -->}</span>
+                                    <span class="variable-tag assessor" onclick="insertVariableLegacy('codigo_ai')">{<!-- -->{codigo_ai}<!-- -->}</span>
+                                    <span class="variable-tag assessor" onclick="insertVariableLegacy('email')">{<!-- -->{email}<!-- -->}</span>
+                                    <span class="variable-tag assessor" onclick="insertVariableLegacy('telefone_whatsapp')">{<!-- -->{telefone_whatsapp}<!-- -->}</span>
+                                    <span class="variable-tag assessor" onclick="insertVariableLegacy('unidade')">{<!-- -->{unidade}<!-- -->}</span>
+                                    <span class="variable-tag assessor" onclick="insertVariableLegacy('equipe')">{<!-- -->{equipe}<!-- -->}</span>
                                 </div>
                             </div>
 
