@@ -1106,9 +1106,9 @@ Equipe de Gestao" oninput="updateMessagePreview()"></textarea>
 
                         <!-- Mapeamento de Campos (so aparece para upload) -->
                         <div class="mapping-section" id="mappingSection" style="display: none;">
-                            <h4>Mapeamento de Campos</h4>
+                            <h4>Configuracao da Planilha</h4>
                             <p style="color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 16px;">
-                                Associe as colunas da sua planilha aos campos do sistema.
+                                Configure como sua planilha sera processada para o disparo.
                             </p>
                             
                             <!-- Campo obrigatorio de vinculo com assessor -->
@@ -1121,7 +1121,7 @@ Equipe de Gestao" oninput="updateMessagePreview()"></textarea>
                                     <span style="background: #ef4444; color: white; font-size: 0.7rem; padding: 2px 6px; border-radius: 4px;">Obrigatorio</span>
                                 </div>
                                 <p style="font-size: 0.85rem; color: #0369a1; margin-bottom: 12px;">
-                                    Selecione a coluna da planilha que contem o codigo do assessor para vincular com a base e obter o telefone de disparo.
+                                    Selecione a coluna que identifica o assessor. O telefone de disparo sera obtido da base de assessores.
                                 </p>
                                 <div style="display: flex; gap: 16px; align-items: center;">
                                     <label style="font-weight: 500; color: #0369a1; min-width: 180px;">Coluna com Codigo do Assessor:</label>
@@ -1135,22 +1135,44 @@ Equipe de Gestao" oninput="updateMessagePreview()"></textarea>
                                 </p>
                             </div>
                             
-                            <div class="mapping-grid" id="mappingGrid">
-                                <!-- Campos serao inseridos via JS -->
-                            </div>
-
-                            <div class="custom-fields-section">
-                                <h5 style="margin-bottom: 12px;">Campos Customizados</h5>
-                                <p style="color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 16px;">
-                                    Adicione campos extras da sua planilha para usar como variaveis na mensagem.
-                                </p>
-                                <div id="customFieldsContainer"></div>
-                                <button class="btn btn-secondary btn-sm" onclick="addCustomField()">
-                                    <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
+                            <!-- Agrupamento por cliente (opcional) -->
+                            <div class="client-grouping-section" style="background: #faf5ff; border: 1px solid #e9d5ff; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
+                                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
+                                    <svg width="20" height="20" fill="none" stroke="#9333ea" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/>
                                     </svg>
-                                    Adicionar Campo
-                                </button>
+                                    <h5 style="margin: 0; color: #7e22ce;">Agrupar por Cliente</h5>
+                                    <span style="background: #9333ea; color: white; font-size: 0.7rem; padding: 2px 6px; border-radius: 4px;">Opcional</span>
+                                </div>
+                                <p style="font-size: 0.85rem; color: #7e22ce; margin-bottom: 12px;">
+                                    Ative para combinar varias linhas do mesmo cliente em uma unica mensagem.
+                                </p>
+                                <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; margin-bottom: 12px;">
+                                    <input type="checkbox" id="groupByClientCheck" onchange="toggleClientGrouping()">
+                                    <span style="font-weight: 500; color: #7e22ce;">Agrupar conteudo por cliente</span>
+                                </label>
+                                <div id="clientColumnWrapper" style="display: none;">
+                                    <div style="display: flex; gap: 16px; align-items: center;">
+                                        <label style="font-weight: 500; color: #7e22ce; min-width: 180px;">Coluna com ID do Cliente:</label>
+                                        <select id="clientIdColumn" class="form-select" style="flex: 1;">
+                                            <option value="">Selecione uma coluna...</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Info sobre variaveis -->
+                            <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 16px;">
+                                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                                    <svg width="20" height="20" fill="none" stroke="#16a34a" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                                    </svg>
+                                    <h5 style="margin: 0; color: #16a34a;">Variaveis Disponiveis</h5>
+                                </div>
+                                <p style="font-size: 0.85rem; color: #16a34a; margin: 0;">
+                                    Todas as colunas da sua planilha estarao disponiveis como variaveis no passo 3. 
+                                    Use o botao <strong>{x}</strong> para inserir variaveis na mensagem.
+                                </p>
                             </div>
                         </div>
 
@@ -2046,22 +2068,47 @@ Equipe de Gestao" oninput="updateMessagePreview()"></textarea>
 
         function updateColumnMapping() {
             columnMapping = {
-                assessor_id: document.getElementById('mapping_assessor_id')?.value || '',
-                client_id: document.getElementById('mapping_client_id')?.value || ''
+                codigo_ai: document.getElementById('assessorCodeColumn')?.value || '',
+                client_id: document.getElementById('clientIdColumn')?.value || ''
             };
+        }
+
+        function toggleClientGrouping() {
+            const checkbox = document.getElementById('groupByClientCheck');
+            const wrapper = document.getElementById('clientColumnWrapper');
+            groupByClient = checkbox.checked;
             
-            const clientIdItem = document.getElementById('mappingItem_client_id');
-            if (clientIdItem) {
-                if (groupByClient) {
-                    clientIdItem.querySelector('label').innerHTML = 'ID do Cliente <span class="required">*</span>';
-                } else {
-                    clientIdItem.querySelector('label').innerHTML = 'ID do Cliente <span class="optional">(Obrigatorio se agrupar por cliente)</span>';
-                }
+            if (groupByClient) {
+                wrapper.style.display = 'block';
+                populateClientIdSelect();
+            } else {
+                wrapper.style.display = 'none';
+            }
+            updateColumnMapping();
+        }
+        
+        function populateClientIdSelect() {
+            const select = document.getElementById('clientIdColumn');
+            select.innerHTML = '<option value="">Selecione uma coluna...</option>';
+            
+            uploadedColumns.forEach(col => {
+                const option = document.createElement('option');
+                option.value = col;
+                option.textContent = col;
+                select.appendChild(option);
+            });
+            
+            const keywords = ['cliente', 'client', 'cpf', 'cnpj', 'id_cliente'];
+            const matchedCol = uploadedColumns.find(col => 
+                keywords.some(kw => col.toLowerCase().includes(kw))
+            );
+            if (matchedCol) {
+                select.value = matchedCol;
             }
         }
 
         function toggleGroupingOption() {
-            groupByClient = document.getElementById('groupByClient').checked;
+            groupByClient = document.getElementById('groupByClient')?.checked || document.getElementById('groupByClientCheck')?.checked || false;
             updateColumnMapping();
         }
 
@@ -2234,9 +2281,9 @@ Equipe de Gestao" oninput="updateMessagePreview()"></textarea>
                 }
                 
                 if (groupByClient) {
-                    const clientId = document.getElementById('mapping_client_id')?.value;
+                    const clientId = document.getElementById('clientIdColumn')?.value;
                     if (!clientId) {
-                        alert('Voce marcou "Agrupar por cliente", por favor mapeie o campo "ID do Cliente".');
+                        alert('Voce marcou "Agrupar por cliente", por favor selecione a coluna com ID do Cliente.');
                         return;
                     }
                 }
