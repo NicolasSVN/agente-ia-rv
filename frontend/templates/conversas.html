@@ -660,8 +660,27 @@
             window.location.href = '/login';
         }
 
+        let syncDone = false;
+
+        async function syncChats() {
+            if (syncDone) return;
+            try {
+                await fetch('/api/conversations/sync', { 
+                    method: 'POST',
+                    credentials: 'include' 
+                });
+                syncDone = true;
+            } catch (error) {
+                console.error('Erro ao sincronizar chats:', error);
+            }
+        }
+
         async function loadConversations() {
             try {
+                if (!syncDone) {
+                    await syncChats();
+                }
+
                 const search = document.getElementById('searchInput').value;
                 let url = '/api/conversations/?limit=100';
                 if (search) url += `&search=${encodeURIComponent(search)}`;

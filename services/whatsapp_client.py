@@ -347,6 +347,86 @@ class ZAPIClient:
                 return {"success": response.status_code == 200, "raw_response": data}
             except httpx.HTTPError as e:
                 return {"success": False, "error": str(e)}
+    
+    async def get_chats(self, page: int = 1, page_size: int = 50) -> dict:
+        """
+        Busca todos os chats da instância Z-API.
+        
+        Args:
+            page: Número da página (começa em 1)
+            page_size: Quantidade de chats por página
+            
+        Returns:
+            Lista de chats com informações de contato
+        """
+        url = f"{self.base_url}/chats"
+        params = {"page": page, "pageSize": page_size}
+        
+        async with httpx.AsyncClient() as client:
+            try:
+                response = await client.get(url, headers=self._get_headers(), params=params, timeout=30.0)
+                
+                if response.status_code == 200:
+                    data = response.json() if response.content else []
+                    return {
+                        "success": True,
+                        "chats": data if isinstance(data, list) else [],
+                        "page": page,
+                        "page_size": page_size
+                    }
+                else:
+                    data = response.json() if response.content else {}
+                    return {
+                        "success": False,
+                        "error": data.get("error", f"HTTP {response.status_code}"),
+                        "chats": []
+                    }
+            except httpx.HTTPError as e:
+                return {"success": False, "error": str(e), "chats": []}
+    
+    async def get_all_chats(self, max_pages: int = 10) -> dict:
+        """
+        Busca todos os chats paginando automaticamente.
+        
+        Args:
+            max_pages: Número máximo de páginas a buscar
+            
+        Returns:
+            Lista completa de chats
+        """
+        all_chats = []
+        page = 1
+        last_error = None
+        
+        while page <= max_pages:
+            result = await self.get_chats(page=page, page_size=50)
+            
+            if not result.get("success"):
+                last_error = result.get("error", "Erro desconhecido")
+                if page == 1:
+                    return {
+                        "success": False,
+                        "error": last_error,
+                        "chats": []
+                    }
+                break
+                
+            chats = result.get("chats", [])
+            if not chats:
+                break
+                
+            all_chats.extend(chats)
+            
+            if len(chats) < 50:
+                break
+                
+            page += 1
+        
+        return {
+            "success": True,
+            "chats": all_chats,
+            "total": len(all_chats)
+        }
 
 
 zapi_client = ZAPIClient()

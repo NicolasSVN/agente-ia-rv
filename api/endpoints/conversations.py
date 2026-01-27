@@ -124,6 +124,91 @@ async def list_conversations(
     return result
 
 
+@router.post("/sync")
+async def sync_chats_from_zapi(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Sincroniza chats da Z-API com o banco de dados.
+    Chamado automaticamente ao abrir a página de Conversas.
+    """
+    from services.whatsapp_client import zapi_client
+    
+    if not zapi_client.instance_id or not zapi_client.token:
+        return {"success": False, "error": "Z-API não configurada", "synced": 0}
+    
+    result = await zapi_client.get_all_chats(max_pages=5)
+    
+    if not result.get("success"):
+        return {"success": False, "error": result.get("error", "Erro ao buscar chats"), "synced": 0}
+    
+    chats = result.get("chats", [])
+    synced_count = 0
+    
+    for chat in chats:
+        if chat.get("isGroup"):
+            continue
+            
+        phone = chat.get("phone", "")
+        if not phone:
+            continue
+        
+        phone = normalize_phone(phone)
+        
+        existing = db.query(Conversation).filter(Conversation.phone == phone).first()
+        
+        if existing:
+            if chat.get("name") and not existing.contact_name:
+                existing.contact_name = chat.get("name")
+            if chat.get("profileThumbnail"):
+                existing.contact_photo = chat.get("profileThumbnail")
+            if chat.get("lastMessageTime"):
+                try:
+                    last_msg_ts = int(chat.get("lastMessageTime"))
+                    last_msg_dt = datetime.fromtimestamp(last_msg_ts)
+                    if not existing.last_message_at or last_msg_dt > existing.last_message_at:
+                        existing.last_message_at = last_msg_dt
+                except (ValueError, TypeError):
+                    pass
+        else:
+            assessor = db.query(Assessor).filter(
+                Assessor.telefone_whatsapp.contains(phone)
+            ).first()
+            
+            last_msg_at = None
+            if chat.get("lastMessageTime"):
+                try:
+                    last_msg_at = datetime.fromtimestamp(int(chat.get("lastMessageTime")))
+                except (ValueError, TypeError):
+                    last_msg_at = datetime.utcnow()
+            
+            new_conv = Conversation(
+                phone=phone,
+                contact_name=chat.get("name"),
+                contact_photo=chat.get("profileThumbnail"),
+                assessor_id=assessor.id if assessor else None,
+                status=ConversationStatus.BOT_ACTIVE.value,
+                last_message_at=last_msg_at,
+                unread_count=int(chat.get("unread", 0)) if chat.get("unread") else 0
+            )
+            db.add(new_conv)
+            synced_count += 1
+    
+    try:
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        return {"success": False, "error": str(e), "synced": 0}
+    
+    return {
+        "success": True,
+        "message": f"Sincronização concluída",
+        "synced": synced_count,
+        "total_chats": len(chats)
+    }
+
+
 @router.post("/start")
 async def start_new_conversation(
     request: StartConversationRequest,

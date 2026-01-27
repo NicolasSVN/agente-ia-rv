@@ -387,6 +387,7 @@ class Conversation(Base):
     id = Column(Integer, primary_key=True, index=True)
     phone = Column(String(20), nullable=False, unique=True, index=True)
     contact_name = Column(String(255), nullable=True)
+    contact_photo = Column(String(512), nullable=True)
     assessor_id = Column(Integer, ForeignKey("assessores.id"), nullable=True)
     status = Column(String(30), default=ConversationStatus.BOT_ACTIVE.value)
     assigned_to = Column(Integer, ForeignKey("users.id"), nullable=True)
