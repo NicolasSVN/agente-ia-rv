@@ -788,14 +788,28 @@ async def preview_campaign(
                 ascii_text = normalized.encode('ASCII', 'ignore').decode('ASCII')
                 return ascii_text.lower().replace(' ', '_').replace('-', '_')
             
+            def is_formatted_currency(value) -> bool:
+                """Verifica se o valor já está formatado como moeda."""
+                if not isinstance(value, str):
+                    return False
+                return value.strip().startswith("R$")
+            
             def replace_vars(text, data):
                 result = text
                 normalized_data = {}
                 for key, value in data.items():
                     if isinstance(value, (dict, list)):
                         continue
-                    normalized_data[normalize_var_name(key)] = str(value) if value else ""
-                    normalized_data[str(key)] = str(value) if value else ""
+                    norm_key = normalize_var_name(key)
+                    str_value = str(value) if value else ""
+                    
+                    if norm_key in normalized_data:
+                        existing = normalized_data[norm_key]
+                        if is_formatted_currency(existing) and not is_formatted_currency(str_value):
+                            continue
+                    
+                    normalized_data[norm_key] = str_value
+                    normalized_data[str(key)] = str_value
                 
                 import re
                 pattern = r'\{\{\s*([^}]+?)\s*\}\}'
@@ -1238,8 +1252,14 @@ def build_structured_message(
         ascii_text = normalized.encode('ASCII', 'ignore').decode('ASCII')
         return ascii_text.lower().replace(' ', '_').replace('-', '_')
     
+    def is_formatted_currency(value) -> bool:
+        """Verifica se o valor já está formatado como moeda."""
+        if not isinstance(value, str):
+            return False
+        return value.strip().startswith("R$")
+    
     def replace_vars(text: str, vars_dict: dict) -> str:
-        """Substitui variáveis no texto, normalizando acentos."""
+        """Substitui variáveis no texto, normalizando acentos e priorizando valores formatados."""
         if not text:
             return ""
         result = str(text)
@@ -1247,8 +1267,16 @@ def build_structured_message(
         for key, value in vars_dict.items():
             if isinstance(value, (dict, list)):
                 continue
-            normalized_data[normalize_var_name(key)] = str(value) if value is not None else ""
-            normalized_data[str(key)] = str(value) if value is not None else ""
+            norm_key = normalize_var_name(key)
+            str_value = str(value) if value is not None else ""
+            
+            if norm_key in normalized_data:
+                existing = normalized_data[norm_key]
+                if is_formatted_currency(existing) and not is_formatted_currency(str_value):
+                    continue
+            
+            normalized_data[norm_key] = str_value
+            normalized_data[str(key)] = str_value
         
         pattern = r'\{\{\s*([^}]+?)\s*\}\}'
         def replacer(match):
