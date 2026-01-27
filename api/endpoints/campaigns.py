@@ -541,11 +541,20 @@ async def create_campaign_from_base(
     }
 
 
+class CampaignMappingRequest(BaseModel):
+    column_mapping: Optional[dict] = None
+    custom_fields_mapping: Optional[dict] = None
+    message_template: Optional[str] = None
+    message_blocks: Optional[dict] = None
+    group_by_client: Optional[bool] = False
+    content_line_template: Optional[str] = None
+    assessor_code_column: Optional[str] = None
+
+
 @router.put("/{campaign_id}/mapping")
 async def update_campaign_mapping(
     campaign_id: int,
-    column_mapping: dict,
-    custom_fields: Optional[List[dict]] = None,
+    request: CampaignMappingRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin_or_gestao())
 ):
@@ -554,16 +563,29 @@ async def update_campaign_mapping(
     if not campaign:
         raise HTTPException(status_code=404, detail="Campanha não encontrada")
     
-    required_fields = ["assessor_id", "assessor_email", "client_id", "ativo_saida", "valor_saida", "ativo_compra", "valor_compra"]
-    missing = [f for f in required_fields if f not in column_mapping or not column_mapping[f]]
-    if missing:
-        raise HTTPException(status_code=400, detail=f"Campos obrigatórios faltando: {', '.join(missing)}")
+    if request.column_mapping:
+        campaign.column_mapping = json.dumps(request.column_mapping)
     
-    campaign.column_mapping = json.dumps(column_mapping)
+    if request.custom_fields_mapping:
+        campaign.custom_fields_mapping = json.dumps(request.custom_fields_mapping)
     
-    if custom_fields:
-        custom_mapping = {cf["column_name"]: cf["variable_name"] for cf in custom_fields}
-        campaign.custom_fields_mapping = json.dumps(custom_mapping)
+    if request.message_template:
+        campaign.message_content = request.message_template
+    
+    if request.message_blocks:
+        campaign.message_header = request.message_blocks.get("header", "")
+        campaign.message_content_template = request.message_blocks.get("content", "")
+        campaign.message_footer = request.message_blocks.get("footer", "")
+    
+    if request.content_line_template:
+        campaign.message_content_template = request.content_line_template
+    
+    campaign.group_by_client = 1 if request.group_by_client else 0
+    
+    if request.assessor_code_column:
+        mapping = json.loads(campaign.column_mapping or "{}")
+        mapping["codigo_ai"] = request.assessor_code_column
+        campaign.column_mapping = json.dumps(mapping)
     
     db.commit()
     

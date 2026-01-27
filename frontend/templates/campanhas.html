@@ -1111,6 +1111,30 @@ Equipe de Gestao" oninput="updateMessagePreview()"></textarea>
                                 Associe as colunas da sua planilha aos campos do sistema.
                             </p>
                             
+                            <!-- Campo obrigatorio de vinculo com assessor -->
+                            <div class="assessor-link-section" style="background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
+                                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
+                                    <svg width="20" height="20" fill="none" stroke="#0284c7" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/>
+                                    </svg>
+                                    <h5 style="margin: 0; color: #0369a1;">Vinculo com Base de Assessores</h5>
+                                    <span style="background: #ef4444; color: white; font-size: 0.7rem; padding: 2px 6px; border-radius: 4px;">Obrigatorio</span>
+                                </div>
+                                <p style="font-size: 0.85rem; color: #0369a1; margin-bottom: 12px;">
+                                    Selecione a coluna da planilha que contem o codigo do assessor para vincular com a base e obter o telefone de disparo.
+                                </p>
+                                <div style="display: flex; gap: 16px; align-items: center;">
+                                    <label style="font-weight: 500; color: #0369a1; min-width: 180px;">Coluna com Codigo do Assessor:</label>
+                                    <select id="assessorCodeColumn" class="form-select" style="flex: 1;" onchange="validateAssessorLink()">
+                                        <option value="">Selecione uma coluna...</option>
+                                    </select>
+                                </div>
+                                <p id="assessorLinkWarning" style="display: none; font-size: 0.8rem; color: #dc2626; margin-top: 8px;">
+                                    <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="vertical-align: middle;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+                                    Selecione a coluna para poder continuar.
+                                </p>
+                            </div>
+                            
                             <div class="mapping-grid" id="mappingGrid">
                                 <!-- Campos serao inseridos via JS -->
                             </div>
@@ -1511,14 +1535,32 @@ Equipe de Gestao" oninput="updateMessagePreview()"></textarea>
             const listContainer = document.getElementById(listId);
             listContainer.innerHTML = '';
             
-            const vars = getAvailableVariablesForBlock(blockType);
-            
-            if (vars.length === 0) {
+            if (!campaignSource) {
                 listContainer.innerHTML = '<div class="var-dropdown-empty">Nenhuma variavel disponivel.<br>Selecione uma origem de dados primeiro.</div>';
                 return;
             }
             
-            vars.forEach(varName => {
+            if (campaignSource === 'upload' && availableVariables.length > 0) {
+                const uploadHeader = document.createElement('div');
+                uploadHeader.className = 'var-dropdown-header';
+                uploadHeader.textContent = 'Variaveis da Planilha';
+                listContainer.appendChild(uploadHeader);
+                
+                availableVariables.forEach(varName => {
+                    const item = document.createElement('div');
+                    item.className = 'var-dropdown-item';
+                    item.innerHTML = `<code>` + '{{' + varName + '}}' + `</code> <span style="color: var(--text-secondary); font-size: 0.8rem;">${getVariableLabel(varName)}</span>`;
+                    item.onclick = () => insertVariable(blockType, varName);
+                    listContainer.appendChild(item);
+                });
+            }
+            
+            const baseHeader = document.createElement('div');
+            baseHeader.className = 'var-dropdown-header';
+            baseHeader.textContent = 'Variaveis da Base de Assessores';
+            listContainer.appendChild(baseHeader);
+            
+            assessorBaseVariables.forEach(varName => {
                 const item = document.createElement('div');
                 item.className = 'var-dropdown-item';
                 item.innerHTML = `<code>` + '{{' + varName + '}}' + `</code> <span style="color: var(--text-secondary); font-size: 0.8rem;">${getVariableLabel(varName)}</span>`;
@@ -1528,10 +1570,11 @@ Equipe de Gestao" oninput="updateMessagePreview()"></textarea>
         }
 
         function getAvailableVariablesForBlock(blockType) {
-            if (dataSource === 'base') {
+            if (campaignSource === 'base') {
                 return assessorBaseVariables;
-            } else if (dataSource === 'upload' && availableVariables.length > 0) {
-                return availableVariables;
+            } else if (campaignSource === 'upload') {
+                const uploadVars = availableVariables.length > 0 ? availableVariables : [];
+                return [...new Set([...uploadVars, ...assessorBaseVariables])];
             }
             return [];
         }
@@ -2032,9 +2075,50 @@ Equipe de Gestao" oninput="updateMessagePreview()"></textarea>
                     const varName = col.toLowerCase().replace(/\s+/g, '_');
                     return '<span class="variable-tag planilha" onclick="insertVariable(\'' + varName + '\')">' + '{' + '{' + varName + '}' + '}' + '</span>';
                 }).join('');
+                
+                populateAssessorCodeSelect();
             } else {
                 section.style.display = 'none';
             }
+        }
+        
+        function populateAssessorCodeSelect() {
+            const select = document.getElementById('assessorCodeColumn');
+            select.innerHTML = '<option value="">Selecione uma coluna...</option>';
+            
+            uploadedColumns.forEach(col => {
+                const option = document.createElement('option');
+                option.value = col;
+                option.textContent = col;
+                select.appendChild(option);
+            });
+            
+            const keywords = ['codigo', 'code', 'cod', 'id', 'assessor', 'ai'];
+            const matchedCol = uploadedColumns.find(col => 
+                keywords.some(kw => col.toLowerCase().includes(kw))
+            );
+            if (matchedCol) {
+                select.value = matchedCol;
+            }
+        }
+        
+        let assessorCodeColumnSelected = null;
+        
+        function validateAssessorLink() {
+            const select = document.getElementById('assessorCodeColumn');
+            const warning = document.getElementById('assessorLinkWarning');
+            
+            assessorCodeColumnSelected = select.value || null;
+            
+            if (assessorCodeColumnSelected) {
+                warning.style.display = 'none';
+                select.style.borderColor = '#10b981';
+            } else {
+                warning.style.display = 'block';
+                select.style.borderColor = '#ef4444';
+            }
+            
+            validateStep2();
         }
 
         function addCustomField() {
@@ -2139,9 +2223,11 @@ Equipe de Gestao" oninput="updateMessagePreview()"></textarea>
 
         async function handleStep2Next() {
             if (campaignSource === 'upload') {
-                const assessorId = document.getElementById('mapping_assessor_id')?.value;
-                if (!assessorId) {
-                    alert('Por favor, mapeie o campo "ID do Assessor".');
+                const assessorCodeColumn = document.getElementById('assessorCodeColumn')?.value;
+                if (!assessorCodeColumn) {
+                    document.getElementById('assessorLinkWarning').style.display = 'block';
+                    document.getElementById('assessorCodeColumn').style.borderColor = '#ef4444';
+                    alert('Por favor, selecione a coluna que contem o codigo do assessor para vincular com a base.');
                     return;
                 }
                 
@@ -2173,6 +2259,8 @@ Equipe de Gestao" oninput="updateMessagePreview()"></textarea>
             ].join('\n\n');
             
             try {
+                const assessorCodeColumn = document.getElementById('assessorCodeColumn')?.value;
+                
                 const response = await fetch(`${API_BASE}/${campaignId}/mapping`, {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
@@ -2182,7 +2270,8 @@ Equipe de Gestao" oninput="updateMessagePreview()"></textarea>
                         message_template: fullTemplate,
                         message_blocks: messageBlocks,
                         group_by_client: groupByClient,
-                        content_line_template: messageBlocks.content
+                        content_line_template: messageBlocks.content,
+                        assessor_code_column: assessorCodeColumn
                     }),
                     credentials: 'include'
                 });
