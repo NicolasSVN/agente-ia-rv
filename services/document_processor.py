@@ -195,12 +195,12 @@ Responda APENAS com o JSON, sem markdown ou explicações."""
         for i, image in enumerate(images):
             print(f"[DOC_PROCESSOR] Processando página {i + 1}/{total_pages}...")
             
-            if progress_callback:
-                progress_callback(i + 1, total_pages)
-            
             page_result = self.analyze_page(image, document_title)
             page_result["page_number"] = i + 1
             pages_data.append(page_result)
+            
+            if progress_callback:
+                progress_callback(i + 1, total_pages)
             
             for fact in page_result.get("facts", []):
                 prefixed_fact = f"[{document_title} - Página {i + 1}] {fact}"
