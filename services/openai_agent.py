@@ -232,12 +232,16 @@ Stevan existe para aumentar a eficiência do assessor e gerar mais valor ao clie
         
         if config and config.get("personality"):
             db_personality = config["personality"].strip()
-            if db_personality and not db_personality.startswith("Você é Stevan"):
+            stevan_markers = ["Você é Stevan", "IDENTIDADE E PAPEL", "broker de suporte", "área de Renda Variável"]
+            is_stevan_base = any(marker in db_personality[:200] for marker in stevan_markers)
+            if db_personality and not is_stevan_base:
                 base_prompt += f"\n\nINSTRUÇÕES ADICIONAIS:\n{db_personality}"
         
         if config and config.get("restrictions"):
             db_restrictions = config["restrictions"].strip()
-            if db_restrictions:
+            restriction_markers = ["LIMITES OPERACIONAIS", "O QUE STEVAN NUNCA FAZ", "NÃO cria estratégias novas"]
+            is_stevan_restrictions = any(marker in db_restrictions[:200] for marker in restriction_markers)
+            if db_restrictions and not is_stevan_restrictions:
                 base_prompt += f"\n\nRESTRIÇÕES ADICIONAIS:\n{db_restrictions}"
         
         return get_enhanced_system_prompt(base_prompt)
