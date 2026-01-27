@@ -1530,6 +1530,7 @@ Equipe de Gestao" oninput="updateMessagePreview()"></textarea>
         function populateVarDropdown(blockType) {
             const listId = `varList${blockType.charAt(0).toUpperCase() + blockType.slice(1)}`;
             const listContainer = document.getElementById(listId);
+            if (!listContainer) return;
             listContainer.innerHTML = '';
             
             if (!campaignSource) {

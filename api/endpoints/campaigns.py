@@ -897,6 +897,18 @@ def group_recommendations_by_assessor(data: List[dict], mapping: dict, custom_ma
     col_ativo_compra = mapping.get("ativo_compra", "")
     col_valor_compra = mapping.get("valor_compra", "")
     
+    def find_column(row, possible_names):
+        """Busca uma coluna pelos possíveis nomes (com e sem acentos)."""
+        for name in possible_names:
+            if name in row:
+                return name
+        return None
+    
+    ativo_saida_names = ["Ativo saída", "Ativo Saída", "ativo_saida", "ativo saida", "ATIVO SAÍDA", "Ativo Saida"]
+    valor_saida_names = ["Valor saída", "Valor Saída", "valor_saida", "valor saida", "VALOR SAÍDA", "Valor Saida"]
+    ativo_compra_names = ["Ativo compra", "Ativo Compra", "ativo_compra", "ativo compra", "ATIVO COMPRA", "Ativo Entrada"]
+    valor_compra_names = ["Valor compra", "Valor Compra", "valor_compra", "valor compra", "VALOR COMPRA", "Valor Entrada"]
+    
     use_codigo_ai_mode = bool(col_codigo_ai) and not col_assessor
     
     print(f"[GROUPING] Column mapping: codigo_ai={col_codigo_ai}, assessor={col_assessor}")
@@ -1012,17 +1024,21 @@ def group_recommendations_by_assessor(data: List[dict], mapping: dict, custom_ma
             if client_id not in grouped[key]["clients"]:
                 grouped[key]["clients"][client_id] = {"client_id": client_id, "recommendations": []}
             
+            real_col_ativo_saida = col_ativo_saida or find_column(row, ativo_saida_names)
+            real_col_valor_saida = col_valor_saida or find_column(row, valor_saida_names)
+            real_col_ativo_compra = col_ativo_compra or find_column(row, ativo_compra_names)
+            real_col_valor_compra = col_valor_compra or find_column(row, valor_compra_names)
+            
             recommendation = {
-                "ativo_saida": str(row.get(col_ativo_saida, "") or ""),
-                "valor_saida": format_currency(row.get(col_valor_saida, 0)),
-                "ativo_compra": str(row.get(col_ativo_compra, "") or ""),
-                "valor_compra": format_currency(row.get(col_valor_compra, 0)),
+                "ativo_saida": str(row.get(real_col_ativo_saida, "") or "") if real_col_ativo_saida else "",
+                "valor_saida": format_currency(row.get(real_col_valor_saida, 0)) if real_col_valor_saida else "R$ 0,00",
+                "ativo_compra": str(row.get(real_col_ativo_compra, "") or "") if real_col_ativo_compra else "",
+                "valor_compra": format_currency(row.get(real_col_valor_compra, 0)) if real_col_valor_compra else "R$ 0,00",
                 "client_id": client_id
             }
             
             for col_name, col_val in row.items():
-                if col_name not in ["ativo_saida", "valor_saida", "ativo_compra", "valor_compra"]:
-                    recommendation[col_name] = col_val
+                recommendation[col_name] = col_val
             
             grouped[key]["clients"][client_id]["recommendations"].append(recommendation)
             grouped[key]["total_recommendations"] += 1
