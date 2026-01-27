@@ -684,7 +684,6 @@
                 titleInput.value = file.name.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ');
             }
 
-            const ext = file.name.split('.').pop().toLowerCase();
             const smartGroup = document.getElementById('smartProcessingGroup');
             if (['pdf', 'png', 'jpg', 'jpeg'].includes(ext)) {
                 smartGroup.style.display = 'block';
