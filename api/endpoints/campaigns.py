@@ -778,13 +778,37 @@ async def preview_campaign(
             content_template = campaign.message_content_template or ""
             footer_template = campaign.message_footer or ""
             
+            import unicodedata
+            
+            def normalize_var_name(name: str) -> str:
+                """Remove acentos e normaliza nome de variável."""
+                if not name:
+                    return ""
+                normalized = unicodedata.normalize('NFKD', str(name))
+                ascii_text = normalized.encode('ASCII', 'ignore').decode('ASCII')
+                return ascii_text.lower().replace(' ', '_').replace('-', '_')
+            
             def replace_vars(text, data):
                 result = text
+                normalized_data = {}
                 for key, value in data.items():
                     if isinstance(value, (dict, list)):
                         continue
-                    result = result.replace("{{" + str(key) + "}}", str(value) if value else "")
-                    result = result.replace("{{ " + str(key) + " }}", str(value) if value else "")
+                    normalized_data[normalize_var_name(key)] = str(value) if value else ""
+                    normalized_data[str(key)] = str(value) if value else ""
+                
+                import re
+                pattern = r'\{\{\s*([^}]+?)\s*\}\}'
+                def replacer(match):
+                    var_name = match.group(1).strip()
+                    normalized_name = normalize_var_name(var_name)
+                    if normalized_name in normalized_data:
+                        return normalized_data[normalized_name]
+                    if var_name in normalized_data:
+                        return normalized_data[var_name]
+                    return match.group(0)
+                
+                result = re.sub(pattern, replacer, result)
                 return result
             
             header_rendered = replace_vars(header_template, assessor_data)
@@ -1203,16 +1227,40 @@ def build_structured_message(
         Mensagem final consolidada
     """
     from datetime import datetime
+    import unicodedata
+    import re
+    
+    def normalize_var_name(name: str) -> str:
+        """Remove acentos e normaliza nome de variável."""
+        if not name:
+            return ""
+        normalized = unicodedata.normalize('NFKD', str(name))
+        ascii_text = normalized.encode('ASCII', 'ignore').decode('ASCII')
+        return ascii_text.lower().replace(' ', '_').replace('-', '_')
     
     def replace_vars(text: str, vars_dict: dict) -> str:
-        """Substitui variáveis no texto."""
+        """Substitui variáveis no texto, normalizando acentos."""
         if not text:
             return ""
         result = str(text)
-        for var_name, value in vars_dict.items():
-            val_str = str(value) if value is not None else ""
-            for pattern in [f"{{{{{var_name}}}}}", f"{{{{ {var_name} }}}}", f"{{{var_name}}}"]:
-                result = result.replace(pattern, val_str)
+        normalized_data = {}
+        for key, value in vars_dict.items():
+            if isinstance(value, (dict, list)):
+                continue
+            normalized_data[normalize_var_name(key)] = str(value) if value is not None else ""
+            normalized_data[str(key)] = str(value) if value is not None else ""
+        
+        pattern = r'\{\{\s*([^}]+?)\s*\}\}'
+        def replacer(match):
+            var_name = match.group(1).strip()
+            normalized_name = normalize_var_name(var_name)
+            if normalized_name in normalized_data:
+                return normalized_data[normalized_name]
+            if var_name in normalized_data:
+                return normalized_data[var_name]
+            return match.group(0)
+        
+        result = re.sub(pattern, replacer, result)
         return result
     
     base_vars = {

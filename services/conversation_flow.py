@@ -182,6 +182,55 @@ def check_emotional_friction(message: str, history: list = None) -> bool:
     return False
 
 
+def normalize_phone_variants(phone: str) -> list:
+    """
+    Gera variantes de um número de telefone para busca flexível.
+    Lida com presença/ausência do 9 após o DDD.
+    
+    Exemplo: 5544988023465 gera:
+    - 5544988023465 (original)
+    - 544988023465 (sem código país)
+    - 44988023465 (DDD + número)
+    - 988023465 (últimos 9 dígitos)
+    - 88023465 (últimos 8 dígitos, sem o 9)
+    - 5544888023465 (com 9 adicionado após DDD)
+    - 44888023465 (DDD + número sem 9)
+    """
+    if not phone:
+        return []
+    
+    clean = re.sub(r'\D', '', phone)
+    if len(clean) < 8:
+        return [clean] if clean else []
+    
+    variants = set()
+    variants.add(clean)
+    
+    if len(clean) >= 9:
+        variants.add(clean[-9:])
+    if len(clean) >= 8:
+        variants.add(clean[-8:])
+    
+    if len(clean) >= 10:
+        ddd_start = 0
+        if clean.startswith('55') and len(clean) >= 12:
+            ddd_start = 2
+        
+        ddd = clean[ddd_start:ddd_start+2]
+        rest = clean[ddd_start+2:]
+        
+        if rest.startswith('9') and len(rest) == 9:
+            without_9 = ddd + rest[1:]
+            variants.add(without_9)
+            variants.add(rest[1:])
+        elif len(rest) == 8:
+            with_9 = ddd + '9' + rest
+            variants.add(with_9)
+            variants.add('9' + rest)
+    
+    return list(variants)
+
+
 def identify_contact(
     db: Session,
     phone: str,
@@ -189,27 +238,31 @@ def identify_contact(
 ) -> Tuple[Optional[Assessor], bool]:
     """
     Identifica contato na base de assessores.
+    Usa busca flexível considerando variações de número (com/sem 9 após DDD).
     
     Returns:
         Tuple de (Assessor ou None, is_known: bool)
     """
-    if lid:
-        assessor = db.query(Assessor).filter(
-            Assessor.telefone_whatsapp.contains(phone[-9:]) if phone else False
-        ).first()
-        if assessor:
-            return assessor, True
+    if not phone:
+        return None, False
     
-    if phone:
-        clean_phone = re.sub(r'\D', '', phone)
-        last_digits = clean_phone[-9:] if len(clean_phone) >= 9 else clean_phone
-        
-        assessor = db.query(Assessor).filter(
-            Assessor.telefone_whatsapp.contains(last_digits)
-        ).first()
-        
-        if assessor:
-            return assessor, True
+    phone_variants = normalize_phone_variants(phone)
+    
+    for variant in phone_variants:
+        if len(variant) >= 8:
+            assessors = db.query(Assessor).filter(
+                Assessor.telefone_whatsapp.isnot(None)
+            ).all()
+            
+            for assessor in assessors:
+                if assessor.telefone_whatsapp:
+                    assessor_clean = re.sub(r'\D', '', assessor.telefone_whatsapp)
+                    assessor_variants = normalize_phone_variants(assessor_clean)
+                    
+                    if variant in assessor_variants or any(
+                        v in assessor_variants for v in phone_variants
+                    ):
+                        return assessor, True
     
     return None, False
 
