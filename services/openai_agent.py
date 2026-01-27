@@ -173,17 +173,9 @@ Telefone: {assessor.get('telefone', 'N/A')}
         
         return context
     
-    def _build_system_prompt(self, config: dict = None) -> str:
-        """Constrói o prompt do sistema baseado na configuração."""
-        from services.conversation_flow import get_enhanced_system_prompt
-        
-        if config and config.get("personality"):
-            prompt = config["personality"]
-            if config.get("restrictions"):
-                prompt += f"\n\nRESTRIÇÕES E PROIBIÇÕES:\n{config['restrictions']}"
-            return get_enhanced_system_prompt(prompt)
-        
-        base_prompt = """Você é Stevan, um agente de atendimento interno da SVN, integrante da área de Renda Variável.
+    def _get_stevan_base_identity(self) -> str:
+        """Retorna a identidade base imutável do Stevan."""
+        return """Você é Stevan, um agente de atendimento interno da SVN, integrante da área de Renda Variável.
 
 IDENTIDADE E PAPEL:
 Stevan atua como broker de suporte e assistente técnico dos brokers e assessores de investimentos. Você faz parte do time. Não é um sistema genérico, não é um chatbot público e não fala com clientes finais. Sua atuação é exclusiva para uso interno da SVN.
@@ -197,11 +189,12 @@ O QUE STEVAN PODE AJUDAR:
 - Enquadramentos gerais e diretrizes internas
 - Esclarecimento técnico inicial para apoiar o assessor
 
-LIMITES OPERACIONAIS:
+LIMITES OPERACIONAIS (IMUTÁVEIS):
 - Stevan NÃO cria estratégias novas, não improvisa recomendações e não toma decisões de investimento fora do documentado
 - Stevan traduz, organiza e esclarece o que a área já definiu
 - Stevan NÃO participa, não elabora e não conduz reuniões com clientes
 - Stevan atua antes ou fora das reuniões, como suporte técnico ao assessor
+- Stevan NÃO atende clientes finais, apenas brokers e assessores internamente
 
 QUANDO ESCALAR:
 Quando uma demanda exige análise específica, decisão contextual, exceções ou aprofundamento além do conhecimento documentado, reconheça o limite operacional e encaminhe para um especialista humano da área de Renda Variável.
@@ -226,6 +219,26 @@ Quando necessário, encaminhe para o responsável humano com naturalidade, como 
 
 PROPÓSITO:
 Stevan existe para aumentar a eficiência do assessor e gerar mais valor ao cliente final por meio de informação correta, alinhada e bem estruturada."""
+    
+    def _build_system_prompt(self, config: dict = None) -> str:
+        """
+        Constrói o prompt do sistema.
+        A identidade base do Stevan é SEMPRE incluída.
+        Configurações do banco de dados COMPLEMENTAM, nunca substituem.
+        """
+        from services.conversation_flow import get_enhanced_system_prompt
+        
+        base_prompt = self._get_stevan_base_identity()
+        
+        if config and config.get("personality"):
+            db_personality = config["personality"].strip()
+            if db_personality and not db_personality.startswith("Você é Stevan"):
+                base_prompt += f"\n\nINSTRUÇÕES ADICIONAIS:\n{db_personality}"
+        
+        if config and config.get("restrictions"):
+            db_restrictions = config["restrictions"].strip()
+            if db_restrictions:
+                base_prompt += f"\n\nRESTRIÇÕES ADICIONAIS:\n{db_restrictions}"
         
         return get_enhanced_system_prompt(base_prompt)
     
