@@ -248,23 +248,29 @@
     <div class="modal-overlay" id="importModal">
         <div class="modal" style="max-width: 800px;">
             <div class="modal-header">
-                <h3 class="modal-title">Importar Usuários</h3>
+                <h3 class="modal-title">Importar Planilha</h3>
                 <button class="modal-close" onclick="closeImportModal()">&times;</button>
             </div>
             <div class="modal-body">
                 <div id="import-step-1">
-                    <div class="form-group">
-                        <label class="form-label">Arquivo Excel ou CSV</label>
-                        <input type="file" class="form-input" id="importFile" accept=".xlsx,.xls,.csv" onchange="handleFileUpload(event)">
-                        <small style="color: var(--text-secondary);">Formatos aceitos: .xlsx, .xls, .csv</small>
+                    <div class="upload-area" onclick="document.getElementById('importFile').click()" style="border: 2px dashed var(--border-color); border-radius: 12px; padding: 48px 24px; text-align: center; cursor: pointer; transition: all 0.2s; background: var(--bg-color);">
+                        <svg width="48" height="48" fill="none" stroke="var(--primary-color)" viewBox="0 0 24 24" style="margin-bottom: 16px;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
+                        <h3 style="font-size: 1.1rem; margin-bottom: 8px;">Selecione uma planilha</h3>
+                        <p style="color: var(--text-secondary);">Suportamos arquivos Excel (.xlsx, .xls) e CSV</p>
+                        <input type="file" id="importFile" style="display: none;" accept=".xlsx,.xls,.csv" onchange="handleFileUpload(event)">
+                    </div>
+                    <div id="import-loading" style="display: none; text-align: center; padding: 20px;">
+                        <div style="display: inline-block; width: 24px; height: 24px; border: 3px solid var(--border-color); border-top-color: var(--primary-color); border-radius: 50%; animation: spin 1s linear infinite;"></div>
+                        <span style="margin-left: 12px;">Processando...</span>
                     </div>
                 </div>
                 
                 <div id="import-step-2" style="display: none;">
-                    <h4 style="margin-bottom: 16px;">Mapeamento de Colunas</h4>
-                    <p style="color: var(--text-secondary); margin-bottom: 16px;">Associe as colunas do arquivo aos campos do sistema:</p>
+                    <div id="import-info" class="alert alert-info" style="margin-bottom: 20px; padding: 12px 16px; background: #dbeafe; border-radius: 8px; color: #1e40af;"></div>
+                    <h4 style="margin-bottom: 16px; font-weight: 600;">Mapeamento de Campos</h4>
+                    <p style="color: var(--text-secondary); margin-bottom: 16px;">Associe as colunas da planilha aos campos do banco de dados:</p>
                     
-                    <div class="mapping-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
                         <div class="form-group">
                             <label class="form-label">Primeiro Nome</label>
                             <select class="form-select" id="map_first_name"></select>
@@ -287,35 +293,60 @@
                         </div>
                     </div>
                     
-                    <div class="form-group" style="margin-top: 16px;">
-                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
-                            <input type="checkbox" id="updateExisting">
-                            <span>Atualizar registros existentes (por e-mail ou telefone)</span>
-                        </label>
-                    </div>
-                    
-                    <div style="margin-top: 16px;">
-                        <h5 style="margin-bottom: 8px;">Preview dos dados:</h5>
-                        <div style="overflow-x: auto; max-height: 200px; border: 1px solid var(--border-color); border-radius: 8px;">
-                            <table class="table" id="previewTable" style="margin: 0;">
+                    <div style="margin-top: 24px; padding: 16px; background: var(--bg-color); border-radius: 12px;">
+                        <h5 style="margin-bottom: 12px; font-weight: 600;">Pré-visualização</h5>
+                        <div style="overflow-x: auto;">
+                            <table class="table" id="previewTable" style="width: 100%; margin: 0;">
                                 <thead id="previewHead"></thead>
                                 <tbody id="previewBody"></tbody>
                             </table>
                         </div>
                     </div>
+                    
+                    <div style="margin-top: 20px; padding: 16px; background: #fef3c7; border-radius: 12px; border: 1px solid #f59e0b;">
+                        <h5 style="margin-bottom: 12px; font-weight: 600; color: #92400e;">Opções de Importação</h5>
+                        <div style="display: flex; align-items: flex-start; gap: 10px;">
+                            <input type="checkbox" id="updateExisting" style="width: 18px; height: 18px; margin-top: 2px;">
+                            <div>
+                                <label for="updateExisting" style="color: var(--text-primary); font-weight: 500; cursor: pointer;">Atualizar registros existentes</label>
+                                <p style="color: var(--text-secondary); font-size: 0.85rem; margin-top: 4px;">Se um usuário com o mesmo e-mail ou telefone já existir, atualiza seus dados ao invés de ignorar.</p>
+                            </div>
+                        </div>
+                    </div>
                 </div>
                 
-                <div id="import-step-3" style="display: none;">
-                    <div id="import-result"></div>
+                <div id="import-step-3" style="display: none; text-align: center; padding: 32px 0;">
+                    <div id="import-success-icon" style="width: 64px; height: 64px; background: #d1fae5; border-radius: 50%; display: none; align-items: center; justify-content: center; margin: 0 auto 20px;">
+                        <svg width="32" height="32" fill="none" stroke="#065f46" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                    </div>
+                    <div id="import-error-icon" style="width: 64px; height: 64px; background: #fee2e2; border-radius: 50%; display: none; align-items: center; justify-content: center; margin: 0 auto 20px;">
+                        <svg width="32" height="32" fill="none" stroke="#dc2626" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                    </div>
+                    <div id="import-partial-icon" style="width: 64px; height: 64px; background: #fef3c7; border-radius: 50%; display: none; align-items: center; justify-content: center; margin: 0 auto 20px;">
+                        <svg width="32" height="32" fill="none" stroke="#d97706" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+                    </div>
+                    <h3 id="import-title" style="font-size: 1.2rem; margin-bottom: 16px;"></h3>
+                    <div id="import-result" style="color: var(--text-secondary);"></div>
+                    <div id="import-errors" style="display: none; margin-top: 16px; text-align: left; max-height: 120px; overflow-y: auto; background: #fef3c7; padding: 12px; border-radius: 8px;"></div>
                 </div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" onclick="closeImportModal()">Cancelar</button>
-                <button type="button" class="btn btn-primary" id="confirmImportBtn" style="display: none;" onclick="confirmImport()">Importar</button>
-                <button type="button" class="btn btn-primary" id="closeResultBtn" style="display: none;" onclick="closeImportModal(); loadUsers();">Fechar</button>
+                <button type="button" class="btn btn-primary" id="confirmImportBtn" style="display: none;" onclick="confirmImport()">Confirmar Importação</button>
+                <button type="button" class="btn btn-primary" id="closeResultBtn" style="display: none;" onclick="closeImportModal(); loadUsers();">Concluir</button>
             </div>
         </div>
     </div>
+    
+    <style>
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        .upload-area:hover {
+            border-color: var(--primary-color);
+            background: #f8fafc;
+        }
+    </style>
     
     <script>
         let currentUserRole = null;
@@ -330,6 +361,8 @@
             document.getElementById('confirmImportBtn').style.display = 'none';
             document.getElementById('closeResultBtn').style.display = 'none';
             document.getElementById('importFile').value = '';
+            document.querySelector('.upload-area').style.display = 'block';
+            document.getElementById('import-loading').style.display = 'none';
             importFileId = null;
         }
         
@@ -344,6 +377,9 @@
             const formData = new FormData();
             formData.append('file', file);
             
+            document.querySelector('.upload-area').style.display = 'none';
+            document.getElementById('import-loading').style.display = 'block';
+            
             try {
                 const uploadResponse = await fetch('/api/users/import/upload', {
                     method: 'POST',
@@ -353,6 +389,8 @@
                 if (!uploadResponse.ok) {
                     const error = await uploadResponse.json();
                     toast.error(error.detail || 'Erro ao enviar arquivo');
+                    document.querySelector('.upload-area').style.display = 'block';
+                    document.getElementById('import-loading').style.display = 'none';
                     return;
                 }
                 
@@ -362,15 +400,20 @@
                 const previewResponse = await fetch(`/api/users/import/preview/${importFileId}`);
                 if (!previewResponse.ok) {
                     toast.error('Erro ao ler arquivo');
+                    document.querySelector('.upload-area').style.display = 'block';
+                    document.getElementById('import-loading').style.display = 'none';
                     return;
                 }
                 
                 const previewData = await previewResponse.json();
                 importColumns = previewData.columns;
                 
+                document.getElementById('import-info').textContent = `Arquivo carregado: ${previewData.total_rows} registro(s) encontrado(s)`;
+                
                 populateMappingSelects(previewData.columns);
                 showPreviewTable(previewData.columns, previewData.preview);
                 
+                document.getElementById('import-loading').style.display = 'none';
                 document.getElementById('import-step-1').style.display = 'none';
                 document.getElementById('import-step-2').style.display = 'block';
                 document.getElementById('confirmImportBtn').style.display = 'inline-flex';
@@ -378,6 +421,8 @@
             } catch (error) {
                 console.error('Erro:', error);
                 toast.error('Erro ao processar arquivo');
+                document.querySelector('.upload-area').style.display = 'block';
+                document.getElementById('import-loading').style.display = 'none';
             }
         }
         
@@ -460,68 +505,57 @@
                 document.getElementById('confirmImportBtn').style.display = 'none';
                 document.getElementById('closeResultBtn').style.display = 'inline-flex';
                 
-                let resultHtml = '';
                 const hasErrors = result.errors && result.errors.length > 0;
                 const hasSuccess = result.created > 0 || result.updated > 0;
                 
+                document.getElementById('import-success-icon').style.display = 'none';
+                document.getElementById('import-error-icon').style.display = 'none';
+                document.getElementById('import-partial-icon').style.display = 'none';
+                
                 if (hasSuccess && !hasErrors) {
-                    resultHtml = `
-                        <div style="text-align: center; padding: 24px;">
-                            <div style="width: 64px; height: 64px; background: #d1fae5; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 16px;">
-                                <svg width="32" height="32" fill="none" stroke="#059669" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
-                                </svg>
-                            </div>
-                            <h3 style="color: #059669; margin-bottom: 8px;">Importação Concluída</h3>
-                            <p>${result.created} usuário(s) criado(s)</p>
-                            <p>${result.updated} usuário(s) atualizado(s)</p>
-                            ${result.skipped > 0 ? `<p>${result.skipped} registro(s) ignorado(s)</p>` : ''}
-                        </div>
+                    document.getElementById('import-success-icon').style.display = 'flex';
+                    document.getElementById('import-title').textContent = 'Importação Concluída!';
+                    document.getElementById('import-title').style.color = '#065f46';
+                    document.getElementById('import-result').innerHTML = `
+                        <p>${result.created} usuário(s) criado(s)</p>
+                        <p>${result.updated} usuário(s) atualizado(s)</p>
+                        ${result.skipped > 0 ? `<p>${result.skipped} registro(s) ignorado(s)</p>` : ''}
                     `;
+                    document.getElementById('import-errors').style.display = 'none';
                 } else if (hasSuccess && hasErrors) {
-                    resultHtml = `
-                        <div style="text-align: center; padding: 24px;">
-                            <div style="width: 64px; height: 64px; background: #fef3c7; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 16px;">
-                                <svg width="32" height="32" fill="none" stroke="#d97706" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
-                                </svg>
-                            </div>
-                            <h3 style="color: #d97706; margin-bottom: 8px;">Importação Parcial</h3>
-                            <p>${result.created} usuário(s) criado(s), ${result.updated} atualizado(s)</p>
-                            <div style="margin-top: 16px; text-align: left; max-height: 150px; overflow-y: auto; background: #fef3c7; padding: 12px; border-radius: 8px;">
-                                <strong>Erros:</strong>
-                                <ul style="margin: 8px 0; padding-left: 20px;">
-                                    ${result.errors.map(e => `<li>${e}</li>`).join('')}
-                                </ul>
-                            </div>
-                        </div>
+                    document.getElementById('import-partial-icon').style.display = 'flex';
+                    document.getElementById('import-title').textContent = 'Importação Parcial';
+                    document.getElementById('import-title').style.color = '#d97706';
+                    document.getElementById('import-result').innerHTML = `
+                        <p>${result.created} usuário(s) criado(s), ${result.updated} atualizado(s)</p>
+                    `;
+                    document.getElementById('import-errors').style.display = 'block';
+                    document.getElementById('import-errors').innerHTML = `
+                        <strong>Erros:</strong>
+                        <ul style="margin: 8px 0; padding-left: 20px;">
+                            ${result.errors.map(e => `<li>${e}</li>`).join('')}
+                        </ul>
                     `;
                 } else {
-                    resultHtml = `
-                        <div style="text-align: center; padding: 24px;">
-                            <div style="width: 64px; height: 64px; background: #fee2e2; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 16px;">
-                                <svg width="32" height="32" fill="none" stroke="#dc2626" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-                                </svg>
-                            </div>
-                            <h3 style="color: #dc2626; margin-bottom: 8px;">Erro na Importação</h3>
-                            <div style="margin-top: 16px; text-align: left; max-height: 200px; overflow-y: auto; background: #fee2e2; padding: 12px; border-radius: 8px;">
-                                <ul style="margin: 0; padding-left: 20px;">
-                                    ${result.errors.map(e => `<li>${e}</li>`).join('')}
-                                </ul>
-                            </div>
-                        </div>
+                    document.getElementById('import-error-icon').style.display = 'flex';
+                    document.getElementById('import-title').textContent = 'Erro na Importação';
+                    document.getElementById('import-title').style.color = '#dc2626';
+                    document.getElementById('import-result').innerHTML = '';
+                    document.getElementById('import-errors').style.display = 'block';
+                    document.getElementById('import-errors').style.background = '#fee2e2';
+                    document.getElementById('import-errors').innerHTML = `
+                        <ul style="margin: 0; padding-left: 20px;">
+                            ${result.errors.map(e => `<li>${e}</li>`).join('')}
+                        </ul>
                     `;
                 }
-                
-                document.getElementById('import-result').innerHTML = resultHtml;
                 
             } catch (error) {
                 console.error('Erro:', error);
                 toast.error('Erro ao importar usuários');
             } finally {
                 document.getElementById('confirmImportBtn').disabled = false;
-                document.getElementById('confirmImportBtn').textContent = 'Importar';
+                document.getElementById('confirmImportBtn').textContent = 'Confirmar Importação';
             }
         }
 
