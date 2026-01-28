@@ -43,6 +43,91 @@ class OpenAIAgent:
         
         return None
     
+    async def _classify_intent_with_ai(
+        self, 
+        user_message: str, 
+        original_ticker: str, 
+        suggested_tickers: List[str]
+    ) -> Dict[str, Any]:
+        """
+        Usa GPT para interpretar a intenção do usuário após uma sugestão de ticker.
+        
+        Args:
+            user_message: Resposta do usuário à sugestão
+            original_ticker: Ticker que o usuário perguntou originalmente
+            suggested_tickers: Lista de tickers sugeridos pelo assistente
+            
+        Returns:
+            Dict com 'intent' (CONFIRMA_ORIGINAL, ACEITA_SUGESTAO, NEGA_TODOS, NOVA_PERGUNTA)
+            e 'ticker' (o ticker escolhido, se aplicável)
+        """
+        if not self.client:
+            return {"intent": "NOVA_PERGUNTA", "ticker": None}
+        
+        suggestions_str = ", ".join(suggested_tickers) if suggested_tickers else "nenhum"
+        
+        prompt = f"""Analise a intenção do usuário no contexto de uma conversa sobre fundos/ativos financeiros.
+
+CONTEXTO:
+- Ticker original perguntado pelo usuário: {original_ticker}
+- Sugestões oferecidas pelo assistente: {suggestions_str}
+- Resposta do usuário: "{user_message}"
+
+CLASSIFIQUE a intenção em UMA das categorias:
+
+1. CONFIRMA_ORIGINAL - O usuário quer informações sobre o ticker ORIGINAL ({original_ticker}), rejeitando as sugestões.
+   Exemplos: "não, era esse mesmo", "quero o {original_ticker}", "{original_ticker} mesmo", "esse que eu disse", "não, é esse"
+
+2. ACEITA_SUGESTAO - O usuário aceita uma das sugestões oferecidas.
+   Exemplos: "sim", "esse", "o primeiro", "o segundo", mencionar diretamente um dos sugeridos
+
+3. NEGA_TODOS - O usuário não quer nenhum dos tickers (nem o original nem as sugestões).
+   Exemplos: "nenhum desses", "deixa pra lá", "esquece", "não quero nenhum"
+
+4. NOVA_PERGUNTA - É uma pergunta diferente ou mudança de assunto.
+   Exemplos: perguntar sobre outro ativo, mudar de assunto completamente
+
+Responda APENAS em JSON válido:
+{{"intent": "CATEGORIA", "ticker": "TICKER_ESCOLHIDO_OU_NULL", "reasoning": "breve explicação"}}
+
+Se ACEITA_SUGESTAO, indique qual ticker foi aceito.
+Se CONFIRMA_ORIGINAL, ticker deve ser "{original_ticker}".
+Se NEGA_TODOS ou NOVA_PERGUNTA, ticker deve ser null."""
+
+        try:
+            response = self.client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": "Você é um classificador de intenções. Responda apenas em JSON válido."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.1,
+                max_tokens=150,
+                response_format={"type": "json_object"}
+            )
+            
+            result_text = response.choices[0].message.content.strip()
+            if result_text.startswith("```"):
+                result_text = re.sub(r'^```(?:json)?\n?', '', result_text)
+                result_text = re.sub(r'\n?```$', '', result_text)
+            
+            result = json.loads(result_text)
+            
+            valid_intents = ['CONFIRMA_ORIGINAL', 'ACEITA_SUGESTAO', 'NEGA_TODOS', 'NOVA_PERGUNTA']
+            if result.get('intent') not in valid_intents:
+                print(f"[OpenAI] Intent inválido: {result.get('intent')}, usando fallback")
+                return {"intent": "NOVA_PERGUNTA", "ticker": None}
+            
+            print(f"[OpenAI] Classificação de intenção: {result}")
+            return result
+            
+        except json.JSONDecodeError as e:
+            print(f"[OpenAI] Erro ao parsear JSON: {e}")
+            return {"intent": "NOVA_PERGUNTA", "ticker": None}
+        except Exception as e:
+            print(f"[OpenAI] Erro ao classificar intenção: {e}")
+            return {"intent": "NOVA_PERGUNTA", "ticker": None}
+    
     def _search_assessor_by_name(self, name: str) -> Optional[Dict[str, Any]]:
         """Busca assessor pelo nome na base de dados."""
         from database.database import SessionLocal
@@ -287,109 +372,186 @@ Retorne APENAS o JSON."""
         print(f"[OpenAI] Entidades extraídas do histórico (recentes primeiro): {entities}")
         return entities
     
-    def _detect_ticker_confirmation(self, message: str, conversation_history: Optional[List[dict]] = None) -> Optional[str]:
+    def _extract_suggestion_context(self, conversation_history: List[dict]) -> Optional[Dict[str, Any]]:
         """
-        Detecta se o usuário está confirmando um ticker sugerido anteriormente.
+        Extrai o contexto de sugestão do histórico: ticker original e sugestões oferecidas.
+        
+        Returns:
+            Dict com 'original_ticker', 'suggested_tickers', 'has_suggestion' ou None
+        """
+        if not conversation_history:
+            return None
+        
+        original_ticker = None
+        suggested_tickers = []
+        assistant_message_with_suggestion = None
+        user_message_before_suggestion = None
+        
+        for i, hist in enumerate(reversed(conversation_history[-6:])):
+            if hist.get('role') == 'assistant':
+                content = hist.get('content', '')
+                content_lower = content.lower()
+                if 'você quis dizer' in content_lower or 'não encontrei' in content_lower:
+                    assistant_message_with_suggestion = content
+                    real_idx = len(conversation_history) - 1 - i
+                    if real_idx > 0:
+                        prev_msg = conversation_history[real_idx - 1]
+                        if prev_msg.get('role') == 'user':
+                            user_message_before_suggestion = prev_msg.get('content', '')
+                    break
+        
+        if not assistant_message_with_suggestion:
+            return None
+        
+        if user_message_before_suggestion:
+            ticker_pattern = re.compile(r'\b([A-Z]{4,6}11|[A-Z]{4,8}(?:PR)?)\b', re.IGNORECASE)
+            matches = ticker_pattern.findall(user_message_before_suggestion)
+            if matches:
+                original_ticker = matches[0].upper()
+        
+        if not original_ticker:
+            nao_encontrei_match = re.search(
+                r'não encontrei\s+(?:o\s+)?([A-Z]{4,8}(?:11|PR)?)',
+                assistant_message_with_suggestion,
+                re.IGNORECASE
+            )
+            if nao_encontrei_match:
+                original_ticker = nao_encontrei_match.group(1).upper()
+        
+        quis_dizer_match = re.search(
+            r'quis dizer\s+([^?]+)\?',
+            assistant_message_with_suggestion,
+            re.IGNORECASE
+        )
+        
+        if quis_dizer_match:
+            suggestions_text = quis_dizer_match.group(1)
+            items = re.split(r',\s*|\s+ou\s+', suggestions_text)
+            for item in items:
+                cleaned = item.strip().upper()
+                cleaned = re.sub(r'^(O|A|OS|AS)\s+', '', cleaned)
+                if cleaned and len(cleaned) >= 4 and cleaned != original_ticker:
+                    suggested_tickers.append(cleaned)
+        
+        if not suggested_tickers:
+            ticker_pattern = re.compile(r'\b([A-Z]{4,6}11|[A-Z]{4,8}PR?)\b', re.IGNORECASE)
+            all_tickers = [t.upper() for t in ticker_pattern.findall(assistant_message_with_suggestion)]
+            seen = set()
+            for t in all_tickers:
+                if t not in seen and t != original_ticker:
+                    seen.add(t)
+                    suggested_tickers.append(t)
+        
+        return {
+            'original_ticker': original_ticker,
+            'suggested_tickers': suggested_tickers,
+            'has_suggestion': True
+        }
+    
+    async def _detect_ticker_confirmation_async(self, message: str, conversation_history: Optional[List[dict]] = None) -> Optional[str]:
+        """
+        Detecta se o usuário está confirmando/negando um ticker usando IA para interpretar.
         
         Args:
             message: Mensagem atual do usuário
             conversation_history: Histórico da conversa
             
         Returns:
-            Ticker confirmado, "DENIAL" se negou, "AMBIGUOUS" se precisa clarificar, 
-            "DENIAL:TICKER" se negou mas quer o ticker original, ou None
+            Ticker confirmado, "DENIAL" se negou todos, 
+            "DENIAL:TICKER" se quer o ticker original, ou None
         """
         if not conversation_history:
             return None
         
+        context = self._extract_suggestion_context(conversation_history)
+        if not context or not context.get('has_suggestion'):
+            return None
+        
+        original_ticker = context.get('original_ticker')
+        suggested_tickers = context.get('suggested_tickers', [])
+        
+        if not original_ticker and not suggested_tickers:
+            return None
+        
+        print(f"[OpenAI] Contexto de sugestão - Original: {original_ticker}, Sugestões: {suggested_tickers}")
+        
         msg_lower = message.lower().strip()
-        msg_upper = message.upper().strip()
+        for ticker in suggested_tickers:
+            if ticker.lower() in msg_lower or msg_lower == ticker.lower():
+                print(f"[OpenAI] Ticker mencionado diretamente: {ticker}")
+                return ticker
         
-        has_prior_suggestion = False
-        for hist in reversed(conversation_history[-4:]):
-            if hist.get('role') == 'assistant':
-                content = hist.get('content', '').lower()
-                if 'você quis dizer' in content or 'não encontrei' in content:
-                    has_prior_suggestion = True
-                break
+        classification = await self._classify_intent_with_ai(
+            user_message=message,
+            original_ticker=original_ticker or "desconhecido",
+            suggested_tickers=suggested_tickers
+        )
         
-        if has_prior_suggestion:
-            denial_with_ticker_patterns = [
-                r'n[aã]o[\s,]+.*\b([a-z]{4,5}11)\b.*mesmo',
-                r'n[aã]o[\s,]+.*\b([a-z]{4,5}11)\b',
-                r'n[aã]o[\s,]+.*(é|quero)\s+(?:o\s+)?([a-z]{4,5}11)',
-            ]
-            for pattern in denial_with_ticker_patterns:
-                match = re.search(pattern, msg_lower)
-                if match:
-                    ticker = (match.group(2) if match.lastindex >= 2 else match.group(1)).upper()
-                    if re.match(r'^[A-Z]{4,5}11$', ticker):
-                        print(f"[OpenAI] Detectada negação com ticker FII: {ticker}")
-                        return f"DENIAL:{ticker}"
-            
-            denial_patterns = [
-                r'^n[aã]o$', r'^n$', r'^nenhum', r'^nem\b', r'^nope$',
-                r'n[aã]o[\s,]+(?:é\s+)?nenhum', r'nenhum\s+(?:deles|desses|destes)',
-                r'n[aã]o\s+(?:é\s+)?(?:esse|nenhum|isso)', r'^nada\s+disso'
-            ]
-            for pattern in denial_patterns:
-                if re.search(pattern, msg_lower):
-                    return "DENIAL"
+        intent = classification.get('intent', 'NOVA_PERGUNTA')
+        ticker = classification.get('ticker')
         
-        for hist in reversed(conversation_history[-4:]):
-            if hist.get('role') == 'assistant':
-                content = hist.get('content', '')
-                if 'você quis dizer' in content.lower() or 'não encontrei' in content.lower():
-                    quis_dizer_match = re.search(
-                        r'quis dizer\s+([^?]+)\?',
-                        content,
-                        re.IGNORECASE
-                    )
-                    
-                    suggested_tickers = []
-                    if quis_dizer_match:
-                        suggestions_text = quis_dizer_match.group(1)
-                        items = re.split(r',\s*|\s+ou\s+', suggestions_text)
-                        for item in items:
-                            cleaned = item.strip().upper()
-                            cleaned = re.sub(r'^(O|A|OS|AS)\s+', '', cleaned)
-                            if cleaned and len(cleaned) >= 4:
-                                suggested_tickers.append(cleaned)
-                    
-                    if not suggested_tickers:
-                        ticker_pattern = re.compile(r'\b([A-Z]{4,6}11|[A-Z]{4,8}PR?)\b', re.IGNORECASE)
-                        suggested_tickers = [t.upper() for t in ticker_pattern.findall(content)]
-                        seen = set()
-                        ordered = []
-                        for t in suggested_tickers:
-                            if t not in seen:
-                                seen.add(t)
-                                ordered.append(t)
-                        suggested_tickers = ordered
-                    
-                    for ticker in suggested_tickers:
-                        if ticker.lower() in msg_lower or msg_lower == ticker.lower():
-                            return ticker
-                    
-                    if len(suggested_tickers) == 1:
-                        affirmative = ['sim', 'isso', 'esse', 'esse mesmo', 'exato', 'isso mesmo', 'é esse', 's', 'yes']
-                        if msg_lower in affirmative:
-                            return suggested_tickers[0]
-                    elif len(suggested_tickers) > 1:
-                        affirmative = ['sim', 'isso', 's', 'yes']
-                        if msg_lower in affirmative:
-                            return "AMBIGUOUS"
-                    
-                    ordinal_map = [
-                        (r'\b(?:o\s+)?primeir[oa]?\b|^1$', 0),
-                        (r'\b(?:o\s+)?segund[oa]?\b|^2$', 1),
-                        (r'\b(?:o\s+)?terceir[oa]?\b|^3$', 2)
-                    ]
-                    for pattern, idx in ordinal_map:
-                        if re.search(pattern, msg_lower) and idx < len(suggested_tickers):
-                            return suggested_tickers[idx]
-                    
-                    break
+        if intent == 'CONFIRMA_ORIGINAL':
+            if original_ticker and re.match(r'^[A-Z]{4,5}11$', original_ticker):
+                print(f"[OpenAI] Usuário confirma ticker original FII: {original_ticker} - buscando no FundsExplorer")
+                return f"DENIAL:{original_ticker}"
+            elif original_ticker:
+                print(f"[OpenAI] Usuário confirma ticker original (não-FII): {original_ticker} - buscando na base")
+                return f"ORIGINAL:{original_ticker}"
+        
+        elif intent == 'ACEITA_SUGESTAO':
+            if ticker and ticker.upper() in [s.upper() for s in suggested_tickers]:
+                print(f"[OpenAI] Usuário aceita sugestão: {ticker}")
+                return ticker.upper()
+            elif len(suggested_tickers) == 1:
+                print(f"[OpenAI] Usuário aceita única sugestão: {suggested_tickers[0]}")
+                return suggested_tickers[0]
+            elif len(suggested_tickers) > 1:
+                print(f"[OpenAI] Aceita sugestão mas múltiplas opções - ambíguo")
+                return "AMBIGUOUS"
+        
+        elif intent == 'NEGA_TODOS':
+            print(f"[OpenAI] Usuário nega todos os tickers")
+            return "DENIAL"
+        
+        return None
+    
+    def _detect_ticker_confirmation(self, message: str, conversation_history: Optional[List[dict]] = None) -> Optional[str]:
+        """
+        Wrapper síncrono para detecção de confirmação de ticker.
+        Usa fallbacks simples para manter compatibilidade quando async não disponível.
+        """
+        if not conversation_history:
+            return None
+        
+        context = self._extract_suggestion_context(conversation_history)
+        if not context or not context.get('has_suggestion'):
+            return None
+        
+        msg_lower = message.lower().strip()
+        suggested_tickers = context.get('suggested_tickers', [])
+        original_ticker = context.get('original_ticker')
+        
+        for ticker in suggested_tickers:
+            if ticker.lower() in msg_lower or msg_lower == ticker.lower():
+                return ticker
+        
+        if len(suggested_tickers) == 1:
+            affirmative = ['sim', 'isso', 'esse', 'esse mesmo', 'exato', 'isso mesmo', 'é esse', 's', 'yes']
+            if msg_lower in affirmative:
+                return suggested_tickers[0]
+        elif len(suggested_tickers) > 1:
+            affirmative = ['sim', 'isso', 's', 'yes']
+            if msg_lower in affirmative:
+                return "AMBIGUOUS"
+        
+        ordinal_map = [
+            (r'\b(?:o\s+)?primeir[oa]?\b|^1$', 0),
+            (r'\b(?:o\s+)?segund[oa]?\b|^2$', 1),
+            (r'\b(?:o\s+)?terceir[oa]?\b|^3$', 2)
+        ]
+        for pattern, idx in ordinal_map:
+            if re.search(pattern, msg_lower) and idx < len(suggested_tickers):
+                return suggested_tickers[idx]
         
         return None
     
@@ -608,12 +770,17 @@ Quando um ticker ou ativo NÃO for encontrado na base de conhecimento:
                 {"intent": "create_ticket"}
             )
         
-        confirmed_ticker = self._detect_ticker_confirmation(user_message, conversation_history)
+        confirmed_ticker = await self._detect_ticker_confirmation_async(user_message, conversation_history)
         denial_lookup_ticker = None
         
-        if confirmed_ticker and confirmed_ticker.startswith("DENIAL:"):
+        if confirmed_ticker and confirmed_ticker.startswith("ORIGINAL:"):
+            original_ticker = confirmed_ticker.split(":")[1]
+            print(f"[OpenAI] Usuário confirma ticker original (não-FII): {original_ticker} - buscando na base")
+            user_message = original_ticker
+            confirmed_ticker = None
+        elif confirmed_ticker and confirmed_ticker.startswith("DENIAL:"):
             denial_lookup_ticker = confirmed_ticker.split(":")[1]
-            print(f"[OpenAI] Usuário negou sugestões e quer {denial_lookup_ticker} - buscando no FundsExplorer")
+            print(f"[OpenAI] Usuário negou sugestões e quer FII {denial_lookup_ticker} - buscando no FundsExplorer")
             confirmed_ticker = None
         elif confirmed_ticker == "DENIAL":
             print(f"[OpenAI] Usuário negou sugestões - verificando ticker original para FundsExplorer")
