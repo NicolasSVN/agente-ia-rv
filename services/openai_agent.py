@@ -296,21 +296,45 @@ Retorne APENAS o JSON."""
             conversation_history: Histórico da conversa
             
         Returns:
-            Ticker confirmado, "DENIAL" se negou, "AMBIGUOUS" se precisa clarificar, ou None
+            Ticker confirmado, "DENIAL" se negou, "AMBIGUOUS" se precisa clarificar, 
+            "DENIAL:TICKER" se negou mas quer o ticker original, ou None
         """
         if not conversation_history:
             return None
         
         msg_lower = message.lower().strip()
+        msg_upper = message.upper().strip()
         
-        denial_patterns = [
-            r'^n[aã]o$', r'^n$', r'^nenhum', r'^nem\b', r'^nope$',
-            r'n[aã]o[\s,]+(?:é\s+)?nenhum', r'nenhum\s+(?:deles|desses|destes)',
-            r'n[aã]o\s+(?:é\s+)?(?:esse|nenhum|isso)', r'^nada\s+disso'
-        ]
-        for pattern in denial_patterns:
-            if re.search(pattern, msg_lower):
-                return "DENIAL"
+        has_prior_suggestion = False
+        for hist in reversed(conversation_history[-4:]):
+            if hist.get('role') == 'assistant':
+                content = hist.get('content', '').lower()
+                if 'você quis dizer' in content or 'não encontrei' in content:
+                    has_prior_suggestion = True
+                break
+        
+        if has_prior_suggestion:
+            denial_with_ticker_patterns = [
+                r'n[aã]o[\s,]+.*\b([a-z]{4,5}11)\b.*mesmo',
+                r'n[aã]o[\s,]+.*\b([a-z]{4,5}11)\b',
+                r'n[aã]o[\s,]+.*(é|quero)\s+(?:o\s+)?([a-z]{4,5}11)',
+            ]
+            for pattern in denial_with_ticker_patterns:
+                match = re.search(pattern, msg_lower)
+                if match:
+                    ticker = (match.group(2) if match.lastindex >= 2 else match.group(1)).upper()
+                    if re.match(r'^[A-Z]{4,5}11$', ticker):
+                        print(f"[OpenAI] Detectada negação com ticker FII: {ticker}")
+                        return f"DENIAL:{ticker}"
+            
+            denial_patterns = [
+                r'^n[aã]o$', r'^n$', r'^nenhum', r'^nem\b', r'^nope$',
+                r'n[aã]o[\s,]+(?:é\s+)?nenhum', r'nenhum\s+(?:deles|desses|destes)',
+                r'n[aã]o\s+(?:é\s+)?(?:esse|nenhum|isso)', r'^nada\s+disso'
+            ]
+            for pattern in denial_patterns:
+                if re.search(pattern, msg_lower):
+                    return "DENIAL"
         
         for hist in reversed(conversation_history[-4:]):
             if hist.get('role') == 'assistant':
@@ -587,7 +611,11 @@ Quando um ticker ou ativo NÃO for encontrado na base de conhecimento:
         confirmed_ticker = self._detect_ticker_confirmation(user_message, conversation_history)
         denial_lookup_ticker = None
         
-        if confirmed_ticker == "DENIAL":
+        if confirmed_ticker and confirmed_ticker.startswith("DENIAL:"):
+            denial_lookup_ticker = confirmed_ticker.split(":")[1]
+            print(f"[OpenAI] Usuário negou sugestões e quer {denial_lookup_ticker} - buscando no FundsExplorer")
+            confirmed_ticker = None
+        elif confirmed_ticker == "DENIAL":
             print(f"[OpenAI] Usuário negou sugestões - verificando ticker original para FundsExplorer")
             for hist in reversed(conversation_history[-4:] if conversation_history else []):
                 if hist.get('role') == 'assistant':
