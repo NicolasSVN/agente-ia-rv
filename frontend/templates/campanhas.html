@@ -960,14 +960,17 @@
                                     <thead>
                                         <tr>
                                             <th style="width: 40px;"><input type="checkbox" id="selectAllAssessors" onchange="toggleSelectAllAssessors()"></th>
+                                            <th>Código</th>
                                             <th>Nome</th>
-                                            <th>Email</th>
+                                            <th>E-mail</th>
                                             <th>WhatsApp</th>
                                             <th>Unidade</th>
+                                            <th>Equipe</th>
+                                            <th>Broker</th>
                                         </tr>
                                     </thead>
                                     <tbody id="assessorsTableBody">
-                                        <tr><td colspan="5" class="no-results">Carregando assessores...</td></tr>
+                                        <tr><td colspan="8" class="no-results">Carregando assessores...</td></tr>
                                     </tbody>
                                 </table>
                             </div>
@@ -1691,7 +1694,7 @@ Equipe de Gestao" oninput="updateMessagePreview()"></textarea>
 
         async function loadAssessorsForSelection() {
             const tbody = document.getElementById('assessorsTableBody');
-            tbody.innerHTML = '<tr><td colspan="5" class="no-results">Carregando assessores...</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="8" class="no-results">Carregando assessores...</td></tr>';
             
             try {
                 const [assessoresRes, filtersRes] = await Promise.all([
@@ -1725,7 +1728,7 @@ Equipe de Gestao" oninput="updateMessagePreview()"></textarea>
                 
             } catch (error) {
                 console.error('Erro ao carregar assessores:', error);
-                tbody.innerHTML = '<tr><td colspan="5" class="no-results" style="color: #dc2626;">Erro ao carregar assessores. Tente novamente.</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="8" class="no-results" style="color: #dc2626;">Erro ao carregar assessores. Tente novamente.</td></tr>';
             }
         }
 
@@ -1750,7 +1753,7 @@ Equipe de Gestao" oninput="updateMessagePreview()"></textarea>
             const tbody = document.getElementById('assessorsTableBody');
             
             if (filteredAssessors.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="5" class="no-results">Nenhum assessor encontrado</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="8" class="no-results">Nenhum assessor encontrado</td></tr>';
                 return;
             }
             
@@ -1761,10 +1764,13 @@ Equipe de Gestao" oninput="updateMessagePreview()"></textarea>
                         <td onclick="event.stopPropagation()">
                             <input type="checkbox" ${isSelected ? 'checked' : ''} onchange="toggleAssessorSelection(${a.id})">
                         </td>
+                        <td>${a.codigo_ai || '-'}</td>
                         <td>${a.nome || '-'}</td>
                         <td>${a.email || '-'}</td>
                         <td>${a.telefone_whatsapp || '-'}</td>
                         <td>${a.unidade || '-'}</td>
+                        <td>${a.equipe || '-'}</td>
+                        <td>${a.broker_responsavel || '-'}</td>
                     </tr>
                 `;
             }).join('');
