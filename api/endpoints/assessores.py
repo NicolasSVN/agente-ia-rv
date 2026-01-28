@@ -539,12 +539,30 @@ async def confirm_upload(data: UploadConfirm, db: Session = Depends(get_db), cur
                     errors.append(f"Linha {idx + 2}: Telefone WhatsApp é obrigatório")
                     continue
                 
-                existing = db.query(Assessor).filter(
-                    Assessor.telefone_whatsapp == telefone
-                ).first()
+                codigo_ai = assessor_data.get("codigo_ai")
+                
+                existing = None
+                if telefone:
+                    existing = db.query(Assessor).filter(
+                        Assessor.telefone_whatsapp == telefone
+                    ).first()
+                
+                if not existing and codigo_ai:
+                    existing = db.query(Assessor).filter(
+                        Assessor.codigo_ai == codigo_ai
+                    ).first()
                 
                 if existing:
                     if data.update_existing:
+                        if codigo_ai:
+                            conflicting = db.query(Assessor).filter(
+                                Assessor.codigo_ai == codigo_ai,
+                                Assessor.id != existing.id
+                            ).first()
+                            if conflicting:
+                                errors.append(f"Linha {idx + 2}: Código AAI '{codigo_ai}' já pertence a outro assessor")
+                                continue
+                        
                         for key, value in assessor_data.items():
                             if key == "custom_fields":
                                 try:
@@ -559,6 +577,14 @@ async def confirm_upload(data: UploadConfirm, db: Session = Depends(get_db), cur
                     else:
                         skipped += 1
                     continue
+                
+                if codigo_ai:
+                    existing_by_code = db.query(Assessor).filter(
+                        Assessor.codigo_ai == codigo_ai
+                    ).first()
+                    if existing_by_code:
+                        errors.append(f"Linha {idx + 2}: Código AAI '{codigo_ai}' já existe")
+                        continue
                 
                 custom_fields_json = json.dumps(assessor_data.pop("custom_fields", {}))
                 new_assessor = Assessor(**assessor_data, custom_fields=custom_fields_json)
