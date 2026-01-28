@@ -1537,11 +1537,6 @@ Equipe de Gestao" oninput="updateMessagePreview()"></textarea>
             if (!listContainer) return;
             listContainer.innerHTML = '';
             
-            if (!campaignSource) {
-                listContainer.innerHTML = '<div class="var-dropdown-empty">Nenhuma variavel disponivel.<br>Selecione uma origem de dados primeiro.</div>';
-                return;
-            }
-            
             if (campaignSource === 'upload' && availableVariables.length > 0) {
                 const uploadHeader = document.createElement('div');
                 uploadHeader.className = 'var-dropdown-header';
