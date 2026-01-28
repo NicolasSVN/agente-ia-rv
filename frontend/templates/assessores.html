@@ -379,9 +379,24 @@
                             </table>
                         </div>
                     </div>
-                    <div style="margin-top: 16px; display: flex; align-items: center; gap: 10px;">
-                        <input type="checkbox" id="update-existing" style="width: 18px; height: 18px;">
-                        <label for="update-existing" style="color: var(--text-primary);">Atualizar registros existentes (pelo e-mail)</label>
+                    <div style="margin-top: 20px; padding: 16px; background: #fef3c7; border-radius: 12px; border: 1px solid #f59e0b;">
+                        <h5 style="margin-bottom: 12px; font-weight: 600; color: #92400e;">Opções de Importação</h5>
+                        <div style="display: flex; flex-direction: column; gap: 12px;">
+                            <div style="display: flex; align-items: flex-start; gap: 10px;">
+                                <input type="checkbox" id="replace-all" style="width: 18px; height: 18px; margin-top: 2px;">
+                                <div>
+                                    <label for="replace-all" style="color: var(--text-primary); font-weight: 500; cursor: pointer;">Substituir toda a base</label>
+                                    <p style="color: #92400e; font-size: 0.85rem; margin-top: 4px;">Remove TODOS os assessores existentes antes de importar os novos. Use com cuidado!</p>
+                                </div>
+                            </div>
+                            <div style="display: flex; align-items: flex-start; gap: 10px;">
+                                <input type="checkbox" id="update-existing" style="width: 18px; height: 18px; margin-top: 2px;">
+                                <div>
+                                    <label for="update-existing" style="color: var(--text-primary); font-weight: 500; cursor: pointer;">Atualizar registros existentes</label>
+                                    <p style="color: var(--text-secondary); font-size: 0.85rem; margin-top: 4px;">Se um assessor com o mesmo e-mail já existir, atualiza seus dados ao invés de ignorar.</p>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
                 <div id="upload-step-3" style="display: none; text-align: center; padding: 32px 0;">
@@ -637,17 +652,28 @@
         async function deleteAssessor(id) {
             const confirmed = await toast.confirm({
                 title: 'Excluir Assessor',
-                message: 'Tem certeza que deseja excluir este assessor?',
+                message: 'Tem certeza que deseja excluir este assessor? Esta ação não pode ser desfeita.',
                 confirmText: 'Excluir',
                 type: 'danger'
             });
             if (!confirmed) return;
             try {
-                await fetch(`/api/assessores/${id}`, { method: 'DELETE' });
+                const response = await fetch(`/api/assessores/${id}`, { 
+                    method: 'DELETE',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                if (!response.ok) {
+                    const data = await response.json();
+                    throw new Error(data.detail || 'Erro ao excluir assessor');
+                }
+                toast.success('Assessor excluído com sucesso');
                 loadAssessores();
                 loadFilterOptions();
             } catch (err) {
-                toast.error('Erro ao excluir assessor');
+                console.error('Erro ao excluir assessor:', err);
+                toast.error(err.message || 'Erro ao excluir assessor');
             }
         }
 
@@ -706,6 +732,9 @@
             document.getElementById('upload-error').style.display = 'none';
             document.getElementById('confirm-upload-btn').style.display = 'none';
             document.getElementById('finish-upload-btn').style.display = 'none';
+            document.getElementById('upload-errors').style.display = 'none';
+            document.getElementById('replace-all').checked = false;
+            document.getElementById('update-existing').checked = false;
             uploadPreview = null;
         }
 
@@ -801,6 +830,19 @@
                 return;
             }
 
+            const replaceAll = document.getElementById('replace-all').checked;
+            const updateExisting = document.getElementById('update-existing').checked;
+
+            if (replaceAll) {
+                const confirmed = await toast.confirm({
+                    title: 'Substituir Toda a Base',
+                    message: 'Tem certeza que deseja REMOVER TODOS os assessores existentes e importar apenas os novos? Esta ação não pode ser desfeita!',
+                    confirmText: 'Sim, Substituir Tudo',
+                    type: 'danger'
+                });
+                if (!confirmed) return;
+            }
+
             const btn = document.getElementById('confirm-upload-btn');
             btn.disabled = true;
             btn.textContent = 'Importando...';
@@ -812,26 +854,36 @@
                     body: JSON.stringify({
                         file_id: uploadPreview.file_id,
                         mappings,
-                        update_existing: document.getElementById('update-existing').checked
+                        update_existing: updateExisting,
+                        replace_all: replaceAll
                     })
                 });
 
                 const result = await res.json();
+                
+                if (!res.ok) {
+                    throw new Error(result.detail || 'Erro ao processar importação');
+                }
 
                 document.getElementById('upload-step-2').style.display = 'none';
                 document.getElementById('upload-step-3').style.display = 'block';
                 document.getElementById('confirm-upload-btn').style.display = 'none';
                 document.getElementById('finish-upload-btn').style.display = 'inline-flex';
 
-                document.getElementById('upload-result').innerHTML = `
-                    <p><strong>${result.created}</strong> registros criados</p>
-                    <p><strong>${result.updated}</strong> registros atualizados</p>
-                `;
+                let resultHtml = `<p><strong>${result.created}</strong> registros criados</p>
+                    <p><strong>${result.updated}</strong> registros atualizados</p>`;
+                if (result.deleted !== undefined && result.deleted > 0) {
+                    resultHtml += `<p><strong>${result.deleted}</strong> registros removidos</p>`;
+                }
+                if (result.skipped !== undefined && result.skipped > 0) {
+                    resultHtml += `<p><strong>${result.skipped}</strong> registros ignorados (já existiam)</p>`;
+                }
+                document.getElementById('upload-result').innerHTML = resultHtml;
 
                 if (result.errors && result.errors.length > 0) {
                     const errorsDiv = document.getElementById('upload-errors');
                     errorsDiv.style.display = 'block';
-                    errorsDiv.innerHTML = `<strong>Erros (${result.errors.length}):</strong><br>` + 
+                    errorsDiv.innerHTML = `<strong>Erros (${result.total_errors || result.errors.length}):</strong><br>` + 
                         result.errors.slice(0, 10).join('<br>');
                 }
             } catch (err) {

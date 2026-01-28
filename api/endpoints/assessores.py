@@ -108,6 +108,7 @@ class UploadConfirm(BaseModel):
     file_id: str
     mappings: List[FieldMapping]
     update_existing: bool = False
+    replace_all: bool = False
 
 
 def parse_custom_fields(assessor):
@@ -388,7 +389,14 @@ async def confirm_upload(data: UploadConfirm, db: Session = Depends(get_db), cur
         
         created = 0
         updated = 0
+        skipped = 0
+        deleted = 0
         errors = []
+        
+        if data.replace_all:
+            deleted = db.query(Assessor).count()
+            db.query(Assessor).delete()
+            db.commit()
         
         for idx, row in df.iterrows():
             try:
@@ -417,12 +425,12 @@ async def confirm_upload(data: UploadConfirm, db: Session = Depends(get_db), cur
                     errors.append(f"Linha {idx + 2}: E-mail é obrigatório")
                     continue
                 
-                if data.update_existing and assessor_data.get("email"):
-                    existing = db.query(Assessor).filter(
-                        Assessor.email == assessor_data["email"]
-                    ).first()
-                    
-                    if existing:
+                existing = db.query(Assessor).filter(
+                    Assessor.email == assessor_data["email"]
+                ).first()
+                
+                if existing:
+                    if data.update_existing:
                         for key, value in assessor_data.items():
                             if key == "custom_fields":
                                 try:
@@ -434,7 +442,9 @@ async def confirm_upload(data: UploadConfirm, db: Session = Depends(get_db), cur
                             else:
                                 setattr(existing, key, value)
                         updated += 1
-                        continue
+                    else:
+                        skipped += 1
+                    continue
                 
                 custom_fields_json = json.dumps(assessor_data.pop("custom_fields", {}))
                 new_assessor = Assessor(**assessor_data, custom_fields=custom_fields_json)
@@ -454,6 +464,8 @@ async def confirm_upload(data: UploadConfirm, db: Session = Depends(get_db), cur
         return {
             "created": created,
             "updated": updated,
+            "skipped": skipped,
+            "deleted": deleted,
             "errors": errors[:10],
             "total_errors": len(errors)
         }
