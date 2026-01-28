@@ -174,13 +174,19 @@ Telefone: {assessor.get('telefone', 'N/A')}
         
         return context
     
-    def _extract_products_from_message(self, message: str) -> List[str]:
+    def _classify_message(self, message: str) -> Tuple[str, List[str]]:
         """
-        Usa GPT para extrair nomes de produtos/fundos/ativos mencionados na mensagem.
-        Retorna lista de produtos identificados.
+        Classifica a mensagem em uma das categorias e extrai produtos se houver.
+        Retorna tupla (categoria, lista_de_produtos).
+        
+        Categorias:
+        - SAUDACAO: Cumprimentos e mensagens iniciais (oi, bom dia, etc)
+        - DOCUMENTAL: Perguntas que precisam consultar base de conhecimento
+        - ESCOPO: Perguntas gerais sobre RV que não precisam de documentos específicos
+        - FORA_ESCOPO: Perguntas fora do domínio do agente
         """
         if not self.client:
-            return []
+            return ("ESCOPO", [])
         
         try:
             response = self.client.chat.completions.create(
@@ -188,33 +194,50 @@ Telefone: {assessor.get('telefone', 'N/A')}
                 messages=[
                     {
                         "role": "system",
-                        "content": """Você é um extrator de entidades financeiras. 
-Extraia APENAS nomes de produtos, fundos, ativos ou siglas mencionados na mensagem.
-Retorne uma lista JSON com os nomes encontrados.
-Se não encontrar nenhum, retorne [].
+                        "content": """Você classifica mensagens de assessores financeiros.
+
+CLASSIFIQUE a mensagem em UMA das categorias:
+
+1. SAUDACAO - Cumprimentos simples: "oi", "olá", "bom dia", "boa tarde", "boa noite", "e aí", "tudo bem?"
+   NÃO consultar documentos para saudações.
+
+2. DOCUMENTAL - Perguntas sobre produtos, fundos, ativos ESPECÍFICOS que precisam de dados da base:
+   "qual público alvo do TG Core?", "me fala sobre TGRI", "características do XPLG11"
+   EXTRAIR nomes de produtos/fundos mencionados.
+
+3. ESCOPO - Perguntas gerais sobre renda variável que não citam produto específico:
+   "como funciona a estratégia de RV?", "quais setores estão aquecidos?", "o que é um FII?"
+
+4. FORA_ESCOPO - Perguntas fora do domínio: piadas, assuntos pessoais, outros temas.
+
+Retorne JSON: {"categoria": "XXXX", "produtos": ["PROD1", "PROD2"]}
+Se não houver produtos, retorne lista vazia.
 
 Exemplos:
-- "qual é o público alvo do TG Core?" -> ["TG CORE", "TGRI"]
-- "me fala sobre o fundo XPLG11" -> ["XPLG11"]
-- "como funciona a estratégia de renda variável?" -> []
-- "quero saber sobre TGRI e BTLG" -> ["TGRI", "BTLG"]
+"boa tarde" -> {"categoria": "SAUDACAO", "produtos": []}
+"qual o público do TG Core?" -> {"categoria": "DOCUMENTAL", "produtos": ["TG CORE"]}
+"como funciona renda variável?" -> {"categoria": "ESCOPO", "produtos": []}
+"conta uma piada" -> {"categoria": "FORA_ESCOPO", "produtos": []}
 
-Retorne APENAS o JSON, sem explicação."""
+Retorne APENAS o JSON."""
                     },
                     {"role": "user", "content": message}
                 ],
-                max_tokens=100,
+                max_tokens=150,
                 temperature=0
             )
             
             result = response.choices[0].message.content.strip()
-            if result.startswith("["):
-                products = json.loads(result)
-                return [p.upper().strip() for p in products if p]
-            return []
+            if result.startswith("{"):
+                data = json.loads(result)
+                categoria = data.get("categoria", "ESCOPO").upper()
+                produtos = [p.upper().strip() for p in data.get("produtos", []) if p]
+                print(f"[OpenAI] Classificação: {categoria}, Produtos: {produtos}")
+                return (categoria, produtos)
+            return ("ESCOPO", [])
         except Exception as e:
-            print(f"[OpenAI] Erro ao extrair produtos: {e}")
-            return []
+            print(f"[OpenAI] Erro ao classificar mensagem: {e}")
+            return ("ESCOPO", [])
     
     def _get_stevan_base_identity(self) -> str:
         """Retorna a identidade base imutável do Stevan."""
@@ -363,24 +386,30 @@ Stevan existe para aumentar a eficiência do assessor e gerar mais valor ao clie
         temperature = config.get("temperature", 0.7) if config else 0.7
         max_tokens = config.get("max_tokens", 500) if config else 500
         
+        categoria, extracted_products = self._classify_message(user_message)
+        
         vs = get_vector_store()
         context_documents = []
         
-        if vs:
-            extracted_products = self._extract_products_from_message(user_message)
-            print(f"[OpenAI] Produtos extraídos da mensagem: {extracted_products}")
-            
-            if extracted_products:
+        if categoria == "SAUDACAO":
+            print(f"[OpenAI] Saudação detectada - NÃO consultando documentos")
+        elif categoria == "FORA_ESCOPO":
+            print(f"[OpenAI] Fora de escopo - NÃO consultando documentos")
+        elif vs:
+            if categoria == "DOCUMENTAL" and extracted_products:
                 for product in extracted_products:
                     product_docs = vs.search_by_product(product, n_results=10)
                     print(f"[OpenAI] Encontrados {len(product_docs)} docs para produto '{product}'")
                     for doc in product_docs:
                         if doc not in context_documents:
                             context_documents.append(doc)
-            
-            if not context_documents:
+                
+                if not context_documents:
+                    context_documents = vs.search(user_message, n_results=5)
+                    print(f"[OpenAI] Fallback semântico retornou {len(context_documents)} docs")
+            elif categoria == "ESCOPO":
                 context_documents = vs.search(user_message, n_results=5)
-                print(f"[OpenAI] Busca semântica retornou {len(context_documents)} docs")
+                print(f"[OpenAI] Busca semântica para ESCOPO retornou {len(context_documents)} docs")
         
         context = self._build_context(context_documents)
         
