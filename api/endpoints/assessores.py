@@ -446,6 +446,7 @@ async def upload_preview(file: UploadFile = File(...), db: Session = Depends(get
 @upload_router.get("/database-fields")
 async def get_database_fields(db: Session = Depends(get_db), current_user: User = Depends(require_admin_or_gestao)):
     core_fields = [
+        {"slug": "codigo_ai", "label": "Código AAI", "required": False},
         {"slug": "nome", "label": "Nome do Assessor", "required": True},
         {"slug": "email", "label": "E-mail", "required": True},
         {"slug": "telefone_whatsapp", "label": "Telefone WhatsApp", "required": False},
