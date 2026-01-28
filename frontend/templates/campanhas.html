@@ -1004,7 +1004,7 @@
 
                         <div class="wizard-actions">
                             <div></div>
-                            <button class="btn btn-primary" id="btnStep1Next" disabled onclick="handleStep1Next()">
+                            <button class="btn btn-primary" id="btnStep1Next" onclick="handleStep1Next()">
                                 Proximo
                                 <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
@@ -1847,33 +1847,53 @@ Equipe de Gestao" oninput="updateMessagePreview()"></textarea>
         }
 
         function validateStep1() {
+        }
+
+        let isStep1Processing = false;
+        
+        async function handleStep1Next() {
+            if (isStep1Processing) return;
+            
             const campaignName = document.getElementById('campaignName').value.trim();
             const btnNext = document.getElementById('btnStep1Next');
             
             if (!campaignName) {
-                btnNext.disabled = true;
+                toast.warning('Por favor, preencha o nome da campanha antes de continuar.');
+                document.getElementById('campaignName').focus();
                 return;
             }
             
             if (campaignSource === 'upload') {
-                btnNext.disabled = !campaignId;
-            } else if (campaignSource === 'base') {
-                btnNext.disabled = selectedAssessors.length === 0;
-            } else {
-                btnNext.disabled = true;
-            }
-        }
-
-        async function handleStep1Next() {
-            if (campaignSource === 'upload') {
+                if (!campaignId) {
+                    toast.warning('Por favor, faça o upload de uma planilha antes de continuar.');
+                    return;
+                }
                 document.getElementById('mappingSection').style.display = 'block';
                 updatePlanilhaVariables();
                 goToStep(2);
             } else if (campaignSource === 'base') {
-                await createCampaignFromBase();
-                document.getElementById('mappingSection').style.display = 'none';
-                document.getElementById('planilhaVariablesSection').style.display = 'none';
-                goToStep(2);
+                if (selectedAssessors.length === 0) {
+                    toast.warning('Por favor, selecione pelo menos um assessor antes de continuar.');
+                    return;
+                }
+                
+                isStep1Processing = true;
+                btnNext.disabled = true;
+                btnNext.innerHTML = 'Processando...';
+                
+                try {
+                    await createCampaignFromBase();
+                    document.getElementById('mappingSection').style.display = 'none';
+                    document.getElementById('planilhaVariablesSection').style.display = 'none';
+                    goToStep(2);
+                } catch (error) {
+                } finally {
+                    isStep1Processing = false;
+                    btnNext.disabled = false;
+                    btnNext.innerHTML = `Proximo <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>`;
+                }
+            } else {
+                toast.warning('Por favor, selecione uma origem de dados (upload ou base de assessores).');
             }
         }
 
