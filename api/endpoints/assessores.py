@@ -240,13 +240,27 @@ async def update_assessor(assessor_id: int, assessor: AssessorUpdate, db: Sessio
 
 @router.delete("/{assessor_id}")
 async def delete_assessor(assessor_id: int, db: Session = Depends(get_db), current_user: User = Depends(require_admin_or_gestao)):
+    from database.models import Conversation
+    from sqlalchemy.exc import IntegrityError
+    
     db_assessor = db.query(Assessor).filter(Assessor.id == assessor_id).first()
     if not db_assessor:
         raise HTTPException(status_code=404, detail="Assessor não encontrado")
     
-    db.delete(db_assessor)
-    db.commit()
-    return {"message": "Assessor excluído com sucesso"}
+    try:
+        db.query(Conversation).filter(Conversation.assessor_id == assessor_id).update(
+            {"assessor_id": None}, synchronize_session=False
+        )
+        
+        db.delete(db_assessor)
+        db.commit()
+        return {"message": "Assessor excluído com sucesso"}
+    except IntegrityError as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=400, 
+            detail="Não foi possível excluir o assessor. Existem dados vinculados a ele."
+        )
 
 
 custom_fields_router = APIRouter(prefix="/api/custom-fields", tags=["custom-fields"])
