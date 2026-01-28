@@ -539,3 +539,93 @@ async def stream_messages(
         message_stream(db, last_id),
         media_type="text/event-stream"
     )
+
+
+class NormalizeRequest(BaseModel):
+    dry_run: bool = False
+    only_without_assessor: bool = False
+    force_update: bool = False
+
+
+@router.post("/normalize-conversations")
+async def normalize_conversations(
+    request: NormalizeRequest = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Normaliza as conversas existentes, aplicando matching de telefone
+    melhorado para associar corretamente aos assessores da base.
+    
+    Parâmetros:
+    - dry_run: Se True, apenas mostra o que seria alterado sem salvar
+    - only_without_assessor: Se True, processa apenas conversas sem assessor
+    - force_update: Se True, atualiza mesmo conversas que já têm assessor
+    """
+    if current_user.role not in ['admin', 'gestao_rv']:
+        raise HTTPException(status_code=403, detail="Apenas administradores podem executar esta ação")
+    
+    if request is None:
+        request = NormalizeRequest()
+    
+    from services.conversation_flow import identify_contact
+    
+    query = db.query(Conversation).filter(Conversation.phone.isnot(None))
+    
+    if request.only_without_assessor:
+        query = query.filter(Conversation.assessor_id.is_(None))
+    
+    conversations = query.all()
+    
+    updated = 0
+    already_correct = 0
+    no_match = 0
+    changes = []
+    
+    for conv in conversations:
+        assessor, is_known = identify_contact(db, conv.phone)
+        
+        if is_known and assessor:
+            needs_update = False
+            
+            if conv.assessor_id is None:
+                needs_update = True
+            elif request.force_update and (conv.assessor_id != assessor.id or conv.contact_name != assessor.nome):
+                needs_update = True
+            elif conv.assessor_id == assessor.id and conv.contact_name != assessor.nome:
+                needs_update = True
+            
+            if needs_update:
+                if not request.dry_run:
+                    conv.assessor_id = assessor.id
+                    conv.contact_name = assessor.nome
+                    if conv.conversation_state == ConversationState.IDENTIFICATION_PENDING.value:
+                        conv.conversation_state = ConversationState.READY.value
+                
+                changes.append({
+                    "phone": conv.phone,
+                    "old_name": conv.contact_name if request.dry_run else None,
+                    "new_name": assessor.nome,
+                    "assessor_id": assessor.id
+                })
+                updated += 1
+            else:
+                already_correct += 1
+        else:
+            no_match += 1
+    
+    if not request.dry_run:
+        db.commit()
+    
+    return {
+        "success": True,
+        "dry_run": request.dry_run,
+        "message": "Prévia da normalização" if request.dry_run else "Normalização concluída",
+        "stats": {
+            "total_conversas": len(conversations),
+            "atualizadas": updated,
+            "ja_corretas": already_correct,
+            "sem_match": no_match
+        },
+        "changes": changes[:50] if request.dry_run else []
+    }
