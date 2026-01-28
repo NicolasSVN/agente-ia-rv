@@ -27,6 +27,7 @@ The application is built using FastAPI, leveraging a modular project structure.
 **Technical Implementations:**
 - **AI Agent:** Integrates OpenAI for embeddings and chat, allowing real-time configuration of personality, rules, restrictions, AI model (GPT-4o, GPT-4 Turbo, GPT-4, GPT-3.5 Turbo), temperature, and response length via the `/agent-brain` panel.
 - **Semantic Search:** Utilizes ChromaDB for vector storage and OpenAI embeddings to enable semantic search over a Notion knowledge base. Documents are chunked and indexed in the background.
+- **FII External Lookup:** When a user asks about a FII (ticker ending in 11) that is NOT in the knowledge base, the agent automatically fetches public data from StatusInvest (cotação, DY, P/VP, dividendos, etc.) and responds with a disclaimer that it's not an official SVN recommendation. The lookup is selective - only fetches the specific info the user requested.
 - **WhatsApp Integration:** Uses Z-API for communication, processing various message types (text, audio, image, document, video) and logging all interactions in `whatsapp_messages` table. Features a "Central de Mensagens" interface styled like WhatsApp Web with real-time polling updates. Implements full LID (WhatsApp privacy identifier) support: stores senderLid and chatLid from webhooks, prioritizes LID lookups over phone numbers, and uses fallback chain (phone → chat_lid → sender_lid) for conversation identification.
 - **Authentication & Authorization:** JWT-based authentication secures API endpoints. User roles (`admin`, `gestao_rv`, `broker`, `client`) define access levels, with dynamic menu adjustments.
 - **Database:** PostgreSQL (or SQLite for development) managed with SQLAlchemy ORM, defining models for users, tickets, agent configurations, message templates, campaigns, and knowledge documents.
@@ -42,7 +43,7 @@ The application is built using FastAPI, leveraging a modular project structure.
         - **Step 3 Message Composer:** Blank message by default, dynamic variable panel showing available fields from data source, click-to-insert variables, attachment upload (images, videos, audio, documents up to 50MB), real-time variable validation with warnings for unavailable variables
         - **Template System:** Create, edit, and reuse message templates with attachments, automatic variable detection, and usage tracking
         - Features: Reusable templates, dynamic variables, intelligent grouping, attachment support via Z-API, and real-time dispatch progress via Server-Sent Events (SSE) with retry mechanisms. Supports delayMessage (1-15 seconds) for natural sending rhythm.
-    - **Central de Mensagens:** WhatsApp Web-style interface for managing all conversations. Features real-time polling, message history grouped by phone number, human takeover capability, and ability to start new conversations with any phone number via modal.
+    - **Central de Mensagens:** WhatsApp Web-style interface for managing all conversations. Features real-time updates via SSE (Server-Sent Events), message history grouped by phone number, human takeover capability, and ability to start new conversations with any phone number via modal.
     - **Knowledge Base Management:** Upload, index, categorize, and reindex documents (PDF, DOCX, TXT, images) for the AI agent to consult.
 
 **Feature Specifications:**
