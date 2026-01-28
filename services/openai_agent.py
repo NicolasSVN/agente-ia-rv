@@ -287,6 +287,88 @@ Retorne APENAS o JSON."""
         print(f"[OpenAI] Entidades extraídas do histórico (recentes primeiro): {entities}")
         return entities
     
+    def _detect_ticker_confirmation(self, message: str, conversation_history: Optional[List[dict]] = None) -> Optional[str]:
+        """
+        Detecta se o usuário está confirmando um ticker sugerido anteriormente.
+        
+        Args:
+            message: Mensagem atual do usuário
+            conversation_history: Histórico da conversa
+            
+        Returns:
+            Ticker confirmado, "DENIAL" se negou, "AMBIGUOUS" se precisa clarificar, ou None
+        """
+        if not conversation_history:
+            return None
+        
+        msg_lower = message.lower().strip()
+        
+        denial_patterns = [
+            r'^n[aã]o$', r'^n$', r'^nenhum', r'^nem\b', r'^nope$',
+            r'n[aã]o[\s,]+(?:é\s+)?nenhum', r'nenhum\s+(?:deles|desses|destes)',
+            r'n[aã]o\s+(?:é\s+)?(?:esse|nenhum|isso)', r'^nada\s+disso'
+        ]
+        for pattern in denial_patterns:
+            if re.search(pattern, msg_lower):
+                return "DENIAL"
+        
+        for hist in reversed(conversation_history[-4:]):
+            if hist.get('role') == 'assistant':
+                content = hist.get('content', '')
+                if 'você quis dizer' in content.lower() or 'não encontrei' in content.lower():
+                    quis_dizer_match = re.search(
+                        r'quis dizer\s+([^?]+)\?',
+                        content,
+                        re.IGNORECASE
+                    )
+                    
+                    suggested_tickers = []
+                    if quis_dizer_match:
+                        suggestions_text = quis_dizer_match.group(1)
+                        items = re.split(r',\s*|\s+ou\s+', suggestions_text)
+                        for item in items:
+                            cleaned = item.strip().upper()
+                            cleaned = re.sub(r'^(O|A|OS|AS)\s+', '', cleaned)
+                            if cleaned and len(cleaned) >= 4:
+                                suggested_tickers.append(cleaned)
+                    
+                    if not suggested_tickers:
+                        ticker_pattern = re.compile(r'\b([A-Z]{4,6}11|[A-Z]{4,8}PR?)\b', re.IGNORECASE)
+                        suggested_tickers = [t.upper() for t in ticker_pattern.findall(content)]
+                        seen = set()
+                        ordered = []
+                        for t in suggested_tickers:
+                            if t not in seen:
+                                seen.add(t)
+                                ordered.append(t)
+                        suggested_tickers = ordered
+                    
+                    for ticker in suggested_tickers:
+                        if ticker.lower() in msg_lower or msg_lower == ticker.lower():
+                            return ticker
+                    
+                    if len(suggested_tickers) == 1:
+                        affirmative = ['sim', 'isso', 'esse', 'esse mesmo', 'exato', 'isso mesmo', 'é esse', 's', 'yes']
+                        if msg_lower in affirmative:
+                            return suggested_tickers[0]
+                    elif len(suggested_tickers) > 1:
+                        affirmative = ['sim', 'isso', 's', 'yes']
+                        if msg_lower in affirmative:
+                            return "AMBIGUOUS"
+                    
+                    ordinal_map = [
+                        (r'\b(?:o\s+)?primeir[oa]?\b|^1$', 0),
+                        (r'\b(?:o\s+)?segund[oa]?\b|^2$', 1),
+                        (r'\b(?:o\s+)?terceir[oa]?\b|^3$', 2)
+                    ]
+                    for pattern, idx in ordinal_map:
+                        if re.search(pattern, msg_lower) and idx < len(suggested_tickers):
+                            return suggested_tickers[idx]
+                    
+                    break
+        
+        return None
+    
     def _is_followup_question(self, message: str) -> bool:
         """
         Detecta se a mensagem é uma pergunta de follow-up que depende do contexto anterior.
@@ -392,6 +474,7 @@ COMUNICAÇÃO:
 - Colaborativa, nunca professoral
 - Transmita segurança por pertencer à área, não por afirmar autoridade
 - Evite opiniões pessoais, afirmações absolutas e linguagem promocional
+- NUNCA termine respostas com frases como "Se precisar de mais alguma coisa", "Se tiver outra dúvida" ou similares - isso é robótico e irritante. Encerre a resposta naturalmente, direto ao ponto
 
 FORMATAÇÃO DE RESPOSTAS:
 - Quando informar sobre um produto/fundo com MÚLTIPLOS dados (retorno, prazo, taxa, etc), use BULLET POINTS para organizar
@@ -496,6 +579,33 @@ Stevan existe para aumentar a eficiência do assessor e gerar mais valor ao clie
                 {"intent": "create_ticket"}
             )
         
+        confirmed_ticker = self._detect_ticker_confirmation(user_message, conversation_history)
+        denial_lookup_ticker = None
+        
+        if confirmed_ticker == "DENIAL":
+            print(f"[OpenAI] Usuário negou sugestões - verificando ticker original para FundsExplorer")
+            for hist in reversed(conversation_history[-4:] if conversation_history else []):
+                if hist.get('role') == 'assistant':
+                    content = hist.get('content', '')
+                    if 'não encontrei' in content.lower():
+                        ticker_match = re.search(r'não encontrei\s+([A-Z]{4,6}11)', content, re.IGNORECASE)
+                        if ticker_match:
+                            denial_lookup_ticker = ticker_match.group(1).upper()
+                            print(f"[OpenAI] Buscando {denial_lookup_ticker} no FundsExplorer após negação")
+                        break
+            confirmed_ticker = None
+        elif confirmed_ticker == "AMBIGUOUS":
+            print(f"[OpenAI] Resposta ambígua - solicitando clarificação")
+            return (
+                "Entendi que você quer saber sobre um desses, mas qual especificamente? "
+                "Pode me dizer o nome ou número (primeiro, segundo...)?",
+                False,
+                {"intent": "clarification_needed"}
+            )
+        elif confirmed_ticker:
+            print(f"[OpenAI] Usuário confirmou ticker: {confirmed_ticker}")
+            user_message = confirmed_ticker
+        
         assessor_data = identified_assessor
         
         if not assessor_data:
@@ -566,25 +676,47 @@ Stevan existe para aumentar a eficiência do assessor e gerar mais valor ao clie
                 print(f"[OpenAI] Busca semântica padrão retornou {len(context_documents)} docs")
         
         fii_lookup_result = None
+        similar_tickers_suggestion = None
         fii_service = get_fii_lookup_service()
         detected_ticker = fii_service.extract_ticker(user_message)
         
-        if detected_ticker and (not context_documents or len(context_documents) == 0):
-            print(f"[OpenAI] Ticker {detected_ticker} detectado sem resultados na base - buscando no StatusInvest")
-            fii_lookup_result = fii_service.lookup(user_message)
+        if denial_lookup_ticker:
+            print(f"[OpenAI] Lookup forçado no FundsExplorer após negação: {denial_lookup_ticker}")
+            fii_lookup_result = fii_service.lookup(denial_lookup_ticker)
             if fii_lookup_result:
-                print(f"[OpenAI] Dados do StatusInvest obtidos para {detected_ticker}")
-        elif detected_ticker and context_documents:
+                print(f"[OpenAI] Dados do FundsExplorer obtidos para {denial_lookup_ticker}")
+            detected_ticker = None
+        
+        if detected_ticker:
+            ticker_exists_exactly = vs.find_exact_ticker(detected_ticker) if vs else False
+            
             ticker_in_docs = any(
-                detected_ticker.lower() in str(doc.get('content', '')).lower() or
-                detected_ticker.lower() in str(doc.get('metadata', {})).lower()
+                detected_ticker.upper() in str(doc.get('content', '')).upper() or
+                detected_ticker.upper() in str(doc.get('metadata', {}).get('products', '')).upper()
                 for doc in context_documents
-            )
-            if not ticker_in_docs:
-                print(f"[OpenAI] Ticker {detected_ticker} não encontrado nos documentos retornados - buscando no StatusInvest")
-                fii_lookup_result = fii_service.lookup(user_message)
-                if fii_lookup_result:
-                    print(f"[OpenAI] Dados do StatusInvest obtidos para {detected_ticker}")
+            ) if context_documents else False
+            
+            print(f"[OpenAI] Ticker {detected_ticker} - existe na base: {ticker_exists_exactly}, nos docs: {ticker_in_docs}")
+            
+            if not ticker_exists_exactly and not ticker_in_docs:
+                similar_tickers = vs.find_similar_tickers(detected_ticker, max_distance=2, limit=3) if vs else []
+                ticker_similar = [t for t in similar_tickers if re.match(r'^[A-Z]{4,5}11$', t)]
+                product_similar = [t for t in similar_tickers if t not in ticker_similar]
+                print(f"[OpenAI] Similares - Tickers: {ticker_similar}, Produtos: {product_similar}")
+                
+                all_similar = ticker_similar + product_similar
+                if all_similar:
+                    similar_tickers_suggestion = {
+                        'searched_ticker': detected_ticker,
+                        'suggestions': all_similar[:3],
+                        'has_ticker_format': bool(ticker_similar)
+                    }
+                    print(f"[OpenAI] Sugerindo alternativas para {detected_ticker}: {all_similar[:3]}")
+                else:
+                    print(f"[OpenAI] Nenhum similar - buscando no FundsExplorer")
+                    fii_lookup_result = fii_service.lookup(user_message)
+                    if fii_lookup_result:
+                        print(f"[OpenAI] Dados do FundsExplorer obtidos para {detected_ticker}")
         
         context = self._build_context(context_documents)
         
@@ -602,7 +734,28 @@ Stevan existe para aumentar a eficiência do assessor e gerar mais valor ao clie
         user_content = f"""CONTEXTO DA BASE DE CONHECIMENTO:
 {context}"""
 
-        if fii_lookup_result:
+        if similar_tickers_suggestion:
+            suggestions_list = ", ".join(similar_tickers_suggestion['suggestions'])
+            searched = similar_tickers_suggestion['searched_ticker']
+            suggestion_type = "fundos/produtos" if not similar_tickers_suggestion.get('has_ticker_format') else "tickers/fundos"
+            user_content += f"""
+
+---
+
+ATIVO NÃO ENCONTRADO - SUGERIR ALTERNATIVAS:
+O usuário perguntou sobre {searched}, mas este ativo NÃO existe na base de conhecimento da SVN.
+Foram encontrados {suggestion_type} SIMILARES: {suggestions_list}
+
+IMPORTANTE: Você DEVE:
+1. Informar que {searched} não foi encontrado na nossa base
+2. Perguntar se o usuário quis dizer um dos similares: {suggestions_list}
+3. NÃO assumir que o usuário quis dizer outro ativo sem confirmação explícita
+4. NÃO fornecer informações sobre outros ativos - APENAS perguntar
+
+Exemplo de resposta:
+"Não encontrei {searched} na nossa base de conhecimento. Você quis dizer {suggestions_list}?"
+"""
+        elif fii_lookup_result:
             fii_data = fii_lookup_result.get('data')
             if fii_data:
                 fii_info = fii_service.format_complete_response(fii_data)
@@ -610,9 +763,9 @@ Stevan existe para aumentar a eficiência do assessor e gerar mais valor ao clie
 
 ---
 
-DADOS EXTERNOS (StatusInvest) - FUNDO NÃO ENCONTRADO NA BASE OFICIAL:
+DADOS EXTERNOS (FundsExplorer) - FUNDO NÃO ENCONTRADO NA BASE OFICIAL:
 O fundo {fii_lookup_result.get('ticker')} NÃO está na base de conhecimento oficial da SVN.
-Dados obtidos de fonte externa pública (StatusInvest):
+Dados obtidos de fonte externa pública (FundsExplorer):
 
 {fii_info}
 
@@ -663,7 +816,8 @@ INSTRUÇÕES IMPORTANTES:
                 "intent": "question", 
                 "documents": context_documents,
                 "identified_assessor": assessor_data,
-                "fii_external_lookup": fii_lookup_result.get('ticker') if fii_lookup_result else None
+                "fii_external_lookup": fii_lookup_result.get('ticker') if fii_lookup_result else None,
+                "ticker_suggestions": similar_tickers_suggestion
             }
             
         except Exception as e:

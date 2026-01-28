@@ -3,9 +3,31 @@ Gerenciador do banco de dados vetorial ChromaDB.
 Permite armazenar e buscar documentos usando embeddings.
 """
 import chromadb
+import re
 from openai import OpenAI
-from typing import List, Optional
+from typing import List, Optional, Set
 from core.config import get_settings
+
+
+def levenshtein_distance(s1: str, s2: str) -> int:
+    """Calcula a distância de Levenshtein entre duas strings."""
+    if len(s1) < len(s2):
+        return levenshtein_distance(s2, s1)
+    
+    if len(s2) == 0:
+        return len(s1)
+    
+    previous_row = range(len(s2) + 1)
+    for i, c1 in enumerate(s1):
+        current_row = [i + 1]
+        for j, c2 in enumerate(s2):
+            insertions = previous_row[j + 1] + 1
+            deletions = current_row[j] + 1
+            substitutions = previous_row[j] + (c1 != c2)
+            current_row.append(min(insertions, deletions, substitutions))
+        previous_row = current_row
+    
+    return previous_row[-1]
 
 settings = get_settings()
 
@@ -163,6 +185,118 @@ class VectorStore:
         except Exception as e:
             print(f"[VECTOR_STORE] Erro ao buscar por produto: {e}")
             return []
+    
+    def get_all_tickers(self) -> Set[str]:
+        """
+        Extrai todos os tickers únicos da base de conhecimento.
+        Padrão: 4-5 letras + 11 (ex: TGRE11, XPLG11)
+        
+        Returns:
+            Set de tickers encontrados
+        """
+        ticker_pattern = re.compile(r'\b([A-Z]{4,5}11)\b', re.IGNORECASE)
+        tickers = set()
+        
+        try:
+            all_docs = self.collection.get()
+            if all_docs and all_docs.get('documents'):
+                for doc in all_docs['documents']:
+                    found = ticker_pattern.findall(doc.upper())
+                    tickers.update(found)
+                    
+            if all_docs and all_docs.get('metadatas'):
+                for meta in all_docs['metadatas']:
+                    products = meta.get('products', '')
+                    if products:
+                        found = ticker_pattern.findall(products.upper())
+                        tickers.update(found)
+        except Exception as e:
+            print(f"[VECTOR_STORE] Erro ao extrair tickers: {e}")
+        
+        return tickers
+    
+    def get_all_products(self) -> Set[str]:
+        """
+        Extrai todos os produtos únicos dos metadados.
+        Inclui tickers e nomes de produtos.
+        
+        Returns:
+            Set de produtos encontrados
+        """
+        products = set()
+        
+        try:
+            all_docs = self.collection.get()
+            if all_docs and all_docs.get('metadatas'):
+                for meta in all_docs['metadatas']:
+                    product_str = meta.get('products', '')
+                    if product_str:
+                        for p in product_str.split(','):
+                            cleaned = p.strip().upper()
+                            if cleaned and len(cleaned) >= 3:
+                                products.add(cleaned)
+        except Exception as e:
+            print(f"[VECTOR_STORE] Erro ao extrair produtos: {e}")
+        
+        return products
+    
+    def find_exact_ticker(self, ticker: str) -> bool:
+        """
+        Verifica se um ticker EXATO existe na base de conhecimento.
+        
+        Args:
+            ticker: Ticker a ser buscado (ex: TGRE11)
+            
+        Returns:
+            True se encontrado exatamente, False caso contrário
+        """
+        ticker_upper = ticker.upper().strip()
+        all_tickers = self.get_all_tickers()
+        return ticker_upper in all_tickers
+    
+    def find_similar_tickers(self, ticker: str, max_distance: int = 2, limit: int = 3) -> List[str]:
+        """
+        Encontra tickers/produtos similares ao fornecido usando distância de Levenshtein.
+        Busca tanto em tickers (padrão XX11) quanto em produtos gerais.
+        
+        Args:
+            ticker: Ticker a ser buscado (ex: TGRE11)
+            max_distance: Distância máxima de Levenshtein para considerar similar
+            limit: Número máximo de sugestões
+            
+        Returns:
+            Lista de tickers/produtos similares ordenados por similaridade
+        """
+        ticker_upper = ticker.upper().strip()
+        
+        all_tickers = self.get_all_tickers()
+        all_products = self.get_all_products()
+        all_items = all_tickers.union(all_products)
+        
+        similar = []
+        for existing_item in all_items:
+            if existing_item == ticker_upper:
+                continue
+            
+            distance = levenshtein_distance(ticker_upper, existing_item)
+            
+            if distance <= max_distance:
+                similar.append((existing_item, distance))
+            elif ticker_upper[:4] == existing_item[:4] and len(existing_item) >= 4:
+                similar.append((existing_item, distance))
+        
+        similar.sort(key=lambda x: x[1])
+        
+        seen = set()
+        unique_similar = []
+        for item, dist in similar:
+            if item not in seen:
+                seen.add(item)
+                unique_similar.append(item)
+                if len(unique_similar) >= limit:
+                    break
+        
+        return unique_similar
     
     def clear(self) -> None:
         """Limpa toda a base de conhecimento."""
