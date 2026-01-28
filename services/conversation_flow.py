@@ -212,21 +212,28 @@ def normalize_phone_variants(phone: str) -> list:
         variants.add(clean[-8:])
     
     if len(clean) >= 10:
-        ddd_start = 0
-        if clean.startswith('55') and len(clean) >= 12:
-            ddd_start = 2
+        has_country_code = clean.startswith('55') and len(clean) >= 12
+        ddd_start = 2 if has_country_code else 0
         
         ddd = clean[ddd_start:ddd_start+2]
         rest = clean[ddd_start+2:]
         
+        ddd_rest = ddd + rest
+        variants.add(ddd_rest)
+        variants.add('55' + ddd_rest)
+        
         if rest.startswith('9') and len(rest) == 9:
             without_9 = ddd + rest[1:]
             variants.add(without_9)
+            variants.add('55' + without_9)
             variants.add(rest[1:])
-        elif len(rest) == 8:
+            variants.add(rest)
+        elif len(rest) == 8 and not rest.startswith('9'):
             with_9 = ddd + '9' + rest
             variants.add(with_9)
+            variants.add('55' + with_9)
             variants.add('9' + rest)
+            variants.add(rest)
     
     return list(variants)
 
