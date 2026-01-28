@@ -321,7 +321,7 @@ Stevan existe para aumentar a eficiência do assessor e gerar mais valor ao clie
         max_tokens = config.get("max_tokens", 500) if config else 500
         
         vs = get_vector_store()
-        context_documents = vs.search(user_message, n_results=3) if vs else []
+        context_documents = vs.search(user_message, n_results=5) if vs else []
         context = self._build_context(context_documents)
         
         if assessor_data:
@@ -345,8 +345,12 @@ Stevan existe para aumentar a eficiência do assessor e gerar mais valor ao clie
 PERGUNTA DO ASSESSOR/CLIENTE:
 {user_message}
 
-Responda de forma clara e objetiva. Use as informações do assessor identificado se disponíveis.
-Se não encontrar a informação no contexto, pergunte se deseja abrir um chamado."""
+INSTRUÇÕES IMPORTANTES:
+1. SEMPRE use as informações do CONTEXTO acima para responder, mesmo que os nomes não sejam exatamente iguais (ex: "TG Core" pode ser "TGRI", "TG RI", etc.)
+2. Se o contexto contém informações sobre produtos similares ao que foi perguntado, USE essas informações na resposta
+3. Responda de forma clara e objetiva, citando os dados específicos encontrados
+4. Use as informações do assessor identificado se disponíveis
+5. SOMENTE se realmente não houver nenhuma informação relevante no contexto, pergunte se deseja abrir um chamado"""
         })
         
         try:
