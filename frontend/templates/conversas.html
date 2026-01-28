@@ -84,9 +84,10 @@
             margin-bottom: 6px;
         }
 
-        .conv-phone {
+        .conv-name-title {
             font-weight: 600;
             color: var(--text-primary);
+            font-size: 0.95rem;
         }
 
         .conv-time {
@@ -94,8 +95,8 @@
             color: var(--text-secondary);
         }
 
-        .conv-name {
-            font-size: 0.9rem;
+        .conv-phone-subtitle {
+            font-size: 0.8rem;
             color: var(--text-secondary);
             margin-bottom: 4px;
         }
@@ -734,13 +735,13 @@
                 return `
                     <div class="conversation-item ${currentConversation?.id === conv.id ? 'active' : ''}" onclick="selectConversation(${conv.id})">
                         <div class="conv-header">
-                            <span class="conv-phone">
-                                ${formatPhone(conv.phone)}
+                            <span class="conv-name-title">
+                                ${displayName}
                                 <span class="conv-status status-${conv.status}">${statusLabel[conv.status] || conv.status}</span>
                             </span>
                             <span class="conv-time">${timeAgo}</span>
                         </div>
-                        <div class="conv-name">${displayName}</div>
+                        <div class="conv-phone-subtitle">${formatPhone(conv.phone)}</div>
                         <div class="conv-preview">${conv.last_message_preview || 'Sem mensagens'}</div>
                         ${conv.unread_count > 0 ? `<span class="unread-badge">${conv.unread_count}</span>` : ''}
                     </div>
