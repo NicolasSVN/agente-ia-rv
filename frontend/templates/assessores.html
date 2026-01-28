@@ -299,6 +299,37 @@
             min-height: 50px;
         }
 
+        .sortable-header {
+            cursor: pointer;
+            user-select: none;
+            white-space: nowrap;
+        }
+
+        .sortable-header:hover {
+            background: var(--bg-color);
+        }
+
+        .sort-indicator {
+            display: inline-flex;
+            margin-left: 4px;
+            vertical-align: middle;
+            opacity: 0.3;
+            transition: opacity 0.2s;
+        }
+
+        .sortable-header:hover .sort-indicator {
+            opacity: 0.6;
+        }
+
+        .sortable-header.sorted .sort-indicator {
+            opacity: 1;
+            color: var(--primary-color);
+        }
+
+        .sortable-header.sorted {
+            color: var(--primary-color);
+        }
+
         @media (max-width: 1024px) {
             .filters-bar {
                 grid-template-columns: 1fr 1fr;
@@ -624,6 +655,8 @@
         let filterOptions = { unidades: [], equipes: [], brokers: [] };
         let uploadPreview = null;
         let dbFields = [];
+        let sortColumn = null;
+        let sortDirection = null;
 
         function toggleSidebar() {
             const sidebar = document.getElementById('sidebar');
@@ -889,22 +922,40 @@
             empty.style.display = 'none';
             table.style.display = 'table';
 
+            const fixedColumns = [
+                { key: 'codigo_ai', label: 'Código' },
+                { key: 'nome', label: 'Nome' },
+                { key: 'email', label: 'E-mail' },
+                { key: 'telefone_whatsapp', label: 'WhatsApp' },
+                { key: 'unidade', label: 'Unidade' },
+                { key: 'equipe', label: 'Equipe' },
+                { key: 'broker_responsavel', label: 'Broker' }
+            ];
+
             const thead = document.getElementById('assessores-head');
-            let headerHtml = `<tr>
-                <th>Código</th>
-                <th>Nome</th>
-                <th>E-mail</th>
-                <th>WhatsApp</th>
-                <th>Unidade</th>
-                <th>Equipe</th>
-                <th>Broker</th>`;
-            customFields.forEach(cf => {
-                headerHtml += `<th>${cf.label}</th>`;
+            let headerHtml = '<tr>';
+            
+            fixedColumns.forEach(col => {
+                const isSorted = sortColumn === col.key;
+                const sortedClass = isSorted ? 'sorted' : '';
+                const arrow = getSortArrow(col.key);
+                headerHtml += `<th class="sortable-header ${sortedClass}" onclick="toggleSort('${col.key}')">${col.label}${arrow}</th>`;
             });
+            
+            customFields.forEach(cf => {
+                const cfKey = `cf_${cf.slug}`;
+                const isSorted = sortColumn === cfKey;
+                const sortedClass = isSorted ? 'sorted' : '';
+                const arrow = getSortArrow(cfKey);
+                headerHtml += `<th class="sortable-header ${sortedClass}" onclick="toggleSort('${cfKey}')">${cf.label}${arrow}</th>`;
+            });
+            
             headerHtml += `<th style="text-align: right;">Ações</th></tr>`;
             thead.innerHTML = headerHtml;
 
-            tbody.innerHTML = assessores.map(a => {
+            const sortedAssessores = getSortedAssessores();
+
+            tbody.innerHTML = sortedAssessores.map(a => {
                 let customFieldsCells = '';
                 customFields.forEach(cf => {
                     const value = a.custom_fields?.[cf.slug] || '-';
@@ -933,6 +984,57 @@
                     </td>
                 </tr>`;
             }).join('');
+        }
+
+        function getSortArrow(key) {
+            if (sortColumn !== key) {
+                return `<span class="sort-indicator"><svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4"/></svg></span>`;
+            }
+            if (sortDirection === 'asc') {
+                return `<span class="sort-indicator"><svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7"/></svg></span>`;
+            }
+            return `<span class="sort-indicator"><svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg></span>`;
+        }
+
+        function toggleSort(key) {
+            if (sortColumn === key) {
+                if (sortDirection === 'asc') {
+                    sortDirection = 'desc';
+                } else if (sortDirection === 'desc') {
+                    sortColumn = null;
+                    sortDirection = null;
+                }
+            } else {
+                sortColumn = key;
+                sortDirection = 'asc';
+            }
+            renderTable();
+        }
+
+        function getSortedAssessores() {
+            if (!sortColumn || !sortDirection) {
+                return [...assessores];
+            }
+
+            return [...assessores].sort((a, b) => {
+                let valA, valB;
+                
+                if (sortColumn.startsWith('cf_')) {
+                    const slug = sortColumn.substring(3);
+                    valA = a.custom_fields?.[slug] || '';
+                    valB = b.custom_fields?.[slug] || '';
+                } else {
+                    valA = a[sortColumn] || '';
+                    valB = b[sortColumn] || '';
+                }
+
+                valA = String(valA).toLowerCase();
+                valB = String(valB).toLowerCase();
+
+                if (valA < valB) return sortDirection === 'asc' ? -1 : 1;
+                if (valA > valB) return sortDirection === 'asc' ? 1 : -1;
+                return 0;
+            });
         }
 
         function renderCustomFields() {
