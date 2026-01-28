@@ -513,11 +513,11 @@
                 if (response.ok) {
                     loadIntegrations();
                 } else {
-                    alert('Erro ao atualizar integração');
+                    toast.error('Erro ao atualizar integração');
                 }
             } catch (error) {
                 console.error('Erro:', error);
-                alert('Erro ao atualizar integração');
+                toast.error('Erro ao atualizar integração');
             }
         }
 
@@ -553,11 +553,11 @@
                 if (response.ok) {
                     loadIntegrations();
                 } else {
-                    alert('Erro ao inicializar integrações');
+                    toast.error('Erro ao inicializar integrações');
                 }
             } catch (error) {
                 console.error('Erro:', error);
-                alert('Erro ao inicializar integrações');
+                toast.error('Erro ao inicializar integrações');
             }
         }
 
@@ -580,7 +580,7 @@
             });
 
             if (secrets.length === 0) {
-                alert('Preencha pelo menos um campo para salvar.');
+                toast.warning('Preencha pelo menos um campo para salvar.');
                 button.innerHTML = originalText;
                 button.disabled = false;
                 return;
@@ -596,16 +596,16 @@
 
                 if (response.ok) {
                     const data = await response.json();
-                    alert(data.message);
+                    toast.success(data.message);
                     inputs.forEach(input => input.value = '');
                     loadIntegrations();
                 } else {
                     const error = await response.json();
-                    alert('Erro: ' + (error.detail || 'Não foi possível salvar'));
+                    toast.error('Erro: ' + (error.detail || 'Não foi possível salvar'));
                 }
             } catch (error) {
                 console.error('Erro:', error);
-                alert('Erro ao salvar configurações');
+                toast.error('Erro ao salvar configurações');
             }
 
             button.innerHTML = originalText;
@@ -619,5 +619,6 @@
 
         loadIntegrations();
     </script>
+    <script src="/static/notifications.js?v={{ now().timestamp() if now else 1706371200 }}"></script>
 </body>
 </html>

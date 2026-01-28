@@ -438,11 +438,11 @@
                     closeModal();
                     loadTickets();
                 } else {
-                    alert('Erro ao criar chamado');
+                    toast.error('Erro ao criar chamado');
                 }
             } catch (error) {
                 console.error('Erro ao criar chamado:', error);
-                alert('Erro ao criar chamado');
+                toast.error('Erro ao criar chamado');
             }
         }
         
@@ -457,5 +457,6 @@
             }
         });
     </script>
+    <script src="/static/notifications.js?v={{ now().timestamp() if now else 1706371200 }}"></script>
 </body>
 </html>

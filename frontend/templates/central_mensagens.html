@@ -931,11 +931,11 @@
                     await loadConversations();
                 } else {
                     const error = await response.json();
-                    alert('Erro ao enviar: ' + (error.detail || 'Erro desconhecido'));
+                    toast.error('Erro ao enviar: ' + (error.detail || 'Erro desconhecido'));
                 }
             } catch (error) {
                 console.error('Erro ao enviar mensagem:', error);
-                alert('Erro ao enviar mensagem');
+                toast.error('Erro ao enviar mensagem');
             } finally {
                 sendBtn.disabled = !input.value.trim();
             }
@@ -1003,12 +1003,12 @@
             const message = document.getElementById('newChatMessage').value.trim();
 
             if (!phone || phone.length < 10) {
-                alert('Digite um número de telefone válido');
+                toast.warning('Digite um número de telefone válido');
                 return;
             }
 
             if (!message) {
-                alert('Digite uma mensagem');
+                toast.warning('Digite uma mensagem');
                 return;
             }
 
@@ -1026,11 +1026,11 @@
                     selectConversation(result.conversation_id);
                 } else {
                     const error = await response.json();
-                    alert('Erro: ' + (error.detail || 'Erro ao iniciar conversa'));
+                    toast.error('Erro: ' + (error.detail || 'Erro ao iniciar conversa'));
                 }
             } catch (error) {
                 console.error('Erro ao iniciar conversa:', error);
-                alert('Erro ao iniciar conversa');
+                toast.error('Erro ao iniciar conversa');
             }
         }
 
@@ -1042,7 +1042,7 @@
             const file = event.target.files[0];
             if (!file || !currentConversation) return;
 
-            alert('Funcionalidade de anexos será implementada em breve. Por enquanto, envie arquivos via URL.');
+            toast.info('Funcionalidade de anexos será implementada em breve. Por enquanto, envie arquivos via URL.');
             event.target.value = '';
         }
 
@@ -1096,5 +1096,6 @@
 
         loadConversations();
     </script>
+    <script src="/static/notifications.js?v={{ now().timestamp() if now else 1706371200 }}"></script>
 </body>
 </html>

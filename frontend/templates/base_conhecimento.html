@@ -875,7 +875,13 @@
         }
 
         async function deleteDocument(id) {
-            if (!confirm('Tem certeza que deseja excluir este documento?')) return;
+            const confirmed = await toast.confirm({
+                title: 'Excluir Documento',
+                message: 'Tem certeza que deseja excluir este documento?',
+                confirmText: 'Excluir',
+                type: 'danger'
+            });
+            if (!confirmed) return;
 
             try {
                 const response = await fetch(`/api/knowledge/${id}`, {
@@ -891,14 +897,18 @@
                 loadDocuments();
                 loadStats();
             } catch (error) {
-                alert('Erro: ' + error.message);
+                toast.error('Erro: ' + error.message);
             }
         }
 
         async function reindexDocument(id, fileType) {
-            if (!confirm('Deseja reindexar este documento?')) {
-                return;
-            }
+            const confirmed = await toast.confirm({
+                title: 'Reindexar Documento',
+                message: 'Deseja reindexar este documento?',
+                confirmText: 'Reindexar',
+                type: 'warning'
+            });
+            if (!confirmed) return;
             
             try {
                 const response = await fetch(`/api/knowledge/${id}/reindex`, {
@@ -914,10 +924,10 @@
                 }
 
                 const result = await response.json();
-                alert(result.message || 'Reindexacao iniciada');
+                toast.success(result.message || 'Reindexação iniciada');
                 loadDocuments();
             } catch (error) {
-                alert('Erro: ' + error.message);
+                toast.error('Erro: ' + error.message);
             }
         }
 
@@ -961,5 +971,6 @@
             loadDocuments();
         });
     </script>
+    <script src="/static/notifications.js?v={{ now().timestamp() if now else 1706371200 }}"></script>
 </body>
 </html>

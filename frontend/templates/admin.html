@@ -389,18 +389,22 @@
                     loadUsers();
                 } else {
                     const error = await response.json();
-                    alert(error.detail || 'Erro ao salvar usuário');
+                    toast.error(error.detail || 'Erro ao salvar usuário');
                 }
             } catch (error) {
                 console.error('Erro ao salvar usuário:', error);
-                alert('Erro ao salvar usuário');
+                toast.error('Erro ao salvar usuário');
             }
         }
         
         async function deleteUser(userId) {
-            if (!confirm('Tem certeza que deseja excluir este usuário?')) {
-                return;
-            }
+            const confirmed = await toast.confirm({
+                title: 'Excluir Usuário',
+                message: 'Tem certeza que deseja excluir este usuário?',
+                confirmText: 'Excluir',
+                type: 'danger'
+            });
+            if (!confirmed) return;
             
             try {
                 const response = await fetch(`/api/users/${userId}`, {
@@ -410,7 +414,7 @@
                 if (response.ok) {
                     loadUsers();
                 } else {
-                    alert('Erro ao excluir usuário');
+                    toast.error('Erro ao excluir usuário');
                 }
             } catch (error) {
                 console.error('Erro ao excluir usuário:', error);
@@ -428,5 +432,6 @@
             }
         });
     </script>
+    <script src="/static/notifications.js?v={{ now().timestamp() if now else 1706371200 }}"></script>
 </body>
 </html>

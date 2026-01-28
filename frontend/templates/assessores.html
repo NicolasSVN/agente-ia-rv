@@ -634,13 +634,19 @@
         }
 
         async function deleteAssessor(id) {
-            if (!confirm('Tem certeza que deseja excluir este assessor?')) return;
+            const confirmed = await toast.confirm({
+                title: 'Excluir Assessor',
+                message: 'Tem certeza que deseja excluir este assessor?',
+                confirmText: 'Excluir',
+                type: 'danger'
+            });
+            if (!confirmed) return;
             try {
                 await fetch(`/api/assessores/${id}`, { method: 'DELETE' });
                 loadAssessores();
                 loadFilterOptions();
             } catch (err) {
-                alert('Erro ao excluir assessor');
+                toast.error('Erro ao excluir assessor');
             }
         }
 
@@ -677,7 +683,7 @@
                 loadAssessores();
                 loadFilterOptions();
             } catch (err) {
-                alert('Erro ao salvar assessor');
+                toast.error('Erro ao salvar assessor');
             }
         });
 
@@ -790,7 +796,7 @@
             });
 
             if (mappings.length === 0) {
-                alert('Mapeie pelo menos uma coluna');
+                toast.warning('Mapeie pelo menos uma coluna');
                 return;
             }
 
@@ -828,7 +834,7 @@
                         result.errors.slice(0, 10).join('<br>');
                 }
             } catch (err) {
-                alert('Erro na importação: ' + err.message);
+                toast.error('Erro na importação: ' + err.message);
             } finally {
                 btn.disabled = false;
                 btn.textContent = 'Confirmar Importação';
@@ -857,7 +863,7 @@
             const isRequired = document.getElementById('cf-required').checked;
 
             if (!slug || !label) {
-                alert('Preencha todos os campos');
+                toast.warning('Preencha todos os campos');
                 return;
             }
 
@@ -870,7 +876,7 @@
 
                 if (!res.ok) {
                     const error = await res.json();
-                    alert(error.detail || 'Erro ao criar campo');
+                    toast.error(error.detail || 'Erro ao criar campo');
                     return;
                 }
 
@@ -879,17 +885,23 @@
                 document.getElementById('cf-required').checked = false;
                 loadCustomFields();
             } catch (err) {
-                alert('Erro ao criar campo');
+                toast.error('Erro ao criar campo');
             }
         });
 
         async function deleteCustomField(id) {
-            if (!confirm('Tem certeza que deseja excluir este campo?')) return;
+            const confirmed = await toast.confirm({
+                title: 'Excluir Campo',
+                message: 'Tem certeza que deseja excluir este campo?',
+                confirmText: 'Excluir',
+                type: 'danger'
+            });
+            if (!confirmed) return;
             try {
                 await fetch(`/api/custom-fields/${id}`, { method: 'DELETE' });
                 loadCustomFields();
             } catch (err) {
-                alert('Erro ao excluir campo');
+                toast.error('Erro ao excluir campo');
             }
         }
 
@@ -916,5 +928,6 @@
             window.location.href = '/login';
         }
     </script>
+    <script src="/static/notifications.js?v={{ now().timestamp() if now else 1706371200 }}"></script>
 </body>
 </html>

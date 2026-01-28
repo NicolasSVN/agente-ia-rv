@@ -881,7 +881,7 @@
                     updateKnowledgeList(data.knowledge_documents);
                 } catch (error) {
                     hideTypingIndicator();
-                    alert("Erro: " + error.message);
+                    toast.error(error.message);
                 } finally {
                     isLoading = false;
                     sendBtn.disabled = false;
@@ -931,8 +931,13 @@
             }
 
             async function clearConversation() {
-                if (!confirm("Limpar toda a conversa e memoria do agente?"))
-                    return;
+                const confirmed = await toast.confirm({
+                    title: 'Limpar conversa',
+                    message: 'Limpar toda a conversa e memória do agente?',
+                    confirmText: 'Limpar',
+                    type: 'warning'
+                });
+                if (!confirmed) return;
 
                 try {
                     const response = await fetch("/api/agent/test/clear", {
@@ -941,6 +946,7 @@
                     });
 
                     if (response.ok) {
+                        toast.success('Conversa limpa com sucesso');
                         document.getElementById("chatMessages").innerHTML = `
                         <div class="empty-chat" id="emptyChat">
                             <div class="icon">💬</div>
@@ -960,7 +966,7 @@
                             "none";
                     }
                 } catch (error) {
-                    alert("Erro ao limpar conversa: " + error.message);
+                    toast.error('Erro ao limpar conversa: ' + error.message);
                 }
             }
 
@@ -978,5 +984,6 @@
                 loadHistory();
             });
         </script>
+        <script src="/static/notifications.js?v={{ now().timestamp() if now else 1706371200 }}"></script>
     </body>
 </html>

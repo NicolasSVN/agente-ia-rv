@@ -1649,7 +1649,7 @@ Equipe de Gestao" oninput="updateMessagePreview()"></textarea>
                 lastFocusedTextarea.focus();
                 updateMessagePreview();
             } else {
-                alert('Clique primeiro em um campo de texto para inserir a variavel.');
+                toast.warning('Clique primeiro em um campo de texto para inserir a variável.');
             }
         }
 
@@ -1899,7 +1899,7 @@ Equipe de Gestao" oninput="updateMessagePreview()"></textarea>
                 campaignId = data.campaign_id;
                 
             } catch (error) {
-                alert(error.message);
+                toast.error(error.message);
                 throw error;
             }
         }
@@ -1933,7 +1933,7 @@ Equipe de Gestao" oninput="updateMessagePreview()"></textarea>
 
             const campaignName = document.getElementById('campaignName').value.trim();
             if (!campaignName) {
-                alert('Por favor, informe o nome da campanha antes de fazer upload.');
+                toast.warning('Por favor, informe o nome da campanha antes de fazer upload.');
                 return;
             }
 
@@ -1977,7 +1977,7 @@ Equipe de Gestao" oninput="updateMessagePreview()"></textarea>
                 renderMappingGrid(data.columns, data.suggested_mapping || {});
 
             } catch (error) {
-                alert(error.message);
+                toast.error(error.message);
             }
         }
 
@@ -2250,14 +2250,14 @@ Equipe de Gestao" oninput="updateMessagePreview()"></textarea>
                 if (!assessorCodeColumn) {
                     document.getElementById('assessorLinkWarning').style.display = 'block';
                     document.getElementById('assessorCodeColumn').style.borderColor = '#ef4444';
-                    alert('Por favor, selecione a coluna que contem o codigo do assessor para vincular com a base.');
+                    toast.warning('Por favor, selecione a coluna que contém o código do assessor para vincular com a base.');
                     return;
                 }
                 
                 if (groupByClient) {
                     const clientId = document.getElementById('clientIdColumn')?.value;
                     if (!clientId) {
-                        alert('Voce marcou "Agrupar por cliente", por favor selecione a coluna com ID do Cliente.');
+                        toast.warning('Você marcou "Agrupar por cliente", por favor selecione a coluna com ID do Cliente.');
                         return;
                     }
                 }
@@ -2335,7 +2335,7 @@ Equipe de Gestao" oninput="updateMessagePreview()"></textarea>
                 };
                 updateAttachmentPreview();
             } catch (error) {
-                alert(error.message);
+                toast.error(error.message);
             }
             
             event.target.value = '';
@@ -2434,9 +2434,13 @@ Equipe de Gestao" oninput="updateMessagePreview()"></textarea>
         }
 
         async function dispatchCampaign() {
-            if (!confirm('Tem certeza que deseja disparar esta campanha? As mensagens serao enviadas para todos os assessores com intervalo de 2-3 segundos entre cada envio.')) {
-                return;
-            }
+            const confirmed = await toast.confirm({
+                title: 'Disparar Campanha',
+                message: 'Tem certeza que deseja disparar esta campanha? As mensagens serão enviadas para todos os assessores com intervalo de 2-3 segundos entre cada envio.',
+                confirmText: 'Disparar',
+                type: 'warning'
+            });
+            if (!confirmed) return;
 
             const btn = document.getElementById('dispatchBtn');
             const backBtn = document.getElementById('backBtn');
@@ -2532,7 +2536,11 @@ Equipe de Gestao" oninput="updateMessagePreview()"></textarea>
                         
                         if (data.failed_count > 0) {
                             setTimeout(() => {
-                                alert(`Disparo concluido!\n\nMensagens enviadas: ${data.sent_count}\nFalhas: ${data.failed_count}\n\nVerifique o historico para analisar as falhas.`);
+                                toast.warning(`Disparo concluído! Mensagens enviadas: ${data.sent_count}, Falhas: ${data.failed_count}. Verifique o histórico para analisar as falhas.`);
+                            }, 500);
+                        } else {
+                            setTimeout(() => {
+                                toast.success(`Disparo concluído! Todas as ${data.sent_count} mensagens foram enviadas com sucesso.`);
                             }, 500);
                         }
                     }
@@ -2551,11 +2559,11 @@ Equipe de Gestao" oninput="updateMessagePreview()"></textarea>
                         Tentar Novamente
                     `;
                     
-                    alert('Erro na conexao. Verifique se a campanha foi parcialmente enviada antes de tentar novamente.');
+                    toast.error('Erro na conexão. Verifique se a campanha foi parcialmente enviada antes de tentar novamente.');
                 };
 
             } catch (error) {
-                alert(error.message);
+                toast.error(error.message);
                 btn.disabled = false;
                 backBtn.disabled = false;
                 btn.innerHTML = `
@@ -2783,7 +2791,13 @@ Equipe de Gestao" oninput="updateMessagePreview()"></textarea>
         }
 
         async function deleteCampaign(id) {
-            if (!confirm('Tem certeza que deseja excluir esta campanha?')) return;
+            const confirmed = await toast.confirm({
+                title: 'Excluir Campanha',
+                message: 'Tem certeza que deseja excluir esta campanha?',
+                confirmText: 'Excluir',
+                type: 'danger'
+            });
+            if (!confirmed) return;
             
             try {
                 const response = await fetch(`${API_BASE}/${id}`, {
@@ -2795,7 +2809,7 @@ Equipe de Gestao" oninput="updateMessagePreview()"></textarea>
                 
                 loadHistory();
             } catch (error) {
-                alert(error.message);
+                toast.error(error.message);
             }
         }
 
@@ -2817,7 +2831,7 @@ Equipe de Gestao" oninput="updateMessagePreview()"></textarea>
                 goToStep(3);
                 
             } catch (error) {
-                alert(error.message);
+                toast.error(error.message);
             }
         }
 
@@ -2915,7 +2929,7 @@ Equipe de Gestao" oninput="updateMessagePreview()"></textarea>
                 };
                 updateTemplateAttachmentPreview();
             } catch (error) {
-                alert(error.message);
+                toast.error(error.message);
             }
             
             event.target.value = '';
@@ -2966,7 +2980,7 @@ Equipe de Gestao" oninput="updateMessagePreview()"></textarea>
                 
                 document.getElementById('templateModal').classList.add('show');
             } catch (error) {
-                alert('Erro ao carregar template');
+                toast.error('Erro ao carregar template');
             }
         }
 
@@ -2981,7 +2995,7 @@ Equipe de Gestao" oninput="updateMessagePreview()"></textarea>
             const content = document.getElementById('templateContent').value.trim();
 
             if (!name || !content) {
-                alert('Nome e conteudo sao obrigatorios');
+                toast.warning('Nome e conteúdo são obrigatórios');
                 return;
             }
 
@@ -3010,14 +3024,20 @@ Equipe de Gestao" oninput="updateMessagePreview()"></textarea>
 
                 closeTemplateModal();
                 loadTemplates();
-                alert('Template salvo com sucesso!');
+                toast.success('Template salvo com sucesso!');
             } catch (error) {
-                alert(error.message);
+                toast.error(error.message);
             }
         }
 
         async function deleteTemplate(id) {
-            if (!confirm('Tem certeza que deseja excluir este template?')) return;
+            const confirmed = await toast.confirm({
+                title: 'Excluir Template',
+                message: 'Tem certeza que deseja excluir este template?',
+                confirmText: 'Excluir',
+                type: 'danger'
+            });
+            if (!confirmed) return;
 
             try {
                 await fetch(`${API_BASE}/templates/${id}`, {
@@ -3026,7 +3046,7 @@ Equipe de Gestao" oninput="updateMessagePreview()"></textarea>
                 });
                 loadTemplates();
             } catch (error) {
-                alert('Erro ao excluir template');
+                toast.error('Erro ao excluir template');
             }
         }
 
@@ -3035,5 +3055,6 @@ Equipe de Gestao" oninput="updateMessagePreview()"></textarea>
             window.location.href = '/login';
         }
     </script>
+    <script src="/static/notifications.js?v={{ now().timestamp() if now else 1706371200 }}"></script>
 </body>
 </html>

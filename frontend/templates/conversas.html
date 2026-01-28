@@ -882,7 +882,7 @@
                 updateTakeoverButton();
                 loadConversations();
             } catch (error) {
-                alert('Erro ao alterar status da conversa');
+                toast.error('Erro ao alterar status da conversa');
             }
         }
 
@@ -908,7 +908,7 @@
                 await loadMessages(currentConversation.id);
                 loadConversations();
             } catch (error) {
-                alert('Erro ao enviar mensagem: ' + error.message);
+                toast.error('Erro ao enviar mensagem: ' + error.message);
             } finally {
                 btn.disabled = false;
             }
@@ -949,18 +949,18 @@
             const message = document.getElementById('newMessageInput').value.trim();
 
             if (!phone) {
-                alert('Por favor, insira o número de telefone');
+                toast.warning('Por favor, insira o número de telefone');
                 return;
             }
 
             if (!message) {
-                alert('Por favor, insira a mensagem inicial');
+                toast.warning('Por favor, insira a mensagem inicial');
                 return;
             }
 
             const phoneClean = phone.replace(/\D/g, '');
             if (phoneClean.length < 10 || phoneClean.length > 15) {
-                alert('Número de telefone inválido. Use o formato: 5511999999999');
+                toast.warning('Número de telefone inválido. Use o formato: 5511999999999');
                 return;
             }
 
@@ -989,7 +989,7 @@
                     selectConversation(result.conversation_id);
                 }
             } catch (error) {
-                alert('Erro: ' + error.message);
+                toast.error('Erro: ' + error.message);
             } finally {
                 btn.disabled = false;
                 btn.textContent = 'Enviar Mensagem';
@@ -1067,5 +1067,6 @@
             </div>
         </div>
     </div>
+    <script src="/static/notifications.js?v={{ now().timestamp() if now else 1706371200 }}"></script>
 </body>
 </html>
