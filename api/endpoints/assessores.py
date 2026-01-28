@@ -6,12 +6,16 @@ import os
 import uuid
 import shutil
 import json
+import logging
+import traceback
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
 from pydantic import BaseModel
 from datetime import datetime
+
+logger = logging.getLogger(__name__)
 
 try:
     import pandas as pd
@@ -421,7 +425,7 @@ async def upload_preview(file: UploadFile = File(...), db: Session = Depends(get
         if file.filename.endswith('.csv'):
             df = pd.read_csv(file_path)
         else:
-            df = pd.read_excel(file_path)
+            df = pd.read_excel(file_path, engine='openpyxl')
         
         temp_files[file_id] = file_path
         
@@ -464,18 +468,24 @@ async def get_database_fields(db: Session = Depends(get_db), current_user: User 
 
 @upload_router.post("/confirm")
 async def confirm_upload(data: UploadConfirm, db: Session = Depends(get_db), current_user: User = Depends(require_admin_or_gestao)):
+    logger.info(f"Iniciando confirmação de importação - file_id: {data.file_id}")
+    
     if pd is None:
         raise HTTPException(status_code=500, detail="Pandas não está instalado")
     
     file_path = temp_files.get(data.file_id)
+    logger.info(f"Arquivo encontrado: {file_path}")
+    
     if not file_path or not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail="Arquivo não encontrado. Faça o upload novamente.")
     
     try:
+        logger.info(f"Lendo arquivo: {file_path}")
         if file_path.endswith('.csv'):
             df = pd.read_csv(file_path)
         else:
-            df = pd.read_excel(file_path)
+            df = pd.read_excel(file_path, engine='openpyxl')
+        logger.info(f"Arquivo lido com sucesso. Colunas: {list(df.columns)}, Linhas: {len(df)}")
         
         mapping_dict = {m.spreadsheet_column: m.database_field for m in data.mappings}
         
@@ -563,4 +573,6 @@ async def confirm_upload(data: UploadConfirm, db: Session = Depends(get_db), cur
         }
         
     except Exception as e:
+        logger.error(f"Erro ao processar importação: {str(e)}")
+        logger.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail=f"Erro ao processar importação: {str(e)}")
