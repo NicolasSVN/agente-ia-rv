@@ -1,0 +1,256 @@
+Excelente. Aqui vai um **plano de teste completo + checklist técnico**, desenhados para dois cérebros diferentes:
+
+* 🧑‍💼 **Você (humano / negócio / broker mindset)**
+* 🤖 **Replit (técnico / engenharia / IA / pipeline)**
+
+A ideia é que isso vire um **guardrail operacional**: se passar por isso, o sistema está realmente pronto para uso em produção.
+
+---
+
+# 🧪 PLANO DE TESTE FUNCIONAL (HUMANO / NEGÓCIO)
+
+## 1. Teste de Produto (Product-Centric Flow)
+
+🎯 Objetivo: Garantir que o sistema gira em torno do produto, não do PDF.
+
+### 1.1 Criar Produto
+
+* [ ] Criar produto XPTO
+* [ ] Definir categoria, tickers, status, vigência
+* [ ] Ver produto aparecer na lista
+* [ ] Ver badges de status/expiração
+
+### 1.2 Atualizar Produto
+
+* [ ] Editar nome/categoria/tickers
+* [ ] Ver histórico de versões
+* [ ] Confirmar que buscas refletem mudança
+
+---
+
+## 2. Teste de Materiais Vivos (One-page, Taxas, Textos)
+
+🎯 Objetivo: Atualizar sem subir PDF novo.
+
+### 2.1 Criar One-page
+
+* [ ] Criar material tipo "One-page"
+* [ ] Editar texto no editor
+* [ ] Salvar como draft
+* [ ] Publicar
+* [ ] Confirmar versão publicada ativa
+
+### 2.2 Atualizar Taxa (caso real)
+
+* [ ] Criar material tipo "Tabela de taxas"
+* [ ] Editar célula específica
+* [ ] Publicar nova versão
+* [ ] Ver versão anterior preservada
+* [ ] Confirmar IA responde com taxa nova
+
+---
+
+## 3. Teste de Scripts WhatsApp (Venda Real)
+
+🎯 Objetivo: Garantir uso operacional diário.
+
+### 3.1 Criar Script
+
+* [ ] Criar script "Venda em 1 minuto"
+* [ ] Associar ao produto
+* [ ] Salvar como draft
+* [ ] Publicar
+
+### 3.2 Atualizar Script
+
+* [ ] Editar só uma frase
+* [ ] Publicar nova versão
+* [ ] Confirmar histórico
+* [ ] Copiar e colar no WhatsApp (teste real)
+
+---
+
+## 4. Teste de Upload de Documento (PDF Multimodal)
+
+🎯 Objetivo: Validar pipeline completo.
+
+### 4.1 Upload
+
+* [ ] Subir PDF com:
+
+  * Texto
+  * Tabelas
+  * Gráficos
+* [ ] Ver preview por página
+* [ ] Ver stats:
+
+  * total_chunks
+  * total_tables
+  * total_charts
+
+---
+
+## 5. Teste de Revisão por Exceção
+
+🎯 Objetivo: Garantir que revisão não vira burocracia.
+
+### 5.1 Tela de Revisão
+
+* [ ] Ver apenas tabelas e gráficos
+* [ ] Conferir scores de confiança
+* [ ] Editar uma tabela
+* [ ] Editar descrição de um gráfico
+* [ ] Marcar como OK
+* [ ] Indexar documento
+
+### 5.2 Auto-aprovação
+
+* [ ] Confirmar texto puro não exige revisão
+* [ ] Confirmar itens críticos exigem revisão
+
+---
+
+## 6. Teste de Busca + IA (Valor Final)
+
+🎯 Objetivo: Garantir resposta correta e atual.
+
+### 6.1 Busca por Produto
+
+* [ ] Perguntar: "Taxa atual do XPTO"
+* [ ] Confirmar que usa tabela aprovada
+* [ ] Confirmar página e fonte citadas
+
+### 6.2 Busca por Tendência
+
+* [ ] Perguntar baseado em gráfico
+* [ ] Confirmar menção a análise visual
+
+### 6.3 Busca por Texto Comercial
+
+* [ ] Perguntar algo conceitual
+* [ ] Confirmar uso de one-page/texto vivo
+
+---
+
+## 7. Teste de Expiração e Governança
+
+🎯 Objetivo: Evitar dados velhos.
+
+* [ ] Criar material com vigência curta
+* [ ] Simular expiração
+* [ ] Confirmar badge "Expirado"
+* [ ] Confirmar IA ignora expirados
+* [ ] Receber alerta de expiração
+
+---
+
+# 🧾 CHECKLIST TÉCNICO (REPLIT / ENGENHARIA)
+
+## Dados & Modelagem
+
+* [ ] products table com versionamento
+* [ ] materials table com tipos (one-page, table, text, etc)
+* [ ] material_versions
+* [ ] whatsapp_scripts + versions
+* [ ] document_items (text, table, chart)
+* [ ] approvals table
+* [ ] status + vigência em todas entidades
+* [ ] relação clara produto → material → documento
+
+---
+
+## Pipeline de Ingestão
+
+* [ ] Detecção de tipo (texto/tabela/gráfico)
+* [ ] OCR + Vision para gráficos
+* [ ] Extração estruturada de tabelas (Camelot/pdfplumber)
+* [ ] Bounding boxes salvas
+* [ ] Confidence score por item
+* [ ] Chunking inteligente (não fragmentar tabelas)
+* [ ] Geração de resumo para tabelas/gráficos
+* [ ] Classificação de risco aplicada
+
+---
+
+## Aprovação Híbrida
+
+* [ ] Auto-approve para texto simples
+* [ ] Mandatory review para:
+
+  * Gráficos
+  * Tabelas < threshold
+  * Números financeiros
+* [ ] Status por item (auto_approved / approved / pending)
+* [ ] Tela de revisão por exceção funcional
+* [ ] Edição inline de tabela
+* [ ] Edição de descrição de gráfico
+
+---
+
+## Materiais Vivos (CMS)
+
+* [ ] Editor rich text
+* [ ] Editor de tabela tipo planilha
+* [ ] Versionamento automático
+* [ ] Draft vs Published
+* [ ] Histórico de versões
+* [ ] Rollback possível
+
+---
+
+## Scripts WhatsApp
+
+* [ ] CRUD de scripts
+* [ ] Associação com produto
+* [ ] Editor simples
+* [ ] Versionamento
+* [ ] Status published
+* [ ] Busca indexa scripts também
+
+---
+
+## Busca & Retrieval
+
+* [ ] Filtros por:
+
+  * produto
+  * ticker
+  * status
+  * vigência
+* [ ] Re-ranking por tipo (text/table/chart)
+* [ ] Ignorar não-approved
+* [ ] Ignorar expirados
+* [ ] Priorizar materiais vivos > PDF
+* [ ] Log de baixa confiança
+
+---
+
+## UX & Governança
+
+* [ ] Tela de produtos como hub central
+* [ ] Produto → abas (materiais, scripts, docs)
+* [ ] Badges visuais (expirando, pendente)
+* [ ] Alertas automáticos
+* [ ] Logs de reprocessamento
+* [ ] Indicadores de qualidade (muitas revisões)
+
+---
+
+## Testes de Integração
+
+* [ ] Criar produto → criar material → buscar
+* [ ] Atualizar taxa → IA reflete mudança
+* [ ] Subir PDF → revisar → IA usa dado
+* [ ] Expirar material → IA ignora
+
+---
+
+## Critério de Go/No-Go (executivo)
+
+Sistema só está pronto se:
+
+* ✅ Broker atualiza dado sem subir PDF
+* ✅ IA responde com dado mais recente
+* ✅ Gráfico/tabela nunca entra sem validação
+* ✅ Histórico e rollback funcionam
+* ✅ Produto é o centro da navegação
