@@ -2,7 +2,7 @@
 
 ## Overview
 
-This project is a comprehensive FastAPI application designed as an AI agent for financial advisors, named Stevan. Its primary purpose is to streamline communication, knowledge retrieval, and client management within financial advisory services. The system integrates WhatsApp, leverages semantic search on a Notion-based knowledge base, and features an administrative dashboard with a Kanban ticket system, user management, and analytics. The vision is to enhance advisor efficiency, improve client interaction, and provide robust tools for managing advisory operations by centralizing information and automating routine tasks.
+This project is a comprehensive FastAPI application designed as an AI agent for financial advisors, named Stevan. Its primary purpose is to streamline communication, knowledge retrieval, and client management within financial advisory services. The system integrates WhatsApp, leverages semantic search on an internal Product CMS knowledge base, and features an administrative dashboard with Insights analytics, user management, and campaign tools. The vision is to enhance advisor efficiency, improve client interaction, and provide robust tools for managing advisory operations by centralizing information and automating routine tasks.
 
 ## User Preferences
 
@@ -23,16 +23,14 @@ A new design system features a minimizable vertical sidebar, light theme, and th
 
 **Technical Implementations:**
 - **AI Agent (Stevan):** Integrates OpenAI for chat and embeddings, offering real-time configuration of personality, rules, and model parameters. Stevan acts as an internal support broker for SVN's Variable Income area, focusing on explaining strategies and products. Its communication is professional yet approachable, and it escalates to human specialists when necessary.
-- **Semantic Search:** Utilizes ChromaDB and OpenAI embeddings for semantic search over a Notion knowledge base, with background document chunking and indexing.
+- **Semantic Search:** Utilizes ChromaDB and OpenAI embeddings for semantic search over the internal Product CMS knowledge base, with background document chunking and indexing.
 - **FII External Lookup:** Automatically fetches public data for FIIs not in the knowledge base from FundsExplorer.com.br, supporting various FII types and providing a disclaimer.
 - **WhatsApp Integration:** Uses Z-API for communication, supporting various message types, logging interactions, and featuring a "Central de Mensagens" interface with real-time updates and full LID support for conversation identification.
 - **Authentication & Authorization:** JWT-based authentication with role-based access control (`admin`, `gestao_rv`, `broker`, `client`).
 - **Database:** PostgreSQL (or SQLite for development) with SQLAlchemy ORM for models including users, tickets, agent configurations, message templates, campaigns, and knowledge documents.
 - **Admin Dashboard:** Provides comprehensive tools for:
     - **User Management:** CRUD operations.
-    - **Integration Management:** UI-based configuration and testing of API keys (OpenAI, Notion, Z-API).
-    - **Kanban Ticket System:** For client inquiry management.
-    - **Analytics:** KPIs, categorized inquiries, and resolution times with filtering.
+    - **Integration Management:** UI-based configuration and testing of API keys (OpenAI, Z-API).
     - **Assessor Base:** CRUD operations for financial advisors, with bulk import functionality.
     - **Campaign Management:** A 4-step wizard for mass WhatsApp messages with personalized variables, template system, attachment support, and real-time dispatch progress via SSE.
     - **Central de Mensagens:** WhatsApp Web-style interface for conversation management, real-time updates, human takeover, and new conversation initiation.
@@ -81,7 +79,6 @@ A new design system features a minimizable vertical sidebar, light theme, and th
 ## External Dependencies
 
 - **OpenAI API:** For AI agent interactions and text embeddings.
-- **Notion API:** For knowledge base content retrieval and indexing.
 - **Z-API:** For WhatsApp messaging integration (inbound and outbound).
 - **PostgreSQL:** Primary relational database.
 - **ChromaDB:** Vector database for semantic search.
