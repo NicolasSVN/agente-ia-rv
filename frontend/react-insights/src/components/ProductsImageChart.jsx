@@ -3,20 +3,12 @@ import * as am5 from '@amcharts/amcharts5';
 import * as am5xy from '@amcharts/amcharts5/xy';
 import am5themes_Animated from '@amcharts/amcharts5/themes/Animated';
 
-const productIcons = {
-  HGLG11: '/static/icons/fii-logistica.svg',
-  XPML11: '/static/icons/fii-shopping.svg',
-  KNRI11: '/static/icons/fii-corporate.svg',
-  VISC11: '/static/icons/fii-shopping.svg',
-  BTLG11: '/static/icons/fii-logistica.svg',
-  MXRF11: '/static/icons/fii-papel.svg',
-  DEFAULT: '/static/icons/fii-default.svg',
-};
-
 export default function ProductsImageChart({ data, title, tooltip }) {
   const chartRef = useRef(null);
   const rootRef = useRef(null);
   const seriesRef = useRef(null);
+  const xAxisRef = useRef(null);
+  const colorsRef = useRef(null);
 
   useLayoutEffect(() => {
     const root = am5.Root.new(chartRef.current);
@@ -36,35 +28,45 @@ export default function ProductsImageChart({ data, title, tooltip }) {
     );
 
     const colors = chart.get('colors');
+    colorsRef.current = colors;
 
     const xRenderer = am5xy.AxisRendererX.new(root, {
-      minGridDistance: 30,
+      minGridDistance: 50,
       minorGridEnabled: true,
     });
 
     xRenderer.grid.template.setAll({ location: 1 });
-    xRenderer.labels.template.setAll({ paddingTop: 20 });
+    xRenderer.labels.template.setAll({
+      paddingTop: 15,
+      fontSize: 12,
+      fontWeight: '600',
+    });
 
     const xAxis = chart.xAxes.push(
       am5xy.CategoryAxis.new(root, {
         categoryField: 'product',
         renderer: xRenderer,
         bullet: function (root, axis, dataItem) {
+          const fill = dataItem.dataContext?.columnSettings?.fill || am5.color(0x772B21);
           return am5xy.AxisBullet.new(root, {
             location: 0.5,
             sprite: am5.Circle.new(root, {
-              radius: 12,
-              fill: dataItem.dataContext?.columnSettings?.fill || am5.color(0x772B21),
+              radius: 14,
+              fill: fill,
               centerY: am5.p50,
               centerX: am5.p50,
+              strokeWidth: 2,
+              stroke: am5.color(0xffffff),
             }),
           });
         },
       })
     );
+    xAxisRef.current = xAxis;
 
     const yAxis = chart.yAxes.push(
       am5xy.ValueAxis.new(root, {
+        min: 0,
         renderer: am5xy.AxisRendererY.new(root, {
           strokeOpacity: 0.1,
         }),
@@ -77,6 +79,7 @@ export default function ProductsImageChart({ data, title, tooltip }) {
         yAxis: yAxis,
         valueYField: 'count',
         categoryXField: 'product',
+        sequencedInterpolation: true,
       })
     );
     seriesRef.current = series;
@@ -85,9 +88,14 @@ export default function ProductsImageChart({ data, title, tooltip }) {
       tooltipText: '{categoryX}: {valueY} mencoes',
       tooltipY: 0,
       strokeOpacity: 0,
-      cornerRadiusTL: 6,
-      cornerRadiusTR: 6,
+      cornerRadiusTL: 8,
+      cornerRadiusTR: 8,
       templateField: 'columnSettings',
+      width: am5.percent(70),
+    });
+
+    series.columns.template.states.create('hover', {
+      fillOpacity: 0.8,
     });
 
     series.appear();
@@ -99,24 +107,20 @@ export default function ProductsImageChart({ data, title, tooltip }) {
   }, []);
 
   useEffect(() => {
-    if (!seriesRef.current || !data) return;
+    if (!seriesRef.current || !xAxisRef.current || !data) return;
 
-    const root = rootRef.current;
-    const chart = root.container.children.getIndex(0);
-    const colors = chart?.get('colors');
+    const colors = colorsRef.current;
+    if (colors) {
+      colors.reset();
+    }
 
-    const chartData = data.slice(0, 8).map((item, index) => ({
+    const chartData = data.slice(0, 8).map((item) => ({
       product: item.label || item.product,
       count: item.value || item.count,
       columnSettings: { fill: colors?.next() || am5.color(0x772B21) },
     }));
 
-    if (chart && chart.xAxes) {
-      const xAxis = chart.xAxes.getIndex(0);
-      if (xAxis) {
-        xAxis.data.setAll(chartData);
-      }
-    }
+    xAxisRef.current.data.setAll(chartData);
     seriesRef.current.data.setAll(chartData);
   }, [data]);
 

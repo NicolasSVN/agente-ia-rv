@@ -8,6 +8,7 @@ export default function UnitsBarChart({ data }) {
   const chartRef = useRef(null);
   const rootRef = useRef(null);
   const seriesRef = useRef(null);
+  const yAxisRef = useRef(null);
 
   useLayoutEffect(() => {
     const root = am5.Root.new(chartRef.current);
@@ -38,6 +39,7 @@ export default function UnitsBarChart({ data }) {
         paddingRight: 40,
       })
     );
+    yAxisRef.current = yAxis;
 
     const xRenderer = am5xy.AxisRendererX.new(root, {
       minGridDistance: 80,
@@ -193,21 +195,14 @@ export default function UnitsBarChart({ data }) {
   }, []);
 
   useEffect(() => {
-    if (!seriesRef.current || !data) return;
+    if (!seriesRef.current || !yAxisRef.current || !data) return;
 
     const chartData = data.slice(0, 10).map((item) => ({
       name: getUnitName(item.unidade) || item.unidade,
       count: item.count,
     }));
 
-    const root = rootRef.current;
-    const chart = root.container.children.getIndex(0);
-    if (chart && chart.yAxes) {
-      const yAxis = chart.yAxes.getIndex(0);
-      if (yAxis) {
-        yAxis.data.setAll(chartData);
-      }
-    }
+    yAxisRef.current.data.setAll(chartData);
     seriesRef.current.data.setAll(chartData);
   }, [data]);
 
