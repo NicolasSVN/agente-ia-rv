@@ -211,6 +211,28 @@ async def insights_page(request: Request):
     return templates.TemplateResponse("insights.html", {"request": request, "user_role": user_role})
 
 
+@app.get("/tailwind-test", response_class=HTMLResponse)
+async def tailwind_test_page(request: Request):
+    """
+    Página de teste do Design System Tailwind.
+    Acesso restrito a admins.
+    """
+    token = request.cookies.get("access_token")
+    
+    if not token:
+        return RedirectResponse(url="/login")
+    
+    payload = decode_token(token)
+    if not payload:
+        return RedirectResponse(url="/login")
+    
+    user_role = payload.get("role")
+    if user_role != "admin":
+        return RedirectResponse(url="/login?error=permission")
+    
+    return templates.TemplateResponse("tailwind_test.html", {"request": request, "user_role": user_role})
+
+
 @app.get("/agent-brain", response_class=HTMLResponse)
 async def agent_brain_page(request: Request):
     """

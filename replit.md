@@ -84,3 +84,34 @@ A new design system features a minimizable vertical sidebar, light theme, and th
 - **ChromaDB:** Vector database for semantic search.
 - **Jinja2:** Templating engine for frontend rendering.
 - **Inter Font (Google Fonts):** Standardized typography.
+- **Tailwind CSS:** Utility-first CSS framework (CDN mode for gradual migration).
+
+## Tailwind CSS Migration
+
+**Status:** Fase 1 - Setup concluído (CDN mode)
+
+**Arquivos de configuração:**
+- `frontend/static/tailwind.config.js` - Tokens do Design System SVN
+- `frontend/templates/tailwind_test.html` - Página de referência de componentes
+
+**Mapeamento CSS → Tailwind:**
+
+| Classe CSS Original | Classe Tailwind Equivalente |
+|---------------------|----------------------------|
+| `.btn.btn-primary` | `px-4 py-2 bg-primary text-white rounded-btn font-medium hover:bg-primary-dark` |
+| `.btn.btn-secondary` | `px-4 py-2 bg-card text-foreground border border-border rounded-btn font-medium` |
+| `.form-input` | `w-full px-3 py-2 bg-card border border-border rounded-input text-foreground` |
+| `.form-label` | `block text-sm font-medium text-foreground mb-1` |
+| `.card` | `bg-card rounded-card border border-border p-6 shadow-card` |
+| `.alert.alert-success` | `p-4 bg-success/10 border border-success/20 rounded-card text-success` |
+| `.page-title` | `text-2xl font-bold text-foreground` |
+| `.page-subtitle` | `text-muted` |
+
+**Cores personalizadas (tailwind.config.js):**
+- `primary` (#772B21), `primary-dark` (#381811), `primary-light` (#CFE3DA)
+- `background` (#FFF8F3), `card` (#ffffff), `foreground` (#221B19)
+- `muted` (#5a4f4c), `border` (#e5dcd7)
+- `success` (#10b981), `warning` (#f59e0b), `danger` (#AC3631)
+- `svn-brown` (#8b4513), `svn-orange` (#dc7f37), `svn-green` (#6b8e23)
+
+**Acesso à página de teste:** `/tailwind-test` (apenas admin)

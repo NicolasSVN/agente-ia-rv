@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tailwind Design System - SVN</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="/static/tailwind.config.js"></script>
+    <link rel="stylesheet" href="/static/global.css">
+</head>
+<body class="bg-background min-h-screen font-sans">
+    <div class="max-w-6xl mx-auto p-8">
+        <header class="mb-12">
+            <h1 class="text-3xl font-bold text-foreground mb-2">Design System SVN - Tailwind</h1>
+            <p class="text-muted">Componentes de referência para migração gradual</p>
+        </header>
+
+        <!-- Cores -->
+        <section class="mb-12">
+            <h2 class="text-xl font-semibold text-foreground mb-4 pb-2 border-b border-border">Cores</h2>
+            <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+                <div class="text-center">
+                    <div class="w-full h-16 bg-primary rounded-card shadow-card mb-2"></div>
+                    <span class="text-sm text-muted">primary</span>
+                    <code class="block text-xs text-foreground">#772B21</code>
+                </div>
+                <div class="text-center">
+                    <div class="w-full h-16 bg-primary-dark rounded-card shadow-card mb-2"></div>
+                    <span class="text-sm text-muted">primary-dark</span>
+                    <code class="block text-xs text-foreground">#381811</code>
+                </div>
+                <div class="text-center">
+                    <div class="w-full h-16 bg-primary-light rounded-card shadow-card mb-2"></div>
+                    <span class="text-sm text-muted">primary-light</span>
+                    <code class="block text-xs text-foreground">#CFE3DA</code>
+                </div>
+                <div class="text-center">
+                    <div class="w-full h-16 bg-success rounded-card shadow-card mb-2"></div>
+                    <span class="text-sm text-muted">success</span>
+                    <code class="block text-xs text-foreground">#10b981</code>
+                </div>
+                <div class="text-center">
+                    <div class="w-full h-16 bg-warning rounded-card shadow-card mb-2"></div>
+                    <span class="text-sm text-muted">warning</span>
+                    <code class="block text-xs text-foreground">#f59e0b</code>
+                </div>
+                <div class="text-center">
+                    <div class="w-full h-16 bg-danger rounded-card shadow-card mb-2"></div>
+                    <span class="text-sm text-muted">danger</span>
+                    <code class="block text-xs text-foreground">#AC3631</code>
+                </div>
+            </div>
+            <div class="grid grid-cols-3 gap-4 mt-4">
+                <div class="text-center">
+                    <div class="w-full h-16 bg-svn-brown rounded-card shadow-card mb-2"></div>
+                    <span class="text-sm text-muted">svn-brown (Charts)</span>
+                    <code class="block text-xs text-foreground">#8b4513</code>
+                </div>
+                <div class="text-center">
+                    <div class="w-full h-16 bg-svn-orange rounded-card shadow-card mb-2"></div>
+                    <span class="text-sm text-muted">svn-orange (Charts)</span>
+                    <code class="block text-xs text-foreground">#dc7f37</code>
+                </div>
+                <div class="text-center">
+                    <div class="w-full h-16 bg-svn-green rounded-card shadow-card mb-2"></div>
+                    <span class="text-sm text-muted">svn-green (Charts)</span>
+                    <code class="block text-xs text-foreground">#6b8e23</code>
+                </div>
+            </div>
+        </section>
+
+        <!-- Botões -->
+        <section class="mb-12">
+            <h2 class="text-xl font-semibold text-foreground mb-4 pb-2 border-b border-border">Botões</h2>
+            <div class="flex flex-wrap gap-4 items-center">
+                <button class="px-4 py-2 bg-primary text-white rounded-btn font-medium hover:bg-primary-dark transition-colors">
+                    Primário
+                </button>
+                <button class="px-4 py-2 bg-card text-foreground border border-border rounded-btn font-medium hover:bg-background transition-colors">
+                    Secundário
+                </button>
+                <button class="px-4 py-2 bg-success text-white rounded-btn font-medium hover:opacity-90 transition-opacity">
+                    Sucesso
+                </button>
+                <button class="px-4 py-2 bg-danger text-white rounded-btn font-medium hover:opacity-90 transition-opacity">
+                    Perigo
+                </button>
+                <button class="px-4 py-2 bg-primary/10 text-primary rounded-btn font-medium hover:bg-primary/20 transition-colors">
+                    Ghost
+                </button>
+            </div>
+            <div class="mt-4 p-4 bg-card rounded-card border border-border">
+                <p class="text-sm text-muted mb-2">Mapeamento CSS → Tailwind:</p>
+                <code class="text-xs block text-foreground">.btn.btn-primary → px-4 py-2 bg-primary text-white rounded-btn font-medium hover:bg-primary-dark</code>
+                <code class="text-xs block text-foreground mt-1">.btn.btn-secondary → px-4 py-2 bg-card text-foreground border border-border rounded-btn</code>
+            </div>
+        </section>
+
+        <!-- Formulários -->
+        <section class="mb-12">
+            <h2 class="text-xl font-semibold text-foreground mb-4 pb-2 border-b border-border">Formulários</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-foreground mb-1">Label do Input</label>
+                        <input type="text" placeholder="Digite aqui..." 
+                               class="w-full px-3 py-2 bg-card border border-border rounded-input text-foreground placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-foreground mb-1">Select</label>
+                        <select class="w-full px-3 py-2 bg-card border border-border rounded-input text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary">
+                            <option>Opção 1</option>
+                            <option>Opção 2</option>
+                            <option>Opção 3</option>
+                        </select>
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-foreground mb-1">Textarea</label>
+                    <textarea rows="4" placeholder="Descrição..." 
+                              class="w-full px-3 py-2 bg-card border border-border rounded-input text-foreground placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary resize-none"></textarea>
+                </div>
+            </div>
+            <div class="mt-4 p-4 bg-card rounded-card border border-border">
+                <p class="text-sm text-muted mb-2">Mapeamento CSS → Tailwind:</p>
+                <code class="text-xs block text-foreground">.form-input → w-full px-3 py-2 bg-card border border-border rounded-input text-foreground</code>
+                <code class="text-xs block text-foreground mt-1">.form-label → block text-sm font-medium text-foreground mb-1</code>
+            </div>
+        </section>
+
+        <!-- Cards -->
+        <section class="mb-12">
+            <h2 class="text-xl font-semibold text-foreground mb-4 pb-2 border-b border-border">Cards</h2>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div class="bg-card rounded-card border border-border p-6 shadow-card hover:shadow-card-hover transition-shadow">
+                    <h3 class="text-lg font-semibold text-foreground mb-2">Card Padrão</h3>
+                    <p class="text-muted text-sm">Conteúdo do card com estilo padrão do sistema.</p>
+                </div>
+                <div class="bg-primary-light rounded-card border border-border p-6">
+                    <h3 class="text-lg font-semibold text-foreground mb-2">Card Destaque</h3>
+                    <p class="text-muted text-sm">Card com cor de destaque para informações importantes.</p>
+                </div>
+                <div class="bg-card rounded-card border-l-4 border-l-primary border border-border p-6">
+                    <h3 class="text-lg font-semibold text-foreground mb-2">Card com Borda</h3>
+                    <p class="text-muted text-sm">Card com borda lateral colorida.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Badges e Tags -->
+        <section class="mb-12">
+            <h2 class="text-xl font-semibold text-foreground mb-4 pb-2 border-b border-border">Badges e Tags</h2>
+            <div class="flex flex-wrap gap-3">
+                <span class="px-3 py-1 bg-primary text-white text-xs font-medium rounded-full">Primário</span>
+                <span class="px-3 py-1 bg-success/10 text-success text-xs font-medium rounded-full">Sucesso</span>
+                <span class="px-3 py-1 bg-warning/10 text-warning text-xs font-medium rounded-full">Aviso</span>
+                <span class="px-3 py-1 bg-danger/10 text-danger text-xs font-medium rounded-full">Erro</span>
+                <span class="px-3 py-1 bg-card border border-border text-muted text-xs font-medium rounded-full">Neutro</span>
+            </div>
+        </section>
+
+        <!-- Tipografia -->
+        <section class="mb-12">
+            <h2 class="text-xl font-semibold text-foreground mb-4 pb-2 border-b border-border">Tipografia</h2>
+            <div class="space-y-4 bg-card rounded-card border border-border p-6">
+                <h1 class="text-3xl font-bold text-foreground">Título H1 (text-3xl font-bold)</h1>
+                <h2 class="text-2xl font-semibold text-foreground">Título H2 (text-2xl font-semibold)</h2>
+                <h3 class="text-xl font-semibold text-foreground">Título H3 (text-xl font-semibold)</h3>
+                <h4 class="text-lg font-medium text-foreground">Título H4 (text-lg font-medium)</h4>
+                <p class="text-base text-foreground">Parágrafo normal (text-base text-foreground)</p>
+                <p class="text-sm text-muted">Texto secundário (text-sm text-muted)</p>
+                <p class="text-xs text-muted">Texto pequeno (text-xs text-muted)</p>
+            </div>
+        </section>
+
+        <!-- Alertas -->
+        <section class="mb-12">
+            <h2 class="text-xl font-semibold text-foreground mb-4 pb-2 border-b border-border">Alertas</h2>
+            <div class="space-y-4">
+                <div class="p-4 bg-success/10 border border-success/20 rounded-card text-success">
+                    Sucesso: Operação realizada com sucesso!
+                </div>
+                <div class="p-4 bg-warning/10 border border-warning/20 rounded-card text-warning">
+                    Aviso: Atenção a esta informação importante.
+                </div>
+                <div class="p-4 bg-danger/10 border border-danger/20 rounded-card text-danger">
+                    Erro: Algo deu errado. Tente novamente.
+                </div>
+                <div class="p-4 bg-primary/10 border border-primary/20 rounded-card text-primary">
+                    Info: Informação adicional para o usuário.
+                </div>
+            </div>
+        </section>
+
+        <footer class="text-center py-8 border-t border-border">
+            <p class="text-sm text-muted">Design System SVN - Tailwind CSS v3.x</p>
+            <a href="/insights" class="text-primary hover:text-primary-dark text-sm mt-2 inline-block">← Voltar ao Insights</a>
+        </footer>
+    </div>
+</body>
+</html>
