@@ -72,12 +72,14 @@ export function SmartUpload() {
       clearInterval(progressInterval);
       setUploadProgress(100);
       setUploadComplete(true);
+      setUploading(false);
       addToast('Documento processado com sucesso!', 'success');
 
     } catch (err) {
       addToast(`Erro: ${err.message}`, 'error');
       setStep(2);
       setUploading(false);
+      setUploadProgress(0);
     }
   };
 

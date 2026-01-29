@@ -116,37 +116,60 @@ A new design system features a minimizable vertical sidebar, light theme, and th
 
 **Acesso à página de teste:** `/tailwind-test` (apenas admin)
 
-## React POC - Base de Conhecimento UX
+## Base de Conhecimento React (Produção)
 
-**Status:** POC implementada para validação de UX
+**Status:** Implementação completa em produção
 
-**Objetivo:** Testar UX moderna tipo SaaS para a Base de Conhecimento, comparando com a tela atual. A pergunta central: "É mais rápido, mais claro e mais natural atualizar um produto aqui do que na tela atual?"
+**Acesso:** `/base-conhecimento` (admin, gestao_rv, broker)
 
 **Stack:**
-- React 18 + Vite (build estático servido pelo FastAPI)
-- Tailwind CSS (mesmos tokens do Design System SVN)
-- Radix UI (Dialog, Select)
-- Framer Motion (microinterações)
+- React 18 + Vite + React Router DOM
+- Tailwind CSS (tokens do Design System SVN)
+- Radix UI (Dialog, Tabs, Select, Tooltip)
+- Framer Motion (animações e transições)
+- Lucide React (ícones)
+- react-dropzone (upload de arquivos)
 
-**Localização:** `frontend/react-poc/`
+**Localização:** `frontend/react-knowledge/`
 
-**Componentes criados:**
-- `StatusBadge` - Badge com cores e indicador de ponto
-- `Button` - 5 variantes com animações
-- `SearchBar` - Busca com ícone
-- `SkeletonLoader` - Estado de loading
-- `FilterSelect` - Radix UI Select para filtros
-- `ProductCard` - Card com info, tickers, barra de confiança, hover effects
-- `InlineEditField` - Edição inline com estados (idle, editing, saving, success, error)
-- `ProductDrawer` - Painel lateral com Radix Dialog + Framer Motion
+**Páginas:**
+- **Dashboard (`/`)** - Grid de produtos com busca, filtros por categoria, criação de novo produto
+- **Upload Inteligente (`/upload`)** - Wizard 3 etapas seguindo a "Regra de Ouro":
+  1. Upload do PDF (drag & drop)
+  2. Configuração (tipo de material, produto relacionado, período, tags)
+  3. Processamento automático (IA extrai blocos semânticos)
+- **Detalhe do Produto (`/product/:id`)** - Visão hierárquica com abas:
+  - Materiais: lista expandível com blocos, edição inline, histórico de versões, publicação
+  - Scripts WhatsApp: criação e gestão de mensagens comerciais
+  - Informações: edição inline dos dados do produto
+- **Fila de Revisão (`/review`)** - Itens de alto risco pendentes com aprovar/editar/rejeitar
+- **Documentos (`/documents`)** - Base de conhecimento geral com upload, reindex, exclusão
 
-**Features:**
-- Grid de cards de produtos (6 FIIs como mock dinâmico)
-- Busca por nome/ticker em tempo real
-- Filtros por categoria, status, ticker
-- Drawer com edição inline de taxa, one-page, script WhatsApp
-- Estados visuais claros (loading, salvando, sucesso, erro)
-- Microinterações (hover, animação de save)
+**Princípio "Regra de Ouro":**
+- Broker faz upload único → Sistema processa automaticamente → Revisão é opcional
+- IA extrai tabelas, gráficos, textos e cria blocos semânticos
+- Auto-relacionamento com hierarquia de produtos
+
+**Componentes reutilizáveis:**
+- `StatusBadge` - Estados visuais (ativo, expirando, rascunho, pendente)
+- `Button` - 5 variantes (primary, secondary, danger, success, ghost)
+- `Modal` - Diálogos com Radix UI + Framer Motion
+- `FileUpload` - Upload com drag & drop e preview
+- `InlineEdit` - Edição inline com estados visuais
+- `Toast` - Notificações contextuais
+- `Sidebar` - Navegação colapsável
+
+**Build:** `cd frontend/react-knowledge && npm run build`
+
+**Backend Preservado:**
+- APIs de produtos/materiais/blocos inalteradas
+- Upload de PDF com GPT-4 Vision funcional
+- Sistema Fast Lane / High-Risk Lane mantido
+- Indexação semântica ChromaDB preservada
+
+## React POC - Base de Conhecimento UX (Legado)
+
+**Status:** POC substituída pela implementação de produção acima
 
 **Acesso:** `/tailwind-test-knowledge` (apenas admin)
 
