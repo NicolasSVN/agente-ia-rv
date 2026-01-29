@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 from services.document_processor import get_document_processor
 from services.vector_store import get_vector_store
 from database.models import (
-    Material, ContentBlock, BlockVersion, PendingReviewItem,
+    Material, ContentBlock, BlockVersion, PendingReviewItem, IngestionLog,
     ContentBlockType, ContentBlockStatus, ContentSourceType
 )
 
@@ -195,6 +195,32 @@ class ProductIngestor:
             material.source_file_path = pdf_path
             material.source_filename = os.path.basename(pdf_path)
             db.commit()
+        
+        tables_count = sum(1 for p in processed.get("pages", []) 
+                          if p.get("raw_data", {}).get("tables"))
+        charts_count = sum(1 for p in processed.get("pages", []) 
+                          if p.get("content_type") == "infographic")
+        
+        ingestion_log = IngestionLog(
+            material_id=material_id,
+            document_name=os.path.basename(pdf_path),
+            document_type="pdf",
+            total_pages=processed.get("total_pages", 0),
+            blocks_created=stats["blocks_created"],
+            blocks_auto_approved=stats["auto_approved"],
+            blocks_pending_review=stats["pending_review"],
+            blocks_rejected=0,
+            tables_detected=tables_count,
+            charts_detected=charts_count,
+            status="success",
+            details_json=json.dumps({
+                "products_detected": stats.get("products_detected", []),
+                "pages_processed": len(processed.get("pages", []))
+            }),
+            user_id=user_id
+        )
+        db.add(ingestion_log)
+        db.commit()
         
         return {"success": True, "stats": stats}
     

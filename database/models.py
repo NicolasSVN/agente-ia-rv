@@ -621,10 +621,14 @@ class ContentBlock(Base):
     semantic_tags = Column(Text, default="[]")  # JSON array de tags
     order = Column(Integer, default=0)
     current_version = Column(Integer, default=1)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    updated_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     
     material = relationship("Material", back_populates="blocks")
+    creator = relationship("User", foreign_keys=[created_by])
+    editor = relationship("User", foreign_keys=[updated_by])
     versions = relationship("BlockVersion", back_populates="block", cascade="all, delete-orphan", order_by="BlockVersion.version.desc()")
 
 
@@ -713,3 +717,60 @@ class ScriptVersion(Base):
     
     script = relationship("WhatsAppScript", back_populates="versions")
     author = relationship("User", foreign_keys=[author_id])
+
+
+class RetrievalLog(Base):
+    """
+    Log de auditoria para buscas semânticas.
+    Permite rastrear quais chunks foram usados em cada resposta.
+    """
+    __tablename__ = "retrieval_logs"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    query = Column(Text, nullable=False)
+    query_type = Column(String(50), nullable=True)  # numeric, conceptual, ticker, etc.
+    chunks_retrieved = Column(Text, nullable=True)  # JSON array de chunk IDs
+    chunks_used = Column(Text, nullable=True)  # JSON array de chunks efetivamente usados
+    chunk_versions = Column(Text, nullable=True)  # JSON dict {chunk_id: version}
+    product_filter = Column(String(100), nullable=True)
+    result_count = Column(Integer, default=0)
+    min_distance = Column(String(20), nullable=True)  # Menor distância encontrada
+    max_distance = Column(String(20), nullable=True)  # Maior distância usada
+    threshold_applied = Column(String(20), nullable=True)  # Threshold de similaridade aplicado
+    human_transfer = Column(Boolean, default=False)  # Se resultou em transferência humana
+    transfer_reason = Column(String(255), nullable=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    conversation_id = Column(String(100), nullable=True)
+    response_time_ms = Column(Integer, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    
+    user = relationship("User", foreign_keys=[user_id])
+
+
+class IngestionLog(Base):
+    """
+    Log estruturado de ingestão de documentos.
+    Auditoria completa do pipeline de processamento.
+    """
+    __tablename__ = "ingestion_logs"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    material_id = Column(Integer, ForeignKey("materials.id"), nullable=True, index=True)
+    document_name = Column(String(255), nullable=False)
+    document_type = Column(String(50), nullable=True)  # pdf, manual, etc.
+    total_pages = Column(Integer, nullable=True)
+    blocks_created = Column(Integer, default=0)
+    blocks_auto_approved = Column(Integer, default=0)
+    blocks_pending_review = Column(Integer, default=0)
+    blocks_rejected = Column(Integer, default=0)
+    tables_detected = Column(Integer, default=0)
+    charts_detected = Column(Integer, default=0)
+    processing_time_ms = Column(Integer, nullable=True)
+    status = Column(String(30), default="success")  # success, partial, failed
+    error_message = Column(Text, nullable=True)
+    details_json = Column(Text, nullable=True)  # JSON com detalhes completos
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    
+    material = relationship("Material", foreign_keys=[material_id])
+    user = relationship("User", foreign_keys=[user_id])

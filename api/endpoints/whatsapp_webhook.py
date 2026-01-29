@@ -14,7 +14,7 @@ import json
 from database.database import get_db, SessionLocal
 from database.models import (
     WhatsAppMessage, MessageDirection, MessageType, MessageStatus,
-    Conversation, ConversationStatus, SenderType, Assessor
+    Conversation, ConversationStatus, SenderType, Assessor, RetrievalLog
 )
 from database import crud
 from services.whatsapp_client import zapi_client
@@ -360,6 +360,8 @@ async def process_text_message(phone: str, message: str, db: Session, message_re
         history = conversation_history.get(phone, [])
         
         knowledge_context = ""
+        retrieval_start = datetime.now()
+        search_results = []
         try:
             vector_store = get_vector_store()
             search_results = vector_store.search(normalized_message, n_results=3)
@@ -372,6 +374,30 @@ async def process_text_message(phone: str, message: str, db: Session, message_re
                     knowledge_context += f"\n[{i}] {title}:\n{content}\n"
         except Exception as e:
             print(f"[WEBHOOK] Erro ao buscar na base de conhecimento: {e}")
+        
+        retrieval_time = int((datetime.now() - retrieval_start).total_seconds() * 1000)
+        chunks_retrieved = []
+        chunk_versions = {}
+        min_distance = None
+        max_distance = None
+        query_type = None
+        
+        if search_results:
+            for r in search_results:
+                meta = r.get("metadata", {})
+                block_id = meta.get("block_id", "")
+                if block_id:
+                    chunks_retrieved.append(block_id)
+                    chunk_versions[block_id] = meta.get("version", "1")
+                
+                dist = r.get("original_distance") or r.get("distance", 0)
+                if min_distance is None or dist < min_distance:
+                    min_distance = dist
+                if max_distance is None or dist > max_distance:
+                    max_distance = dist
+                
+                if not query_type:
+                    query_type = r.get("query_type", "conceptual")
         
         assessor_data = None
         if assessor:
@@ -418,6 +444,32 @@ async def process_text_message(phone: str, message: str, db: Session, message_re
             if ticket:
                 message_record.ticket_id = ticket.id
             db.commit()
+        
+        is_human_transfer = should_create_ticket or (context and context.get("human_transfer"))
+        transfer_reason = None
+        if is_human_transfer:
+            transfer_reason = context.get("transfer_reason", "Solicitação de atendimento") if context else "Solicitação de atendimento"
+        
+        try:
+            retrieval_log = RetrievalLog(
+                query=normalized_message,
+                query_type=query_type,
+                chunks_retrieved=json.dumps(chunks_retrieved) if chunks_retrieved else None,
+                chunks_used=json.dumps(chunks_retrieved[:3]) if chunks_retrieved else None,
+                chunk_versions=json.dumps(chunk_versions) if chunk_versions else None,
+                result_count=len(search_results),
+                min_distance=str(round(min_distance, 4)) if min_distance else None,
+                max_distance=str(round(max_distance, 4)) if max_distance else None,
+                threshold_applied="0.8",
+                human_transfer=is_human_transfer,
+                transfer_reason=transfer_reason,
+                conversation_id=str(conversation.id) if conversation else None,
+                response_time_ms=retrieval_time
+            )
+            db.add(retrieval_log)
+            db.commit()
+        except Exception as log_err:
+            print(f"[WEBHOOK] Erro ao salvar RetrievalLog: {log_err}")
         
         send_result = await zapi_client.send_text(phone, response, delay_typing=2)
         

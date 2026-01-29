@@ -51,6 +51,13 @@ A new design system features a minimizable vertical sidebar, light theme, and th
         - **Rollback de Versões:** UI para visualizar histórico de versões de blocos e restaurar versões anteriores
         - **Priorização de Materiais Vivos:** Busca prioriza one-pages e tabelas de taxas sobre conteúdo de PDF
         - **Alertas de Expiração:** Endpoint /api/products/expiring para consultar materiais expirando
+    - **Observabilidade e Auditoria:**
+        - RetrievalLog: Auditoria de todas as buscas RAG (query, chunks usados, versões, distâncias, tempo de resposta)
+        - IngestionLog: Log estruturado de ingestão de documentos (blocos criados, tabelas/gráficos detectados)
+        - Analytics RAG: Endpoint /api/analytics/rag-metrics com taxa de transferência humana, tipos de query, tempo médio
+        - Re-ranking inteligente: Perguntas numéricas priorizam tabelas, conceituais priorizam texto
+        - Threshold de similaridade: Filtro com distância máxima de 0.8 para garantir relevância
+        - ContentBlock tracking: Campos created_by e updated_by para rastrear autoria
 - **AI Agent Response Framework:** Employs a `ConversationState` machine, message normalization, and flexible contact identification. It integrates AI for classifying user intent (Greeting, Scope, Documental, Out of Scope) and determining human transfer criteria. It also features conversation context accumulation for follow-up questions and AI-driven ticker search with intelligent confirmation flows, ensuring natural language interpretation over fixed regex patterns.
 
 **Feature Specifications:**

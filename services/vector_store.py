@@ -124,7 +124,34 @@ class VectorStore:
             print(f"[VECTOR_STORE] Erro ao deletar documento {doc_id}: {e}")
             return False
     
-    def search(self, query: str, n_results: int = 3, product_filter: str = None) -> List[dict]:
+    def _classify_query_type(self, query: str) -> str:
+        """
+        Classifica o tipo de pergunta para re-ranking apropriado.
+        
+        Returns:
+            'numeric' para perguntas sobre taxas/valores/números
+            'conceptual' para perguntas conceituais
+            'ticker' para perguntas sobre produto específico
+        """
+        query_lower = query.lower()
+        
+        numeric_keywords = [
+            'taxa', 'taxas', 'valor', 'valores', 'custo', 'custos', 
+            'preço', 'preco', 'rendimento', 'yield', 'dividend', 'dividendo',
+            'quanto', 'qual o valor', 'percentual', '%', 'rentabilidade',
+            'performance', 'retorno', 'cotação', 'cotacao', 'p/vp', 'pvp'
+        ]
+        
+        ticker_patterns = ['qual', 'sobre', 'me fala', 'informações', 'informacoes']
+        
+        for keyword in numeric_keywords:
+            if keyword in query_lower:
+                return 'numeric'
+        
+        return 'conceptual'
+    
+    def search(self, query: str, n_results: int = 3, product_filter: str = None, 
+               similarity_threshold: float = 0.8) -> List[dict]:
         """
         Busca documentos relevantes para a consulta.
         
@@ -132,6 +159,7 @@ class VectorStore:
             query: Pergunta ou consulta do usuário
             n_results: Número máximo de resultados
             product_filter: Filtrar por produto específico (opcional)
+            similarity_threshold: Threshold máximo de distância (default 0.8)
             
         Returns:
             Lista de documentos relevantes com scores
@@ -140,22 +168,25 @@ class VectorStore:
             return []
         
         query_embedding = self._generate_embedding(query)
+        query_type = self._classify_query_type(query)
         
         where_filter = None
         if product_filter:
             where_filter = {"products": {"$contains": product_filter.upper()}}
         
+        fetch_count = n_results * 3
+        
         try:
             results = self.collection.query(
                 query_embeddings=[query_embedding],
-                n_results=n_results,
+                n_results=fetch_count,
                 where=where_filter
             )
         except Exception as e:
             print(f"[VECTOR_STORE] Erro com filtro, buscando sem filtro: {e}")
             results = self.collection.query(
                 query_embeddings=[query_embedding],
-                n_results=n_results
+                n_results=fetch_count
             )
         
         documents = []
@@ -176,20 +207,32 @@ class VectorStore:
                 
                 distance = results['distances'][0][i] if results['distances'] else 0
                 
+                if distance > similarity_threshold:
+                    continue
+                
                 material_type = metadata.get("material_type", "")
+                block_type = metadata.get("block_type", "text")
                 live_types = ["one_page", "atualizacao_taxas", "argumentos_comerciais"]
+                
                 if material_type in live_types:
                     distance = distance * 0.8
+                
+                if query_type == 'numeric' and block_type == 'table':
+                    distance = distance * 0.7
+                elif query_type == 'conceptual' and block_type == 'text':
+                    distance = distance * 0.9
                 
                 documents.append({
                     "content": doc,
                     "metadata": metadata,
-                    "distance": distance
+                    "distance": distance,
+                    "original_distance": results['distances'][0][i] if results['distances'] else 0,
+                    "query_type": query_type
                 })
         
         documents.sort(key=lambda x: x.get("distance", 0))
         
-        return documents
+        return documents[:n_results]
     
     def search_by_product(self, product_name: str, n_results: int = 10) -> List[dict]:
         """

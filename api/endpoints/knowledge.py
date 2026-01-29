@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
 from database.database import get_db
-from database.models import KnowledgeDocument, DocumentType, User
+from database.models import KnowledgeDocument, DocumentType, User, RetrievalLog
 from api.endpoints.auth import get_current_user
 from services.vector_store import get_vector_store
 from services.document_processor import get_document_processor
@@ -515,6 +515,7 @@ async def search_knowledge(
     query: str,
     n_results: int = 5,
     category: Optional[str] = None,
+    db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """
@@ -524,12 +525,59 @@ async def search_knowledge(
     if not query:
         raise HTTPException(status_code=400, detail="Query é obrigatório")
     
+    retrieval_start = datetime.now()
+    results = []
+    
     try:
         vector_store = get_vector_store()
         results = vector_store.search(query, n_results=n_results)
         
         if category:
             results = [r for r in results if r.get("metadata", {}).get("category") == category]
+        
+        retrieval_time = int((datetime.now() - retrieval_start).total_seconds() * 1000)
+        
+        chunks_retrieved = []
+        chunk_versions = {}
+        min_distance = None
+        max_distance = None
+        query_type = None
+        
+        for r in results:
+            meta = r.get("metadata", {})
+            block_id = meta.get("block_id", meta.get("doc_id", ""))
+            if block_id:
+                chunks_retrieved.append(str(block_id))
+                chunk_versions[str(block_id)] = str(meta.get("version", "1"))
+            
+            dist = r.get("original_distance") or r.get("distance", 0)
+            if min_distance is None or dist < min_distance:
+                min_distance = dist
+            if max_distance is None or dist > max_distance:
+                max_distance = dist
+            
+            if not query_type:
+                query_type = r.get("query_type", "conceptual")
+        
+        try:
+            retrieval_log = RetrievalLog(
+                query=query,
+                query_type=query_type,
+                chunks_retrieved=json.dumps(chunks_retrieved) if chunks_retrieved else None,
+                chunks_used=json.dumps(chunks_retrieved[:n_results]) if chunks_retrieved else None,
+                chunk_versions=json.dumps(chunk_versions) if chunk_versions else None,
+                result_count=len(results),
+                min_distance=str(round(min_distance, 4)) if min_distance else None,
+                max_distance=str(round(max_distance, 4)) if max_distance else None,
+                threshold_applied="0.8",
+                human_transfer=False,
+                user_id=current_user.id if current_user else None,
+                response_time_ms=retrieval_time
+            )
+            db.add(retrieval_log)
+            db.commit()
+        except Exception as log_err:
+            print(f"[KNOWLEDGE] Erro ao salvar RetrievalLog: {log_err}")
         
         return {
             "success": True,
