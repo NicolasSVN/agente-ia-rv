@@ -498,7 +498,7 @@
             background: #bbf7d0;
         }
 
-        .modal {
+        .modal-overlay {
             display: none;
             position: fixed;
             top: 0;
@@ -511,11 +511,12 @@
             justify-content: center;
         }
 
-        .modal.active {
+        .modal-overlay.active,
+        .modal-overlay.show {
             display: flex;
         }
 
-        .modal-content {
+        .modal {
             background: white;
             border-radius: 16px;
             width: 100%;
