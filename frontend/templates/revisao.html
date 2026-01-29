@@ -1,0 +1,621 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Central de Revisão - Agente IA - RV</title>
+    <link rel="stylesheet" href="/static/global.css">
+    <script src="/static/notifications.js?v={{ now().timestamp() if now else 1706371200 }}"></script>
+    <style>
+        .review-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 24px;
+        }
+
+        .stats-bar {
+            display: flex;
+            gap: 24px;
+            margin-bottom: 24px;
+            padding: 16px 24px;
+            background: white;
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+        }
+
+        .stat-card {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .stat-value {
+            font-size: 1.75rem;
+            font-weight: 700;
+            color: var(--primary-color);
+        }
+
+        .stat-label {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+
+        .filters-bar {
+            display: flex;
+            gap: 16px;
+            margin-bottom: 24px;
+            align-items: center;
+        }
+
+        .filters-bar .form-input {
+            min-width: 180px;
+        }
+
+        .review-grid {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .review-card {
+            background: white;
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            overflow: hidden;
+        }
+
+        .review-card.selected {
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 2px var(--primary-light);
+        }
+
+        .review-card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 16px 20px;
+            background: var(--secondary-color);
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .review-card-info {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .review-checkbox {
+            width: 20px;
+            height: 20px;
+            cursor: pointer;
+        }
+
+        .review-path {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+        }
+
+        .review-path span {
+            color: var(--text-primary);
+            font-weight: 500;
+        }
+
+        .review-badges {
+            display: flex;
+            gap: 8px;
+        }
+
+        .badge-type {
+            font-size: 0.75rem;
+            font-weight: 600;
+            padding: 4px 10px;
+            border-radius: 6px;
+            text-transform: uppercase;
+        }
+
+        .badge-text { background: #dbeafe; color: #1e40af; }
+        .badge-tabela { background: #dcfce7; color: #166534; }
+        .badge-grafico { background: #fef3c7; color: #92400e; }
+
+        .badge-risk {
+            font-size: 0.75rem;
+            font-weight: 600;
+            padding: 4px 10px;
+            border-radius: 6px;
+            background: #fee2e2;
+            color: #991b1b;
+        }
+
+        .badge-confidence {
+            font-size: 0.75rem;
+            font-weight: 600;
+            padding: 4px 10px;
+            border-radius: 6px;
+            background: #f3f4f6;
+            color: #374151;
+        }
+
+        .review-card-body {
+            padding: 20px;
+        }
+
+        .review-content {
+            background: var(--secondary-color);
+            border-radius: 8px;
+            padding: 16px;
+            max-height: 300px;
+            overflow-y: auto;
+            font-family: 'Inter', sans-serif;
+            font-size: 0.9rem;
+            line-height: 1.6;
+            white-space: pre-wrap;
+        }
+
+        .review-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.85rem;
+        }
+
+        .review-table th, .review-table td {
+            padding: 8px 12px;
+            border: 1px solid var(--border-color);
+            text-align: left;
+        }
+
+        .review-table th {
+            background: var(--secondary-color);
+            font-weight: 600;
+        }
+
+        .review-card-actions {
+            display: flex;
+            gap: 8px;
+            padding: 16px 20px;
+            border-top: 1px solid var(--border-color);
+            background: #fafafa;
+        }
+
+        .batch-actions {
+            display: flex;
+            gap: 12px;
+            padding: 16px 24px;
+            background: white;
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            margin-bottom: 24px;
+            align-items: center;
+        }
+
+        .batch-actions.hidden {
+            display: none;
+        }
+
+        .selected-count {
+            font-weight: 600;
+            color: var(--primary-color);
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 80px 40px;
+            background: white;
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+        }
+
+        .empty-state svg {
+            width: 80px;
+            height: 80px;
+            color: var(--text-secondary);
+            margin-bottom: 20px;
+        }
+
+        .empty-state h3 {
+            font-size: 1.25rem;
+            margin-bottom: 8px;
+            color: var(--text-primary);
+        }
+
+        .empty-state p {
+            color: var(--text-secondary);
+        }
+    </style>
+</head>
+<body>
+    <div class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <img src="/static/logo.svg" alt="Logo" style="height: 32px;" onerror="this.style.display='none'">
+            <span class="sidebar-title">Agente IA - RV</span>
+            <button class="sidebar-toggle" onclick="toggleSidebar()">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+            </button>
+        </div>
+        <nav class="sidebar-nav">
+            <a href="/chat" class="nav-item">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                <span class="nav-text">Chat</span>
+            </a>
+            <a href="/produtos" class="nav-item">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>
+                <span class="nav-text">Produtos</span>
+            </a>
+            <a href="/revisao" class="nav-item active">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"/><path d="m9 12 2 2 4-4"/></svg>
+                <span class="nav-text">Revisão</span>
+            </a>
+            <a href="/conversas" class="nav-item">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+                <span class="nav-text">Mensagens</span>
+            </a>
+            {% if user_role == 'admin' %}
+            <a href="/admin" class="nav-item">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                <span class="nav-text">Usuários</span>
+            </a>
+            {% endif %}
+        </nav>
+        <div class="sidebar-footer">
+            <button class="btn btn-secondary" onclick="logout()" style="width: 100%;">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></svg>
+                <span class="nav-text">Sair</span>
+            </button>
+        </div>
+    </div>
+
+    <main class="main-content">
+        <div class="page-header">
+            <div>
+                <h1 class="page-title">Central de Revisão</h1>
+                <p class="page-subtitle">Revise e aprove conteúdos extraídos automaticamente</p>
+            </div>
+            <button class="btn btn-secondary" onclick="loadPendingItems()">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg>
+                Atualizar
+            </button>
+        </div>
+
+        <div class="stats-bar">
+            <div class="stat-card">
+                <span class="stat-value" id="stat-total">0</span>
+                <span class="stat-label">Pendentes</span>
+            </div>
+            <div class="stat-card">
+                <span class="stat-value" id="stat-tables">0</span>
+                <span class="stat-label">Tabelas</span>
+            </div>
+            <div class="stat-card">
+                <span class="stat-value" id="stat-charts">0</span>
+                <span class="stat-label">Gráficos</span>
+            </div>
+            <div class="stat-card">
+                <span class="stat-value" id="stat-texts">0</span>
+                <span class="stat-label">Textos</span>
+            </div>
+        </div>
+
+        <div class="filters-bar">
+            <select id="filter-product" class="form-input" onchange="filterItems()">
+                <option value="">Todos os produtos</option>
+            </select>
+            <select id="filter-type" class="form-input" onchange="filterItems()">
+                <option value="">Todos os tipos</option>
+                <option value="tabela">Tabelas</option>
+                <option value="grafico">Gráficos</option>
+                <option value="texto">Textos</option>
+            </select>
+            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                <input type="checkbox" id="select-all" onchange="toggleSelectAll()">
+                <span>Selecionar todos</span>
+            </label>
+        </div>
+
+        <div class="batch-actions hidden" id="batch-actions">
+            <span class="selected-count"><span id="selected-count">0</span> selecionados</span>
+            <button class="btn btn-primary" onclick="approveSelected()">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                Aprovar Selecionados
+            </button>
+            <button class="btn btn-secondary" onclick="rejectSelected()">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                Rejeitar Selecionados
+            </button>
+        </div>
+
+        <div id="review-container" class="review-grid"></div>
+
+        <div id="empty-state" class="empty-state" style="display: none;">
+            <svg xmlns="http://www.w3.org/2000/svg" width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"/><path d="m9 12 2 2 4-4"/></svg>
+            <h3>Nenhum item pendente</h3>
+            <p>Todos os conteúdos foram revisados. Novos itens aparecerão aqui quando você fizer upload de PDFs.</p>
+        </div>
+    </main>
+
+    <script>
+        let pendingItems = [];
+        let filteredItems = [];
+        let selectedItems = new Set();
+
+        async function loadPendingItems() {
+            try {
+                const response = await fetch('/api/products/review/pending');
+                if (!response.ok) throw new Error('Erro ao carregar');
+                
+                const data = await response.json();
+                pendingItems = data.pending_items || [];
+                
+                updateStats();
+                updateProductFilter();
+                filterItems();
+            } catch (error) {
+                showNotification('Erro ao carregar itens pendentes', 'error');
+            }
+        }
+
+        function updateStats() {
+            document.getElementById('stat-total').textContent = pendingItems.length;
+            document.getElementById('stat-tables').textContent = pendingItems.filter(i => i.block_type === 'tabela').length;
+            document.getElementById('stat-charts').textContent = pendingItems.filter(i => i.block_type === 'grafico').length;
+            document.getElementById('stat-texts').textContent = pendingItems.filter(i => i.block_type === 'texto').length;
+        }
+
+        function updateProductFilter() {
+            const products = [...new Set(pendingItems.map(i => i.product_name).filter(Boolean))];
+            const select = document.getElementById('filter-product');
+            select.innerHTML = '<option value="">Todos os produtos</option>';
+            products.forEach(p => {
+                select.innerHTML += `<option value="${p}">${p}</option>`;
+            });
+        }
+
+        function filterItems() {
+            const productFilter = document.getElementById('filter-product').value;
+            const typeFilter = document.getElementById('filter-type').value;
+
+            filteredItems = pendingItems.filter(item => {
+                if (productFilter && item.product_name !== productFilter) return false;
+                if (typeFilter && item.block_type !== typeFilter) return false;
+                return true;
+            });
+
+            renderItems();
+        }
+
+        function renderItems() {
+            const container = document.getElementById('review-container');
+            const emptyState = document.getElementById('empty-state');
+
+            if (filteredItems.length === 0) {
+                container.style.display = 'none';
+                emptyState.style.display = 'block';
+                return;
+            }
+
+            container.style.display = 'flex';
+            emptyState.style.display = 'none';
+
+            container.innerHTML = filteredItems.map(item => renderReviewCard(item)).join('');
+        }
+
+        function renderReviewCard(item) {
+            const isSelected = selectedItems.has(item.id);
+            const typeClass = `badge-${item.block_type}`;
+            
+            let contentHtml = '';
+            if (item.block_type === 'tabela') {
+                contentHtml = renderTableContent(item.extracted_content);
+            } else {
+                contentHtml = `<div class="review-content">${escapeHtml(item.extracted_content || item.original_content || '')}</div>`;
+            }
+
+            return `
+                <div class="review-card ${isSelected ? 'selected' : ''}" id="card-${item.id}">
+                    <div class="review-card-header">
+                        <div class="review-card-info">
+                            <input type="checkbox" class="review-checkbox" 
+                                   ${isSelected ? 'checked' : ''} 
+                                   onchange="toggleSelection(${item.id})">
+                            <div class="review-path">
+                                <span>${item.product_name || 'Produto'}</span>
+                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+                                <span>${item.material_name || 'Material'}</span>
+                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+                                ${item.block_title || 'Bloco'}
+                            </div>
+                        </div>
+                        <div class="review-badges">
+                            <span class="badge-type ${typeClass}">${item.block_type}</span>
+                            <span class="badge-confidence">${item.confidence_score || 0}% confiança</span>
+                            ${item.risk_reason ? `<span class="badge-risk">${item.risk_reason}</span>` : ''}
+                        </div>
+                    </div>
+                    <div class="review-card-body">
+                        ${contentHtml}
+                    </div>
+                    <div class="review-card-actions">
+                        <button class="btn btn-primary" onclick="approveItem(${item.id})">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                            Aprovar
+                        </button>
+                        <button class="btn btn-secondary" onclick="editItem(${item.id})">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
+                            Editar
+                        </button>
+                        <button class="btn btn-secondary" onclick="rejectItem(${item.id})" style="color: #dc2626;">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                            Rejeitar
+                        </button>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderTableContent(content) {
+            try {
+                const data = JSON.parse(content);
+                if (!data.headers && !data.rows) {
+                    return `<div class="review-content">${escapeHtml(content)}</div>`;
+                }
+                
+                let html = '<table class="review-table"><thead><tr>';
+                (data.headers || []).forEach(h => {
+                    html += `<th>${escapeHtml(h)}</th>`;
+                });
+                html += '</tr></thead><tbody>';
+                (data.rows || []).forEach(row => {
+                    html += '<tr>';
+                    row.forEach(cell => {
+                        html += `<td>${escapeHtml(cell || '')}</td>`;
+                    });
+                    html += '</tr>';
+                });
+                html += '</tbody></table>';
+                return html;
+            } catch (e) {
+                return `<div class="review-content">${escapeHtml(content)}</div>`;
+            }
+        }
+
+        function escapeHtml(text) {
+            if (!text) return '';
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function toggleSelection(itemId) {
+            if (selectedItems.has(itemId)) {
+                selectedItems.delete(itemId);
+            } else {
+                selectedItems.add(itemId);
+            }
+            updateBatchActions();
+            document.getElementById(`card-${itemId}`).classList.toggle('selected');
+        }
+
+        function toggleSelectAll() {
+            const checked = document.getElementById('select-all').checked;
+            selectedItems.clear();
+            
+            if (checked) {
+                filteredItems.forEach(item => selectedItems.add(item.id));
+            }
+            
+            updateBatchActions();
+            renderItems();
+        }
+
+        function updateBatchActions() {
+            const batchActions = document.getElementById('batch-actions');
+            const count = selectedItems.size;
+            
+            if (count > 0) {
+                batchActions.classList.remove('hidden');
+                document.getElementById('selected-count').textContent = count;
+            } else {
+                batchActions.classList.add('hidden');
+            }
+        }
+
+        async function approveItem(itemId) {
+            try {
+                const response = await fetch(`/api/products/review/${itemId}/approve`, {
+                    method: 'POST'
+                });
+                
+                if (response.ok) {
+                    showNotification('Item aprovado!', 'success');
+                    loadPendingItems();
+                } else {
+                    throw new Error('Erro ao aprovar');
+                }
+            } catch (error) {
+                showNotification('Erro ao aprovar item', 'error');
+            }
+        }
+
+        async function rejectItem(itemId) {
+            if (!confirm('Tem certeza que deseja rejeitar este item?')) return;
+            
+            try {
+                const response = await fetch(`/api/products/review/${itemId}/reject`, {
+                    method: 'POST'
+                });
+                
+                if (response.ok) {
+                    showNotification('Item rejeitado', 'success');
+                    loadPendingItems();
+                } else {
+                    throw new Error('Erro ao rejeitar');
+                }
+            } catch (error) {
+                showNotification('Erro ao rejeitar item', 'error');
+            }
+        }
+
+        function editItem(itemId) {
+            const item = pendingItems.find(i => i.id === itemId);
+            if (!item) return;
+            
+            window.location.href = `/produtos?edit_block=${item.block_id}`;
+        }
+
+        async function approveSelected() {
+            if (selectedItems.size === 0) return;
+            
+            const ids = Array.from(selectedItems);
+            let approved = 0;
+            
+            for (const id of ids) {
+                try {
+                    const response = await fetch(`/api/products/review/${id}/approve`, {
+                        method: 'POST'
+                    });
+                    if (response.ok) approved++;
+                } catch (e) {}
+            }
+            
+            showNotification(`${approved} itens aprovados!`, 'success');
+            selectedItems.clear();
+            loadPendingItems();
+        }
+
+        async function rejectSelected() {
+            if (selectedItems.size === 0) return;
+            if (!confirm(`Tem certeza que deseja rejeitar ${selectedItems.size} itens?`)) return;
+            
+            const ids = Array.from(selectedItems);
+            let rejected = 0;
+            
+            for (const id of ids) {
+                try {
+                    const response = await fetch(`/api/products/review/${id}/reject`, {
+                        method: 'POST'
+                    });
+                    if (response.ok) rejected++;
+                } catch (e) {}
+            }
+            
+            showNotification(`${rejected} itens rejeitados`, 'success');
+            selectedItems.clear();
+            loadPendingItems();
+        }
+
+        function toggleSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            sidebar.classList.toggle('collapsed');
+        }
+
+        function logout() {
+            document.cookie = 'access_token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+            window.location.href = '/login';
+        }
+
+        loadPendingItems();
+    </script>
+</body>
+</html>

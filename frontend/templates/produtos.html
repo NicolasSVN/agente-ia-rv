@@ -431,10 +431,204 @@
             min-height: 200px;
         }
 
+        .rich-editor-toolbar {
+            display: flex;
+            gap: 4px;
+            padding: 8px 12px;
+            background: var(--secondary-color);
+            border: 1px solid var(--border-color);
+            border-bottom: none;
+            border-radius: 8px 8px 0 0;
+        }
+
+        .toolbar-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 32px;
+            height: 32px;
+            border: none;
+            background: transparent;
+            border-radius: 6px;
+            cursor: pointer;
+            color: var(--text-secondary);
+            transition: all 0.2s;
+        }
+
+        .toolbar-btn:hover {
+            background: white;
+            color: var(--text-primary);
+        }
+
+        .toolbar-btn:active {
+            background: var(--primary-light);
+            color: var(--primary-color);
+        }
+
+        .toolbar-divider {
+            width: 1px;
+            height: 24px;
+            background: var(--border-color);
+            margin: 4px 8px;
+        }
+
+        .rich-textarea {
+            border-radius: 0 0 8px 8px;
+            font-family: 'Inter', sans-serif;
+            line-height: 1.6;
+        }
+
+        .editor-help {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            margin-top: 8px;
+        }
+
+        .upload-dropzone {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 48px;
+            border: 2px dashed var(--border-color);
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-align: center;
+        }
+
+        .upload-dropzone:hover {
+            border-color: var(--primary-color);
+            background: var(--primary-light);
+        }
+
+        .upload-dropzone svg {
+            color: var(--text-secondary);
+            margin-bottom: 12px;
+        }
+
+        .upload-dropzone p {
+            margin: 0;
+            font-weight: 500;
+            color: var(--text-primary);
+        }
+
+        .upload-dropzone span {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+
+        .file-info {
+            background: var(--secondary-color);
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 16px;
+        }
+
+        .file-info-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .file-info-header svg {
+            color: #dc2626;
+        }
+
+        .file-details {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .file-details strong {
+            font-size: 0.95rem;
+        }
+
+        .file-details span {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+        }
+
+        .upload-options {
+            margin-top: 16px;
+        }
+
+        .option-group {
+            margin-bottom: 12px;
+        }
+
+        .checkbox-label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+        }
+
+        .checkbox-label input {
+            width: 18px;
+            height: 18px;
+        }
+
+        .info-box {
+            display: flex;
+            gap: 10px;
+            padding: 12px 16px;
+            background: #dbeafe;
+            border-radius: 8px;
+            margin-top: 16px;
+            font-size: 0.85rem;
+            color: #1e40af;
+        }
+
+        .info-box svg {
+            flex-shrink: 0;
+            margin-top: 2px;
+        }
+
+        .upload-progress {
+            margin-top: 16px;
+        }
+
+        .progress-bar {
+            height: 8px;
+            background: var(--border-color);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: var(--primary-color);
+            width: 0%;
+            transition: width 0.3s;
+        }
+
+        #progress-text {
+            display: block;
+            text-align: center;
+            margin-top: 8px;
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+
         .table-editor {
             border: 1px solid var(--border-color);
             border-radius: 8px;
             overflow: hidden;
+        }
+
+        .table-editor-controls {
+            display: flex;
+            gap: 8px;
+            padding: 12px;
+            background: var(--secondary-color);
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .table-editor-container {
+            max-height: 400px;
+            overflow: auto;
         }
 
         .table-editor-grid {
@@ -458,6 +652,7 @@
         .table-editor-grid td,
         .table-editor-grid th {
             border: 1px solid var(--border-color);
+            min-width: 120px;
         }
 
         .table-editor-grid th input {
@@ -806,7 +1001,7 @@
 
     <!-- Modal Novo/Editar Bloco -->
     <div id="block-modal" class="modal">
-        <div class="modal-content" style="max-width: 700px;">
+        <div class="modal-content" style="max-width: 900px;">
             <div class="modal-header">
                 <h2 id="block-modal-title">Editar Bloco</h2>
                 <button class="modal-close" onclick="closeBlockModal()">&times;</button>
@@ -829,19 +1024,63 @@
                 <div class="form-group">
                     <label class="form-label">Conteúdo</label>
                     <div id="block-editor-text">
-                        <textarea id="block-content" class="form-input" rows="10" placeholder="Digite o conteúdo aqui..."></textarea>
+                        <div class="rich-editor-toolbar">
+                            <button type="button" class="toolbar-btn" onclick="formatText('bold')" title="Negrito">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4h8a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z"/><path d="M6 12h9a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z"/></svg>
+                            </button>
+                            <button type="button" class="toolbar-btn" onclick="formatText('italic')" title="Itálico">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" x2="10" y1="4" y2="4"/><line x1="14" x2="5" y1="20" y2="20"/><line x1="15" x2="9" y1="4" y2="20"/></svg>
+                            </button>
+                            <span class="toolbar-divider"></span>
+                            <button type="button" class="toolbar-btn" onclick="formatText('heading')" title="Título">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h16"/><path d="M4 6h16"/><path d="M4 18h8"/></svg>
+                            </button>
+                            <button type="button" class="toolbar-btn" onclick="formatText('bullet')" title="Lista com marcadores">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" x2="21" y1="6" y2="6"/><line x1="8" x2="21" y1="12" y2="12"/><line x1="8" x2="21" y1="18" y2="18"/><line x1="3" x2="3.01" y1="6" y2="6"/><line x1="3" x2="3.01" y1="12" y2="12"/><line x1="3" x2="3.01" y1="18" y2="18"/></svg>
+                            </button>
+                            <button type="button" class="toolbar-btn" onclick="formatText('number')" title="Lista numerada">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="10" x2="21" y1="6" y2="6"/><line x1="10" x2="21" y1="12" y2="12"/><line x1="10" x2="21" y1="18" y2="18"/><path d="M4 6h1v4"/><path d="M4 10h2"/><path d="M6 18H4c0-1 2-2 2-3s-1-1.5-2-1"/></svg>
+                            </button>
+                            <span class="toolbar-divider"></span>
+                            <button type="button" class="toolbar-btn" onclick="formatText('highlight')" title="Destacar">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 11-6 6v3h9l3-3"/><path d="m22 12-4.6 4.6a2 2 0 0 1-2.8 0l-5.2-5.2a2 2 0 0 1 0-2.8L14 4"/></svg>
+                            </button>
+                        </div>
+                        <textarea id="block-content" class="form-input rich-textarea" rows="12" placeholder="Digite o conteúdo aqui..."></textarea>
+                        <div class="editor-help">
+                            <span>Dica: Use **texto** para negrito, *texto* para itálico, # para títulos</span>
+                        </div>
                     </div>
                     <div id="block-editor-table" style="display: none;">
                         <div class="table-editor">
-                            <table class="table-editor-grid" id="table-editor-grid">
-                                <thead>
-                                    <tr id="table-header-row"></tr>
-                                </thead>
-                                <tbody id="table-body"></tbody>
-                            </table>
-                            <div class="table-editor-actions">
-                                <button class="btn btn-secondary btn-small" onclick="addTableColumn()">+ Coluna</button>
-                                <button class="btn btn-secondary btn-small" onclick="addTableRow()">+ Linha</button>
+                            <div class="table-editor-controls">
+                                <button class="btn btn-secondary btn-small" onclick="addTableColumn()">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+                                    Coluna
+                                </button>
+                                <button class="btn btn-secondary btn-small" onclick="addTableRow()">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+                                    Linha
+                                </button>
+                                <button class="btn btn-secondary btn-small" onclick="removeTableColumn()" style="color: #dc2626;">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/></svg>
+                                    Coluna
+                                </button>
+                                <button class="btn btn-secondary btn-small" onclick="removeTableRow()" style="color: #dc2626;">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/></svg>
+                                    Linha
+                                </button>
+                            </div>
+                            <div class="table-editor-container">
+                                <table class="table-editor-grid" id="table-editor-grid">
+                                    <thead>
+                                        <tr id="table-header-row"></tr>
+                                    </thead>
+                                    <tbody id="table-body"></tbody>
+                                </table>
+                            </div>
+                            <div class="editor-help">
+                                <span>Clique em uma célula para editar. Use Tab para navegar entre células.</span>
                             </div>
                         </div>
                     </div>
@@ -854,6 +1093,80 @@
             <div class="modal-footer">
                 <button class="btn btn-secondary" onclick="closeBlockModal()">Cancelar</button>
                 <button class="btn btn-primary" onclick="saveBlock()">Salvar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Upload PDF -->
+    <div id="upload-modal" class="modal">
+        <div class="modal-content" style="max-width: 600px;">
+            <div class="modal-header">
+                <h2>Processar PDF</h2>
+                <button class="modal-close" onclick="closeUploadModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="upload-material-id">
+                
+                <div class="upload-preview" id="upload-preview">
+                    <div class="upload-dropzone" id="upload-dropzone" onclick="selectPdfFile()">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>
+                        <p>Clique para selecionar um PDF</p>
+                        <span>ou arraste e solte aqui</span>
+                    </div>
+                </div>
+                
+                <div class="file-info" id="file-info" style="display: none;">
+                    <div class="file-info-header">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></svg>
+                        <div class="file-details">
+                            <strong id="file-name">documento.pdf</strong>
+                            <span id="file-size">0 KB</span>
+                        </div>
+                        <button class="btn-icon" onclick="clearUploadFile()" title="Remover">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="upload-options" id="upload-options" style="display: none;">
+                    <h4 style="margin-bottom: 12px;">Opções de Processamento</h4>
+                    <div class="option-group">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="opt-extract-tables" checked>
+                            <span>Extrair tabelas automaticamente</span>
+                        </label>
+                    </div>
+                    <div class="option-group">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="opt-extract-charts" checked>
+                            <span>Identificar gráficos e infográficos</span>
+                        </label>
+                    </div>
+                    <div class="option-group">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="opt-auto-approve" checked>
+                            <span>Auto-aprovar textos de alta confiança</span>
+                        </label>
+                    </div>
+                    <div class="info-box">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+                        <span>O processamento usa IA para extrair conteúdo. Tabelas com dados financeiros e gráficos serão enviados para revisão manual.</span>
+                    </div>
+                </div>
+
+                <div class="upload-progress" id="upload-progress" style="display: none;">
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="progress-fill"></div>
+                    </div>
+                    <span id="progress-text">Enviando...</span>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeUploadModal()">Cancelar</button>
+                <button class="btn btn-primary" id="btn-process-pdf" onclick="processPdfFile()" disabled>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 7-7 7 7"/><path d="M12 19V5"/></svg>
+                    Processar PDF
+                </button>
             </div>
         </div>
     </div>
@@ -1406,6 +1719,75 @@
             renderTableEditor();
         }
 
+        function removeTableColumn() {
+            if (tableData.headers.length <= 1) {
+                showNotification('Tabela deve ter pelo menos uma coluna', 'warning');
+                return;
+            }
+            tableData.headers.pop();
+            tableData.rows.forEach(row => row.pop());
+            renderTableEditor();
+        }
+
+        function removeTableRow() {
+            if (tableData.rows.length <= 1) {
+                showNotification('Tabela deve ter pelo menos uma linha', 'warning');
+                return;
+            }
+            tableData.rows.pop();
+            renderTableEditor();
+        }
+
+        function formatText(format) {
+            const textarea = document.getElementById('block-content');
+            const start = textarea.selectionStart;
+            const end = textarea.selectionEnd;
+            const text = textarea.value;
+            const selectedText = text.substring(start, end);
+            
+            let replacement = '';
+            let cursorOffset = 0;
+            
+            switch (format) {
+                case 'bold':
+                    replacement = `**${selectedText || 'texto'}**`;
+                    cursorOffset = selectedText ? 0 : -2;
+                    break;
+                case 'italic':
+                    replacement = `*${selectedText || 'texto'}*`;
+                    cursorOffset = selectedText ? 0 : -1;
+                    break;
+                case 'heading':
+                    const lineStart = text.lastIndexOf('\n', start - 1) + 1;
+                    const beforeLine = text.substring(0, lineStart);
+                    const lineEnd = text.indexOf('\n', start);
+                    const afterLine = lineEnd === -1 ? '' : text.substring(lineEnd);
+                    const currentLine = text.substring(lineStart, lineEnd === -1 ? text.length : lineEnd);
+                    
+                    if (currentLine.startsWith('# ')) {
+                        textarea.value = beforeLine + currentLine.substring(2) + afterLine;
+                    } else {
+                        textarea.value = beforeLine + '# ' + currentLine + afterLine;
+                    }
+                    return;
+                case 'bullet':
+                    replacement = selectedText ? `\n• ${selectedText}` : '\n• ';
+                    break;
+                case 'number':
+                    replacement = selectedText ? `\n1. ${selectedText}` : '\n1. ';
+                    break;
+                case 'highlight':
+                    replacement = `==${selectedText || 'destaque'}==`;
+                    cursorOffset = selectedText ? 0 : -2;
+                    break;
+            }
+            
+            textarea.value = text.substring(0, start) + replacement + text.substring(end);
+            textarea.focus();
+            const newPos = start + replacement.length + cursorOffset;
+            textarea.setSelectionRange(newPos, newPos);
+        }
+
         async function saveBlock() {
             const id = document.getElementById('block-id').value;
             const materialId = document.getElementById('block-material-id').value;
@@ -1523,40 +1905,112 @@
             }
         }
 
+        let uploadFile = null;
+        let uploadInput = null;
+
         function uploadPdfToMaterial(materialId) {
-            const input = document.createElement('input');
-            input.type = 'file';
-            input.accept = '.pdf';
-            input.onchange = async (e) => {
-                const file = e.target.files[0];
-                if (!file) return;
+            document.getElementById('upload-material-id').value = materialId;
+            document.getElementById('upload-preview').style.display = 'block';
+            document.getElementById('file-info').style.display = 'none';
+            document.getElementById('upload-options').style.display = 'none';
+            document.getElementById('upload-progress').style.display = 'none';
+            document.getElementById('btn-process-pdf').disabled = true;
+            uploadFile = null;
+            document.getElementById('upload-modal').classList.add('active');
+        }
+
+        function selectPdfFile() {
+            if (!uploadInput) {
+                uploadInput = document.createElement('input');
+                uploadInput.type = 'file';
+                uploadInput.accept = '.pdf';
+                uploadInput.onchange = handleFileSelect;
+            }
+            uploadInput.click();
+        }
+
+        function handleFileSelect(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            
+            if (!file.name.toLowerCase().endsWith('.pdf')) {
+                showNotification('Apenas arquivos PDF são suportados', 'error');
+                return;
+            }
+            
+            uploadFile = file;
+            document.getElementById('file-name').textContent = file.name;
+            document.getElementById('file-size').textContent = formatFileSize(file.size);
+            
+            document.getElementById('upload-preview').style.display = 'none';
+            document.getElementById('file-info').style.display = 'block';
+            document.getElementById('upload-options').style.display = 'block';
+            document.getElementById('btn-process-pdf').disabled = false;
+        }
+
+        function formatFileSize(bytes) {
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+            return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+        }
+
+        function clearUploadFile() {
+            uploadFile = null;
+            document.getElementById('upload-preview').style.display = 'block';
+            document.getElementById('file-info').style.display = 'none';
+            document.getElementById('upload-options').style.display = 'none';
+            document.getElementById('btn-process-pdf').disabled = true;
+        }
+
+        function closeUploadModal() {
+            document.getElementById('upload-modal').classList.remove('active');
+            uploadFile = null;
+        }
+
+        async function processPdfFile() {
+            if (!uploadFile) return;
+            
+            const materialId = document.getElementById('upload-material-id').value;
+            
+            document.getElementById('upload-progress').style.display = 'block';
+            document.getElementById('btn-process-pdf').disabled = true;
+            document.getElementById('progress-fill').style.width = '10%';
+            document.getElementById('progress-text').textContent = 'Enviando arquivo...';
+            
+            const formData = new FormData();
+            formData.append('file', uploadFile);
+            
+            try {
+                document.getElementById('progress-fill').style.width = '30%';
+                document.getElementById('progress-text').textContent = 'Processando...';
                 
-                showNotification('Enviando PDF para processamento...', 'info');
+                const response = await fetch(`/api/products/${currentProduct.id}/materials/${materialId}/upload`, {
+                    method: 'POST',
+                    body: formData
+                });
                 
-                const formData = new FormData();
-                formData.append('file', file);
+                const result = await response.json();
                 
-                try {
-                    const response = await fetch(`/api/products/${currentProduct.id}/materials/${materialId}/upload`, {
-                        method: 'POST',
-                        body: formData
-                    });
+                if (response.ok) {
+                    document.getElementById('progress-fill').style.width = '100%';
+                    document.getElementById('progress-text').textContent = 'Concluído!';
                     
-                    const result = await response.json();
+                    showNotification('PDF enviado! Os blocos serão criados em alguns instantes.', 'success');
                     
-                    if (response.ok) {
-                        showNotification('PDF enviado! Os blocos serão criados em alguns instantes.', 'success');
-                        setTimeout(() => {
-                            openProduct(currentProduct.id);
-                        }, 3000);
-                    } else {
-                        showNotification(result.detail || 'Erro ao enviar PDF', 'error');
-                    }
-                } catch (error) {
-                    showNotification('Erro ao enviar PDF', 'error');
+                    setTimeout(() => {
+                        closeUploadModal();
+                        openProduct(currentProduct.id);
+                    }, 1500);
+                } else {
+                    showNotification(result.detail || 'Erro ao enviar PDF', 'error');
+                    document.getElementById('btn-process-pdf').disabled = false;
+                    document.getElementById('upload-progress').style.display = 'none';
                 }
-            };
-            input.click();
+            } catch (error) {
+                showNotification('Erro ao enviar PDF', 'error');
+                document.getElementById('btn-process-pdf').disabled = false;
+                document.getElementById('upload-progress').style.display = 'none';
+            }
         }
 
         async function reindexMaterial(materialId) {

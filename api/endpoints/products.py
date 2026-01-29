@@ -869,6 +869,32 @@ async def edit_review_item(
     return {"success": True}
 
 
+@router.post("/review/{item_id}/reject")
+async def reject_review_item(
+    item_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Rejeita um item pendente de revisão."""
+    if current_user.role not in ["admin", "gestao_rv"]:
+        raise HTTPException(status_code=403, detail="Acesso negado")
+    
+    item = db.query(PendingReviewItem).filter(PendingReviewItem.id == item_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Item não encontrado")
+    
+    item.reviewed_by = current_user.id
+    item.reviewed_at = datetime.utcnow()
+    item.review_action = "rejected"
+    
+    block = db.query(ContentBlock).filter(ContentBlock.id == item.block_id).first()
+    if block:
+        block.status = ContentBlockStatus.REJECTED.value
+    
+    db.commit()
+    return {"success": True}
+
+
 # ==================== PDF Upload Endpoints ====================
 
 async def process_pdf_background(

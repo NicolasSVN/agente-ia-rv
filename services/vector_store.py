@@ -107,6 +107,23 @@ class VectorStore:
             metadatas=metadatas or [{}] * len(texts)
         )
     
+    def delete_document(self, doc_id: str) -> bool:
+        """
+        Remove um documento da base de conhecimento.
+        
+        Args:
+            doc_id: ID do documento a remover
+            
+        Returns:
+            True se removido com sucesso
+        """
+        try:
+            self.collection.delete(ids=[doc_id])
+            return True
+        except Exception as e:
+            print(f"[VECTOR_STORE] Erro ao deletar documento {doc_id}: {e}")
+            return False
+    
     def search(self, query: str, n_results: int = 3, product_filter: str = None) -> List[dict]:
         """
         Busca documentos relevantes para a consulta.

@@ -347,6 +347,29 @@ async def produtos_page(request: Request):
     return templates.TemplateResponse("produtos.html", {"request": request, "user_role": user_role})
 
 
+@app.get("/revisao", response_class=HTMLResponse)
+async def revisao_page(request: Request):
+    """
+    Central de Revisão de Conteúdos.
+    Revisa e aprova conteúdos extraídos automaticamente de PDFs.
+    Requer autenticação como admin ou gestao_rv.
+    """
+    token = request.cookies.get("access_token")
+    
+    if not token:
+        return RedirectResponse(url="/login")
+    
+    payload = decode_token(token)
+    if not payload:
+        return RedirectResponse(url="/login")
+    
+    user_role = payload.get("role")
+    if user_role not in ["admin", "gestao_rv"]:
+        return RedirectResponse(url="/login?error=permission")
+    
+    return templates.TemplateResponse("revisao.html", {"request": request, "user_role": user_role})
+
+
 # ========== Health Check ==========
 
 @app.get("/health")

@@ -311,7 +311,7 @@ class ProductIngestor:
             try:
                 self.vector_store.add_document(
                     doc_id=chunk_id,
-                    content=content_for_indexing,
+                    text=content_for_indexing,
                     metadata=metadata
                 )
                 indexed_count += 1
