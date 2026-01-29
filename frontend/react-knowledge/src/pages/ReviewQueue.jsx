@@ -88,7 +88,7 @@ export function ReviewQueue() {
 
   const openEditModal = (item) => {
     setSelectedItem(item);
-    setEditContent(item.content || '');
+    setEditContent(item.extracted_content || item.content || '');
     setShowEditModal(true);
   };
 
@@ -155,18 +155,18 @@ export function ReviewQueue() {
                         )}
                       </div>
 
-                      {item.title && (
-                        <h3 className="font-medium text-foreground mb-2">{item.title}</h3>
+                      {(item.block_title || item.title) && (
+                        <h3 className="font-medium text-foreground mb-2">{item.block_title || item.title}</h3>
                       )}
 
                       <p className="text-sm text-muted mb-3 whitespace-pre-wrap line-clamp-4">
-                        {item.content}
+                        {item.extracted_content || item.content}
                       </p>
 
-                      {item.reason && (
+                      {(item.risk_reason || item.reason) && (
                         <div className="flex items-center gap-2 text-sm text-warning mb-3">
                           <AlertTriangle className="w-4 h-4" />
-                          Motivo: {item.reason}
+                          Motivo: {item.risk_reason || item.reason}
                         </div>
                       )}
 
