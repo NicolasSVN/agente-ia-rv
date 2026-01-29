@@ -10,7 +10,7 @@ from contextlib import asynccontextmanager
 
 from database.database import engine, Base, SessionLocal
 from database import crud
-from api.endpoints import auth, users, tickets, whatsapp_webhook, integrations, analytics, agent_config, assessores, campaigns, knowledge, agent_test, conversations, central_mensagens, products, insights
+from api.endpoints import auth, users, tickets, whatsapp_webhook, integrations, analytics, agent_config, assessores, campaigns, knowledge, agent_test, conversations, central_mensagens, products, insights, search
 from core.security import decode_token
 
 
@@ -87,6 +87,7 @@ app.include_router(conversations.router)
 app.include_router(central_mensagens.router)
 app.include_router(products.router)
 app.include_router(insights.router)
+app.include_router(search.router)
 
 
 # ========== Rotas de Páginas HTML ==========

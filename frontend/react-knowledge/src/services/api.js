@@ -157,6 +157,14 @@ export const scriptsAPI = {
     }),
 };
 
+export const searchAPI = {
+  global: (query, limit = 20) => 
+    fetchAPI(`/search/global?q=${encodeURIComponent(query)}&limit=${limit}`),
+  
+  quick: (query, limit = 5) =>
+    fetchAPI(`/search/quick?q=${encodeURIComponent(query)}&limit=${limit}`),
+};
+
 export const knowledgeAPI = {
   list: () => fetchAPI('/knowledge/'),
   

@@ -1,15 +1,15 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Filter, RefreshCw, Package } from 'lucide-react';
-import { productsAPI } from '../services/api';
+import { Plus, Filter, RefreshCw, Package, Search, X } from 'lucide-react';
+import { productsAPI, searchAPI } from '../services/api';
 import { ProductCard } from '../components/ProductCard';
-import { SearchInput } from '../components/SearchInput';
 import { Button } from '../components/Button';
 import { LoadingSpinner } from '../components/LoadingSpinner';
 import { EmptyState } from '../components/EmptyState';
 import { Modal } from '../components/Modal';
 import { useToast } from '../components/Toast';
+import { GlobalSearchResults } from '../components/GlobalSearchResults';
 
 export function Dashboard() {
   const navigate = useNavigate();
@@ -22,6 +22,12 @@ export function Dashboard() {
   const [showNewModal, setShowNewModal] = useState(false);
   const [newProduct, setNewProduct] = useState({ name: '', ticker: '', category: '' });
   const [creating, setCreating] = useState(false);
+  
+  const [globalSearchResults, setGlobalSearchResults] = useState(null);
+  const [isSearching, setIsSearching] = useState(false);
+  const [showGlobalResults, setShowGlobalResults] = useState(false);
+  const searchContainerRef = useRef(null);
+  const searchTimeoutRef = useRef(null);
 
   const loadProducts = async () => {
     try {
@@ -49,18 +55,61 @@ export function Dashboard() {
     loadCategories();
   }, []);
 
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (searchContainerRef.current && !searchContainerRef.current.contains(event.target)) {
+        setShowGlobalResults(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const performGlobalSearch = useCallback(async (query) => {
+    if (!query || query.length < 2) {
+      setGlobalSearchResults(null);
+      setShowGlobalResults(false);
+      return;
+    }
+
+    setIsSearching(true);
+    try {
+      const results = await searchAPI.global(query);
+      setGlobalSearchResults(results);
+      setShowGlobalResults(true);
+    } catch (err) {
+      console.error('Erro na busca global:', err);
+    } finally {
+      setIsSearching(false);
+    }
+  }, []);
+
+  const handleSearchChange = (value) => {
+    setSearch(value);
+    
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+    
+    searchTimeoutRef.current = setTimeout(() => {
+      performGlobalSearch(value);
+    }, 300);
+  };
+
+  const clearSearch = () => {
+    setSearch('');
+    setGlobalSearchResults(null);
+    setShowGlobalResults(false);
+  };
+
   const filteredProducts = useMemo(() => {
     return products.filter((product) => {
-      const matchesSearch = search === '' ||
-        product.name?.toLowerCase().includes(search.toLowerCase()) ||
-        product.ticker?.toLowerCase().includes(search.toLowerCase());
-      
       const matchesCategory = selectedCategory === '' ||
         product.category === selectedCategory;
-
-      return matchesSearch && matchesCategory;
+      return matchesCategory;
     });
-  }, [products, search, selectedCategory]);
+  }, [products, selectedCategory]);
 
   const handleCreateProduct = async (e) => {
     e.preventDefault();
@@ -103,13 +152,47 @@ export function Dashboard() {
       </div>
 
       <div className="flex gap-4">
-        <div className="flex-1">
-          <SearchInput
-            value={search}
-            onChange={setSearch}
-            placeholder="Buscar por nome ou ticker..."
-          />
+        <div className="flex-1 relative" ref={searchContainerRef}>
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted" />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => handleSearchChange(e.target.value)}
+              onFocus={() => search.length >= 2 && setShowGlobalResults(true)}
+              placeholder="Busca global: produtos, gestores, materiais, documentos..."
+              className="w-full pl-10 pr-10 py-3 bg-card border border-border rounded-xl
+                        text-foreground placeholder:text-muted/60
+                        focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary/50
+                        transition-all"
+            />
+            {search && (
+              <button
+                onClick={clearSearch}
+                className="absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded-full
+                          text-muted hover:text-foreground hover:bg-gray-100 transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
+            {isSearching && (
+              <div className="absolute right-10 top-1/2 -translate-y-1/2">
+                <LoadingSpinner size="sm" />
+              </div>
+            )}
+          </div>
+          
+          <AnimatePresence>
+            {showGlobalResults && globalSearchResults && (
+              <GlobalSearchResults
+                results={globalSearchResults}
+                query={search}
+                onClose={() => setShowGlobalResults(false)}
+              />
+            )}
+          </AnimatePresence>
         </div>
+        
         <select
           value={selectedCategory}
           onChange={(e) => setSelectedCategory(e.target.value)}
@@ -131,7 +214,7 @@ export function Dashboard() {
         <EmptyState
           icon={Package}
           title="Nenhum produto encontrado"
-          description={search || selectedCategory
+          description={selectedCategory
             ? "Tente ajustar os filtros de busca"
             : "Comece criando um novo produto para sua base de conhecimento"
           }
