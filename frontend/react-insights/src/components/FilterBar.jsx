@@ -79,6 +79,20 @@ export default function FilterBar({ filters, onFilterChange, filterOptions }) {
         </AnimatePresence>
 
         <div className="flex flex-col gap-1">
+          <label className="text-xs font-semibold text-muted uppercase">Macro Area</label>
+          <select
+            value={filters.macro_area || ''}
+            onChange={(e) => onFilterChange({ ...filters, macro_area: e.target.value || null })}
+            className="px-3 py-2.5 bg-white border border-border rounded-lg text-sm min-w-[140px] focus:outline-none focus:ring-2 focus:ring-primary/20"
+          >
+            <option value="">Todas</option>
+            {filterOptions?.macro_areas?.map((item) => (
+              <option key={item} value={item}>{item}</option>
+            ))}
+          </select>
+        </div>
+
+        <div className="flex flex-col gap-1">
           <label className="text-xs font-semibold text-muted uppercase">Unidade</label>
           <select
             value={filters.unidade || ''}
@@ -128,20 +142,6 @@ export default function FilterBar({ filters, onFilterChange, filterOptions }) {
             className="mt-4 pt-4 border-t border-border"
           >
             <div className="flex flex-wrap gap-4">
-              <div className="flex flex-col gap-1">
-                <label className="text-xs font-semibold text-muted uppercase">Macro Area</label>
-                <select
-                  value={filters.macro_area || ''}
-                  onChange={(e) => onFilterChange({ ...filters, macro_area: e.target.value || null })}
-                  className="px-3 py-2.5 bg-white border border-border rounded-lg text-sm min-w-[160px] focus:outline-none focus:ring-2 focus:ring-primary/20"
-                >
-                  <option value="">Todas</option>
-                  {filterOptions?.macro_areas?.map((item) => (
-                    <option key={item} value={item}>{item}</option>
-                  ))}
-                </select>
-              </div>
-
               <div className="flex flex-col gap-1">
                 <label className="text-xs font-semibold text-muted uppercase">Equipe</label>
                 <select

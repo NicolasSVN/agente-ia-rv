@@ -406,6 +406,39 @@ async def get_complexity_map(
     }
 
 
+@router.get("/tickets-by-unit")
+async def get_tickets_by_unit(
+    period: str = Query("30d"),
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    macro_area: Optional[str] = None,
+    broker: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_gestao_or_admin)
+):
+    """Retorna volume de chamados/escalacoes criados por unidade (Mapa de Complexidade)."""
+    date_start, date_end = parse_date_filter(period, start_date, end_date)
+    
+    query = db.query(
+        ConversationInsight.unidade,
+        func.count(ConversationInsight.id).label('count')
+    ).filter(
+        ConversationInsight.created_at >= date_start,
+        ConversationInsight.created_at <= date_end,
+        ConversationInsight.unidade.isnot(None),
+        ConversationInsight.escalated_to_human == True
+    )
+    
+    if macro_area:
+        query = query.filter(ConversationInsight.macro_area == macro_area)
+    if broker:
+        query = query.filter(ConversationInsight.broker_responsavel == broker)
+    
+    results = query.group_by(ConversationInsight.unidade).order_by(func.count(ConversationInsight.id).desc()).limit(10).all()
+    
+    return [{"unidade": r.unidade, "count": r.count} for r in results]
+
+
 @router.get("/feedbacks")
 async def get_feedbacks(
     period: str = Query("30d"),

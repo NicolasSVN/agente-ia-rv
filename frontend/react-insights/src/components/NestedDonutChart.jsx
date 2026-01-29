@@ -29,14 +29,14 @@ export default function NestedDonutChart({ title, data, innerData, centerLabel, 
         categoryField: 'category',
         startAngle: 160,
         endAngle: 380,
-        radius: am5.percent(70),
-        innerRadius: am5.percent(65),
+        radius: am5.percent(60),
+        innerRadius: am5.percent(40),
       })
     );
     series0Ref.current = series0;
 
     series0.slices.template.setAll({
-      strokeWidth: 2,
+      strokeWidth: 3,
       stroke: am5.color(0xffffff),
       tooltipText: '{category}: {value}',
     });
@@ -49,14 +49,15 @@ export default function NestedDonutChart({ title, data, innerData, centerLabel, 
         startAngle: 160,
         endAngle: 380,
         valueField: 'value',
-        innerRadius: am5.percent(80),
+        innerRadius: am5.percent(70),
+        radius: am5.percent(95),
         categoryField: 'category',
       })
     );
     series1Ref.current = series1;
 
     series1.slices.template.setAll({
-      strokeWidth: 2,
+      strokeWidth: 3,
       stroke: am5.color(0xffffff),
       tooltipText: '{category}: {value}',
     });
@@ -70,6 +71,8 @@ export default function NestedDonutChart({ title, data, innerData, centerLabel, 
         centerY: am5.p100,
         centerX: am5.p50,
         text: '',
+        fontSize: 14,
+        fontWeight: '600',
       })
     );
     labelRef.current = label;
@@ -143,20 +146,20 @@ export default function NestedDonutChart({ title, data, innerData, centerLabel, 
           </div>
         )}
       </div>
-      <div ref={chartRef} style={{ width: '100%', height: '280px' }} />
+      <div ref={chartRef} style={{ width: '100%', height: '350px' }} />
       {data && (
-        <div className="mt-2 flex flex-wrap gap-2 justify-center text-xs">
+        <div className="mt-3 flex flex-wrap gap-3 justify-center text-xs">
           {data.slice(0, 6).map((item, index) => (
-            <div key={index} className="flex items-center gap-1">
+            <div key={index} className="flex items-center gap-1.5">
               <div
-                className="w-2 h-2 rounded-full"
+                className="w-3 h-3 rounded-full"
                 style={{
                   backgroundColor: [
                     '#772B21', '#10b981', '#f59e0b', '#6b8e23', '#dc7f37', '#8b4513',
                   ][index % 6],
                 }}
               />
-              <span className="text-muted truncate max-w-20">{item.label || item.category}</span>
+              <span className="text-muted">{item.label || item.category}</span>
             </div>
           ))}
         </div>

@@ -3,6 +3,7 @@ import * as am5 from '@amcharts/amcharts5';
 import * as am5xy from '@amcharts/amcharts5/xy';
 import am5themes_Animated from '@amcharts/amcharts5/themes/Animated';
 import { getUnitName } from '../data/unitsData';
+import InfoTooltip from './InfoTooltip';
 
 export default function UnitsBarChart({ data }) {
   const chartRef = useRef(null);
@@ -29,8 +30,15 @@ export default function UnitsBarChart({ data }) {
 
     const yRenderer = am5xy.AxisRendererY.new(root, {
       minorGridEnabled: true,
+      inversed: true,
+      cellStartLocation: 0.1,
+      cellEndLocation: 0.9,
     });
     yRenderer.grid.template.set('visible', false);
+    yRenderer.labels.template.setAll({
+      fontSize: 12,
+      paddingRight: 10,
+    });
 
     const yAxis = chart.yAxes.push(
       am5xy.CategoryAxis.new(root, {
@@ -74,12 +82,12 @@ export default function UnitsBarChart({ data }) {
 
     series.columns.template.setAll({
       strokeOpacity: 0,
-      cornerRadiusBR: 10,
-      cornerRadiusTR: 10,
-      cornerRadiusBL: 10,
-      cornerRadiusTL: 10,
-      maxHeight: 40,
-      fillOpacity: 0.8,
+      cornerRadiusBR: 8,
+      cornerRadiusTR: 8,
+      cornerRadiusBL: 8,
+      cornerRadiusTL: 8,
+      height: am5.percent(70),
+      fillOpacity: 0.9,
     });
 
     let currentlyHovered = null;
@@ -128,11 +136,11 @@ export default function UnitsBarChart({ data }) {
       const bulletContainer = am5.Container.new(root, {});
 
       bulletContainer.children.push(
-        am5.Circle.new(root, { radius: 20 }, circleTemplate)
+        am5.Circle.new(root, { radius: 18 }, circleTemplate)
       );
 
       const maskCircle = bulletContainer.children.push(
-        am5.Circle.new(root, { radius: 16 })
+        am5.Circle.new(root, { radius: 14 })
       );
 
       const imageContainer = bulletContainer.children.push(
@@ -208,8 +216,11 @@ export default function UnitsBarChart({ data }) {
 
   return (
     <div className="bg-white rounded-xl border border-border p-5 shadow-card h-full">
-      <h3 className="text-base font-semibold text-foreground mb-4">Top 10 Unidades</h3>
-      <div ref={chartRef} style={{ width: '100%', height: '400px' }} />
+      <div className="flex items-center mb-4">
+        <h3 className="text-base font-semibold text-foreground">Top 10 Unidades por Engajamento</h3>
+        <InfoTooltip text="Ranking de unidades com maior volume de interacoes com o agente IA no periodo selecionado." />
+      </div>
+      <div ref={chartRef} style={{ width: '100%', height: '500px' }} />
     </div>
   );
 }

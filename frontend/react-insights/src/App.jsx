@@ -24,6 +24,8 @@ import UnitsBarChart from './components/UnitsBarChart';
 import AssessorsBarChart from './components/AssessorsBarChart';
 import NestedDonutChart from './components/NestedDonutChart';
 import ProductsImageChart from './components/ProductsImageChart';
+import ComplexityChart from './components/ComplexityChart';
+import CampaignsSummary from './components/CampaignsSummary';
 import FeedbacksList from './components/FeedbacksList';
 
 ChartJS.register(
@@ -52,6 +54,7 @@ function App() {
   const [resolutionData, setResolutionData] = useState(null);
   const [topUnits, setTopUnits] = useState([]);
   const [topAssessors, setTopAssessors] = useState([]);
+  const [ticketsByUnit, setTicketsByUnit] = useState([]);
   const [feedbacks, setFeedbacks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -92,7 +95,7 @@ function App() {
     const qs = buildQueryString();
 
     try {
-      const [metricsRes, activityRes, categoriesRes, productsRes, resolutionRes, unitsRes, assessorsRes, feedbacksRes] = await Promise.all([
+      const [metricsRes, activityRes, categoriesRes, productsRes, resolutionRes, unitsRes, assessorsRes, ticketsRes, feedbacksRes] = await Promise.all([
         fetch(`${API_BASE}/api/insights/metrics?${qs}`, { credentials: 'include' }),
         fetch(`${API_BASE}/api/insights/activity?${qs}`, { credentials: 'include' }),
         fetch(`${API_BASE}/api/insights/categories?${qs}`, { credentials: 'include' }),
@@ -100,12 +103,13 @@ function App() {
         fetch(`${API_BASE}/api/insights/resolution?${qs}`, { credentials: 'include' }),
         fetch(`${API_BASE}/api/insights/top-units?${qs}`, { credentials: 'include' }),
         fetch(`${API_BASE}/api/insights/top-assessors?${qs}`, { credentials: 'include' }),
+        fetch(`${API_BASE}/api/insights/tickets-by-unit?${qs}`, { credentials: 'include' }),
         fetch(`${API_BASE}/api/insights/feedbacks?${qs}`, { credentials: 'include' }),
       ]);
 
       if (!metricsRes.ok) throw new Error('Falha ao carregar metricas');
 
-      const [metricsData, activity, categories, products, resolution, units, assessors, feedbacksData] = await Promise.all([
+      const [metricsData, activity, categories, products, resolution, units, assessors, tickets, feedbacksData] = await Promise.all([
         metricsRes.json(),
         activityRes.json(),
         categoriesRes.json(),
@@ -113,6 +117,7 @@ function App() {
         resolutionRes.json(),
         unitsRes.json(),
         assessorsRes.ok ? assessorsRes.json() : [],
+        ticketsRes.ok ? ticketsRes.json() : [],
         feedbacksRes.ok ? feedbacksRes.json() : [],
       ]);
 
@@ -123,6 +128,7 @@ function App() {
       setResolutionData(resolution);
       setTopUnits(units);
       setTopAssessors(assessors);
+      setTicketsByUnit(tickets);
       setFeedbacks(feedbacksData);
     } catch (err) {
       console.error('Error fetching data:', err);
@@ -252,34 +258,41 @@ function App() {
                 />
               </div>
 
-              <ChartCard
-                title="Atividade Diaria"
-                tooltip="Serie historica do volume de interacoes por dia. Permite identificar tendencias e picos de atividade."
-                fullWidth
-              >
-                <div style={{ height: '280px' }}>
-                  <Line
-                    data={activityChartData}
-                    options={{
-                      responsive: true,
-                      maintainAspectRatio: false,
-                      plugins: {
-                        legend: { display: false },
-                      },
-                      scales: {
-                        y: {
-                          beginAtZero: true,
-                          grid: { color: 'rgba(0,0,0,0.05)' },
-                          ticks: { precision: 0 },
+              <CampaignsSummary
+                totalCampaigns={metrics?.total_campaigns}
+                assessorsReached={metrics?.total_assessors_reached}
+              />
+
+              <div className="mt-6">
+                <ChartCard
+                  title="Atividade Diaria"
+                  tooltip="Serie historica do volume de interacoes por dia. Permite identificar tendencias e picos de atividade."
+                  fullWidth
+                >
+                  <div style={{ height: '280px' }}>
+                    <Line
+                      data={activityChartData}
+                      options={{
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                          legend: { display: false },
                         },
-                        x: {
-                          grid: { display: false },
+                        scales: {
+                          y: {
+                            beginAtZero: true,
+                            grid: { color: 'rgba(0,0,0,0.05)' },
+                            ticks: { precision: 0 },
+                          },
+                          x: {
+                            grid: { display: false },
+                          },
                         },
-                      },
-                    }}
-                  />
-                </div>
-              </ChartCard>
+                      }}
+                    />
+                  </div>
+                </ChartCard>
+              </div>
 
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
                 <UnitsBarChart data={topUnits} />
@@ -287,19 +300,20 @@ function App() {
               </div>
 
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+                <ComplexityChart data={ticketsByUnit} />
                 <NestedDonutChart
                   title="Categorias de Duvidas"
                   data={categoriesChartFormatted}
                   tooltip="Distribuicao das conversas por tipo de assunto. Ajuda a identificar os temas mais frequentes."
                 />
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
                 <NestedDonutChart
                   title="IA vs Humanos"
                   data={resolutionChartFormatted}
                   tooltip="Proporcao de conversas resolvidas pela IA versus as que necessitaram intervencao humana."
                 />
-              </div>
-
-              <div className="mt-6">
                 <ProductsImageChart
                   data={productsChartFormatted}
                   title="Produtos em Alta"
