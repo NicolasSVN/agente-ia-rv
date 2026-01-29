@@ -35,6 +35,7 @@ export default function BrazilMap({ unitVolumes, hoveredUnit, onHover }) {
   const chartRef = useRef(null);
   const rootRef = useRef(null);
   const pointSeriesRef = useRef(null);
+  const polygonSeriesRef = useRef(null);
 
   useLayoutEffect(() => {
     const root = am5.Root.new(chartRef.current);
@@ -60,6 +61,7 @@ export default function BrazilMap({ unitVolumes, hoveredUnit, onHover }) {
         calculateAggregates: true,
       })
     );
+    polygonSeriesRef.current = polygonSeries;
 
     polygonSeries.mapPolygons.template.setAll({
       tooltipText: '{name}',
@@ -83,20 +85,6 @@ export default function BrazilMap({ unitVolumes, hoveredUnit, onHover }) {
       },
     ]);
 
-    const stateData = [];
-    Object.entries(stateToUnits).forEach(([stateId, units]) => {
-      const totalVolume = units.reduce((sum, u) => sum + (unitVolumes?.[u] || 0), 0);
-      stateData.push({ id: stateId, value: totalVolume });
-    });
-
-    am5geodata_brazilLow.features.forEach((feature) => {
-      if (!stateData.find((s) => s.id === feature.id)) {
-        stateData.push({ id: feature.id, value: 0 });
-      }
-    });
-
-    polygonSeries.data.setAll(stateData);
-
     const pointSeries = chart.series.push(
       am5map.MapPointSeries.new(root, {})
     );
@@ -104,7 +92,7 @@ export default function BrazilMap({ unitVolumes, hoveredUnit, onHover }) {
 
     pointSeries.bullets.push(function (root, series, dataItem) {
       const volume = dataItem.dataContext.volume || 0;
-      const maxVolume = Math.max(...Object.values(unitVolumes || {}), 1);
+      const maxVolume = dataItem.dataContext.maxVolume || 1;
       const normalized = volume / maxVolume;
       const size = 8 + normalized * 12;
 
@@ -153,25 +141,33 @@ export default function BrazilMap({ unitVolumes, hoveredUnit, onHover }) {
       });
     });
 
-    const pointData = unitsData.map((unit) => ({
-      geometry: {
-        type: 'Point',
-        coordinates: [unitCoords[unit.sigla]?.longitude || 0, unitCoords[unit.sigla]?.latitude || 0],
-      },
-      sigla: unit.sigla,
-      nome: getUnitName(unit.sigla),
-      volume: unitVolumes?.[unit.sigla] || 0,
-    }));
-
-    pointSeries.data.setAll(pointData);
-
     return () => {
       root.dispose();
     };
-  }, []);
+  }, [onHover]);
 
   useEffect(() => {
-    if (!rootRef.current || !pointSeriesRef.current) return;
+    if (!polygonSeriesRef.current) return;
+
+    const stateData = [];
+    Object.entries(stateToUnits).forEach(([stateId, units]) => {
+      const totalVolume = units.reduce((sum, u) => sum + (unitVolumes?.[u] || 0), 0);
+      stateData.push({ id: stateId, value: totalVolume });
+    });
+
+    am5geodata_brazilLow.features.forEach((feature) => {
+      if (!stateData.find((s) => s.id === feature.id)) {
+        stateData.push({ id: feature.id, value: 0 });
+      }
+    });
+
+    polygonSeriesRef.current.data.setAll(stateData);
+  }, [unitVolumes]);
+
+  useEffect(() => {
+    if (!pointSeriesRef.current) return;
+
+    const maxVolume = Math.max(...Object.values(unitVolumes || {}), 1);
 
     const pointData = unitsData.map((unit) => ({
       geometry: {
@@ -181,6 +177,7 @@ export default function BrazilMap({ unitVolumes, hoveredUnit, onHover }) {
       sigla: unit.sigla,
       nome: getUnitName(unit.sigla),
       volume: unitVolumes?.[unit.sigla] || 0,
+      maxVolume: maxVolume,
     }));
 
     pointSeriesRef.current.data.setAll(pointData);

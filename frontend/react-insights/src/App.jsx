@@ -42,6 +42,7 @@ ChartJS.register(
 const API_BASE = '';
 
 function App() {
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [filters, setFilters] = useState({ period: '30d' });
   const [filterOptions, setFilterOptions] = useState(null);
   const [metrics, setMetrics] = useState(null);
@@ -200,8 +201,8 @@ function App() {
   if (error) {
     return (
       <div className="flex">
-        <Sidebar />
-        <div className="ml-60 flex-1 min-h-screen bg-background flex items-center justify-center">
+        <Sidebar collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed(!sidebarCollapsed)} />
+        <div className={`${sidebarCollapsed ? 'ml-16' : 'ml-60'} flex-1 min-h-screen bg-background flex items-center justify-center transition-all duration-300`}>
           <div className="text-center p-8">
             <h2 className="text-xl font-semibold text-danger mb-2">Erro ao carregar dados</h2>
             <p className="text-muted">{error}</p>
@@ -219,8 +220,8 @@ function App() {
 
   return (
     <div className="flex">
-      <Sidebar />
-      <div className="ml-60 flex-1 min-h-screen bg-background p-6">
+      <Sidebar collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed(!sidebarCollapsed)} />
+      <div className={`${sidebarCollapsed ? 'ml-16' : 'ml-60'} flex-1 min-h-screen bg-background p-6 transition-all duration-300`}>
         <motion.div
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}

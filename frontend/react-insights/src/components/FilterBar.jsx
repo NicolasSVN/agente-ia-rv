@@ -1,9 +1,13 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 export default function FilterBar({ filters, onFilterChange, filterOptions }) {
   const [showMore, setShowMore] = useState(false);
-  const [showCustomDates, setShowCustomDates] = useState(false);
+  const [showCustomDates, setShowCustomDates] = useState(filters.period === 'custom');
+
+  useEffect(() => {
+    setShowCustomDates(filters.period === 'custom');
+  }, [filters.period]);
 
   const periods = [
     { value: '7d', label: 'Ultimos 7 dias' },
