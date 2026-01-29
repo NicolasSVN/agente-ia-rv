@@ -1,0 +1,118 @@
+Confirmação + Critérios de Aceite da POC UX
+
+Perfeito com a arquitetura proposta (React + Vite servido pelo FastAPI em /tailwind-test-knowledge). Vamos seguir com isso.
+
+Para alinhar o sucesso da POC, seguem critérios claros de produto e UX:
+
+1. Objetivo da POC (não técnico)
+
+A POC deve provar ganho real de UX e produtividade para o broker, não apenas demonstrar stack moderna.
+
+A pergunta que a POC deve responder visualmente:
+“É mais rápido, mais claro e mais natural atualizar um produto aqui do que na tela atual?”
+
+2. Critérios obrigatórios de UX (Definition of Done visual)
+
+A POC deve ter:
+
+Layout de app (não página HTML tradicional)
+
+Cards de produtos substituindo tabela
+
+Drawer lateral para detalhes do produto
+
+Edição inline sem reload para:
+
+Taxa principal
+
+One-page do produto
+
+Script WhatsApp
+
+Busca e filtros client-side instantâneos
+
+Estados visuais claros:
+
+Loading (skeleton)
+
+Salvando
+
+Sucesso
+
+Erro
+
+Microinterações leves (drawer, save, hover)
+
+Se parecer “site com React”, a POC não cumpre o objetivo.
+Deve parecer “ferramenta interna premium”.
+
+3. Escopo funcional mínimo (para comparação real)
+
+Para pelo menos 3 produtos reais:
+
+Cada produto deve mostrar:
+
+Nome
+
+Categoria
+
+Tickers
+
+Status
+
+Última atualização
+
+Pelo menos 1 taxa editável
+
+1 one-page editável
+
+1 script WhatsApp editável
+
+4. Integração com dados
+
+Pode ser via:
+
+Endpoint real
+
+Ou mock dinâmico baseado em dados reais
+
+Mas:
+Não pode ser mock estático hardcoded.
+
+5. O que NÃO é objetivo da POC
+
+Não refatorar telas existentes
+
+Não criar sistema completo de revisão
+
+Não migrar toda a base de conhecimento
+
+Não criar dashboard executivo
+
+6. Métrica prática de sucesso (para decisão)
+
+Após a POC, vamos comparar:
+
+Nº de cliques para atualizar uma taxa
+
+Tempo para editar um one-page
+
+Clareza visual para encontrar produto
+
+Sensação de fluidez (sem reload)
+
+Se a POC for claramente superior, usamos isso como base para migração progressiva.
+
+Comentário de arquiteto (importante)
+
+A decisão de isolar com React + Vite é ótima porque:
+
+Não cria lock-in
+
+Não quebra produção
+
+Permite evoluir para SPA no futuro
+
+Dá base real para UX tipo SaaS
+
+Você está evitando o erro clássico de “React Big Bang”.

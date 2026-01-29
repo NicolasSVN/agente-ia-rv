@@ -1,0 +1,161 @@
+Sidebar leve interna da página (não a global do sistema)
+
+Header com:
+
+Título: Base de Conhecimento (UX Test)
+
+Campo de busca
+
+Botão “Novo Produto”
+
+Grid principal com cards
+
+Critério de aceite:
+
+Layout responsivo
+
+Aparência SaaS moderna (cards, espaçamento, hierarquia)
+
+3. Lista de Produtos (UX principal)
+
+Criar grid de cards de produtos com:
+
+Cada card:
+
+Nome do produto
+
+Categoria
+
+Tickers relacionados
+
+Status (badge: ativo, expirando, expirado)
+
+Última atualização
+
+Indicador visual de confiança (barra ou %)
+
+Interações:
+
+Hover com ações rápidas:
+
+Ver detalhes
+
+Editar
+
+Clique abre painel lateral (drawer)
+
+Critério de aceite:
+
+Cards substituem tabela
+
+UX permite scan visual rápido
+
+4. Painel lateral (Drawer) de Produto
+
+Ao clicar no produto:
+
+Abrir drawer lateral com:
+
+Seções:
+
+Resumo do produto
+
+Blocos de conteúdo:
+
+One-page
+
+Taxas
+
+Scripts WhatsApp
+
+Materiais anexos
+
+Cada bloco:
+
+Mostra preview
+
+Botão Editar inline
+
+Status (atualizado, pendente, expirado)
+
+Critério de aceite:
+
+Não há reload da página
+
+Drawer fecha/abre com animação leve
+
+5. Edição inline (UX crítica)
+
+Implementar pelo menos:
+
+Campo de taxa editável inline
+
+Campo de texto de one-page editável
+
+Script WhatsApp editável em textarea
+
+Comportamento:
+
+Botão Salvar inline
+
+Feedback visual de sucesso
+
+Atualização do estado sem reload
+
+Critério de aceite:
+
+Sensação de app (não de formulário tradicional)
+
+6. Busca e filtros client-side
+
+Implementar:
+
+Busca que filtra cards em tempo real
+
+Filtro por:
+
+Categoria
+
+Status
+
+Ticker
+
+Critério de aceite:
+
+Sem reload
+
+Filtro instantâneo
+
+7. Componentes UX obrigatórios
+
+Criar e usar:
+
+Badge de status
+
+Card de produto
+
+Drawer lateral
+
+Botão primário/secondary
+
+Campo de busca estilizado
+
+Skeleton loader (loading state fake se necessário)
+
+Critério de aceite:
+
+Componentes reutilizáveis no código
+
+8. Integração mínima com dados reais
+
+Mesmo que mockado:
+
+Usar endpoint real OU
+
+Mapear dados existentes para o formato novo
+
+Critério de aceite:
+
+Não pode ser só mock estático
+
+Deve refletir produtos reais
