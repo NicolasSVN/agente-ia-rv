@@ -233,6 +233,43 @@ async def tailwind_test_page(request: Request):
     return templates.TemplateResponse("tailwind_test.html", {"request": request, "user_role": user_role})
 
 
+@app.get("/tailwind-test-knowledge", response_class=HTMLResponse)
+async def tailwind_test_knowledge_page(request: Request):
+    """
+    POC de UX da Base de Conhecimento usando React + Tailwind.
+    Acesso restrito a admins.
+    """
+    token = request.cookies.get("access_token")
+    
+    if not token:
+        return RedirectResponse(url="/login")
+    
+    payload = decode_token(token)
+    if not payload:
+        return RedirectResponse(url="/login")
+    
+    user_role = payload.get("role")
+    if user_role != "admin":
+        return RedirectResponse(url="/login?error=permission")
+    
+    # Serve o build React
+    import os
+    react_build_path = os.path.join(os.path.dirname(__file__), "frontend", "react-poc", "dist", "index.html")
+    if os.path.exists(react_build_path):
+        with open(react_build_path, 'r') as f:
+            content = f.read()
+        return HTMLResponse(content=content)
+    else:
+        return HTMLResponse(content="<h1>POC não encontrada. Execute npm run build em frontend/react-poc/</h1>", status_code=404)
+
+
+# Monta arquivos estáticos do React POC
+import os
+react_dist_path = os.path.join(os.path.dirname(__file__), "frontend", "react-poc", "dist", "assets")
+if os.path.exists(react_dist_path):
+    app.mount("/tailwind-test-knowledge/assets", StaticFiles(directory=react_dist_path), name="react-poc-assets")
+
+
 @app.get("/agent-brain", response_class=HTMLResponse)
 async def agent_brain_page(request: Request):
     """
