@@ -203,6 +203,7 @@ class Assessor(Base):
     lid = Column(String(100), nullable=True, index=True)
     unidade = Column(String(255), nullable=True, index=True)
     equipe = Column(String(255), nullable=True, index=True)
+    macro_area = Column(String(255), nullable=True, index=True)
     broker_responsavel = Column(String(255), nullable=True, index=True)
     custom_fields = Column(Text, default="{}")
     created_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -774,3 +775,43 @@ class IngestionLog(Base):
     
     material = relationship("Material", foreign_keys=[material_id])
     user = relationship("User", foreign_keys=[user_id])
+
+
+class ConversationInsight(Base):
+    """
+    Diário de bordo das conversas com insights extraídos pela IA.
+    Armazena categoria, produtos mencionados, se foi resolvido pela IA, e feedbacks.
+    """
+    __tablename__ = "conversation_insights"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    conversation_id = Column(String(100), nullable=False, index=True)
+    assessor_id = Column(Integer, ForeignKey("assessores.id"), nullable=True, index=True)
+    assessor_phone = Column(String(50), nullable=True, index=True)
+    assessor_name = Column(String(255), nullable=True)
+    
+    user_message = Column(Text, nullable=False)
+    agent_response = Column(Text, nullable=True)
+    
+    category = Column(String(100), nullable=True, index=True)
+    products_mentioned = Column(Text, nullable=True)
+    tickers_mentioned = Column(Text, nullable=True)
+    
+    resolved_by_ai = Column(Boolean, default=True)
+    escalated_to_human = Column(Boolean, default=False)
+    ticket_created = Column(Boolean, default=False)
+    ticket_id = Column(Integer, ForeignKey("tickets.id"), nullable=True)
+    
+    feedback_text = Column(Text, nullable=True)
+    feedback_type = Column(String(50), nullable=True)
+    sentiment = Column(String(20), nullable=True)
+    
+    unidade = Column(String(255), nullable=True, index=True)
+    equipe = Column(String(255), nullable=True, index=True)
+    macro_area = Column(String(255), nullable=True, index=True)
+    broker_responsavel = Column(String(255), nullable=True, index=True)
+    
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    
+    assessor = relationship("Assessor", foreign_keys=[assessor_id])
+    ticket = relationship("Ticket", foreign_keys=[ticket_id])
