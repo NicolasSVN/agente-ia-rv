@@ -10,7 +10,7 @@ from contextlib import asynccontextmanager
 
 from database.database import engine, Base, SessionLocal
 from database import crud
-from api.endpoints import auth, users, tickets, whatsapp_webhook, integrations, analytics, agent_config, assessores, campaigns, knowledge, agent_test, conversations, central_mensagens
+from api.endpoints import auth, users, tickets, whatsapp_webhook, integrations, analytics, agent_config, assessores, campaigns, knowledge, agent_test, conversations, central_mensagens, products
 from core.security import decode_token
 
 
@@ -85,6 +85,7 @@ app.include_router(knowledge.router)
 app.include_router(agent_test.router)
 app.include_router(conversations.router)
 app.include_router(central_mensagens.router)
+app.include_router(products.router)
 
 
 # ========== Rotas de Páginas HTML ==========
@@ -321,6 +322,29 @@ async def conversas_page(request: Request):
         return RedirectResponse(url="/login?error=permission")
     
     return templates.TemplateResponse("conversas.html", {"request": request, "user_role": user_role})
+
+
+@app.get("/produtos", response_class=HTMLResponse)
+async def produtos_page(request: Request):
+    """
+    CMS de Produtos.
+    Gerencia produtos, materiais, blocos de conteúdo e scripts.
+    Requer autenticação como admin, gestao_rv ou broker.
+    """
+    token = request.cookies.get("access_token")
+    
+    if not token:
+        return RedirectResponse(url="/login")
+    
+    payload = decode_token(token)
+    if not payload:
+        return RedirectResponse(url="/login")
+    
+    user_role = payload.get("role")
+    if user_role not in ["admin", "gestao_rv", "broker"]:
+        return RedirectResponse(url="/login?error=permission")
+    
+    return templates.TemplateResponse("produtos.html", {"request": request, "user_role": user_role})
 
 
 # ========== Health Check ==========

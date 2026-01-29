@@ -37,6 +37,13 @@ A new design system features a minimizable vertical sidebar, light theme, and th
     - **Campaign Management:** A 4-step wizard for mass WhatsApp messages with personalized variables, template system, attachment support, and real-time dispatch progress via SSE.
     - **Central de Mensagens:** WhatsApp Web-style interface for conversation management, real-time updates, human takeover, and new conversation initiation.
     - **Knowledge Base Management:** Upload, index, categorize, and reindex various document types.
+    - **CMS de Produtos:** Product-centric content management system with:
+        - Products, Materials, and ContentBlocks hierarchy
+        - PDF upload with GPT-4 Vision for automatic block extraction
+        - Fast Lane / High-Risk Lane approval system (auto-approve text, review tables/charts with financial keywords)
+        - Semantic indexing of approved blocks to ChromaDB
+        - WhatsApp scripts per product for commercial use
+        - Versionamento automático de blocos de conteúdo
 - **AI Agent Response Framework:** Employs a `ConversationState` machine, message normalization, and flexible contact identification. It integrates AI for classifying user intent (Greeting, Scope, Documental, Out of Scope) and determining human transfer criteria. It also features conversation context accumulation for follow-up questions and AI-driven ticker search with intelligent confirmation flows, ensuring natural language interpretation over fixed regex patterns.
 
 **Feature Specifications:**

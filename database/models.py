@@ -492,3 +492,188 @@ class WhatsAppMessage(Base):
     ticket = relationship("Ticket", foreign_keys=[ticket_id])
     campaign = relationship("Campaign", foreign_keys=[campaign_id])
     conversation = relationship("Conversation", back_populates="messages")
+
+
+# ==================== CMS DE PRODUTOS ====================
+
+class ProductStatus(str, enum.Enum):
+    """Status do produto."""
+    ACTIVE = "ativo"
+    INACTIVE = "inativo"
+
+
+class MaterialType(str, enum.Enum):
+    """Tipos de material de produto."""
+    ONE_PAGE = "one_page"
+    PRESENTATION = "apresentacao"
+    COMMERCIAL_ARGS = "argumentos_comerciais"
+    RATES_UPDATE = "atualizacao_taxas"
+    WHATSAPP_SCRIPT = "script_whatsapp"
+    FAQ = "faq"
+    REGULATORY = "regulatorio"
+    OTHER = "outro"
+
+
+class ContentBlockType(str, enum.Enum):
+    """Tipos de bloco de conteúdo."""
+    TEXT = "texto"
+    TABLE = "tabela"
+    SCRIPT = "script"
+    CHART = "grafico"
+    IMAGE = "imagem"
+
+
+class ContentBlockStatus(str, enum.Enum):
+    """Status de aprovação do bloco."""
+    AUTO_APPROVED = "auto_approved"
+    PENDING_REVIEW = "pending_review"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+
+
+class ContentSourceType(str, enum.Enum):
+    """Origem do conteúdo."""
+    PDF_UPLOAD = "pdf"
+    MANUAL_INPUT = "manual"
+    SPREADSHEET = "spreadsheet"
+    AI_GENERATED = "ai_generated"
+
+
+class Product(Base):
+    """
+    Produto financeiro no CMS.
+    Centro da navegação - o broker pensa em produto, não em documento.
+    """
+    __tablename__ = "products"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(255), nullable=False, index=True)
+    ticker = Column(String(50), nullable=True, index=True)
+    manager = Column(String(255), nullable=True)  # Gestora/Corretora
+    category = Column(String(100), nullable=True, index=True)
+    status = Column(String(20), default=ProductStatus.ACTIVE.value)
+    description = Column(Text, nullable=True)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    
+    creator = relationship("User", foreign_keys=[created_by])
+    materials = relationship("Material", back_populates="product", cascade="all, delete-orphan")
+    scripts = relationship("WhatsAppScript", back_populates="product", cascade="all, delete-orphan")
+
+
+class Material(Base):
+    """
+    Material agrupa conteúdos por finalidade.
+    Ex: One-page, Apresentação, Taxas, etc.
+    """
+    __tablename__ = "materials"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    product_id = Column(Integer, ForeignKey("products.id"), nullable=False, index=True)
+    material_type = Column(String(50), default=MaterialType.ONE_PAGE.value)
+    name = Column(String(255), nullable=True)
+    description = Column(Text, nullable=True)
+    current_version = Column(Integer, default=1)
+    is_indexed = Column(Boolean, default=False)
+    source_file_path = Column(String(500), nullable=True)
+    source_filename = Column(String(255), nullable=True)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    
+    product = relationship("Product", back_populates="materials")
+    creator = relationship("User", foreign_keys=[created_by])
+    blocks = relationship("ContentBlock", back_populates="material", cascade="all, delete-orphan", order_by="ContentBlock.order")
+
+
+class ContentBlock(Base):
+    """
+    Menor unidade semântica indexável.
+    Cada bloco é editável independentemente.
+    """
+    __tablename__ = "content_blocks"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    material_id = Column(Integer, ForeignKey("materials.id"), nullable=False, index=True)
+    block_type = Column(String(30), default=ContentBlockType.TEXT.value)
+    title = Column(String(255), nullable=True)
+    content = Column(Text, nullable=True)  # Texto ou JSON para tabelas
+    content_hash = Column(String(64), nullable=True)  # Para detectar mudanças
+    source_type = Column(String(30), default=ContentSourceType.MANUAL_INPUT.value)
+    source_page = Column(Integer, nullable=True)  # Página de origem no PDF
+    status = Column(String(30), default=ContentBlockStatus.AUTO_APPROVED.value)
+    confidence_score = Column(Integer, default=100)  # 0-100
+    is_high_risk = Column(Boolean, default=False)  # Contém taxas, custos, etc.
+    semantic_tags = Column(Text, default="[]")  # JSON array de tags
+    order = Column(Integer, default=0)
+    current_version = Column(Integer, default=1)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    
+    material = relationship("Material", back_populates="blocks")
+    versions = relationship("BlockVersion", back_populates="block", cascade="all, delete-orphan", order_by="BlockVersion.version.desc()")
+
+
+class BlockVersion(Base):
+    """
+    Histórico de versões de um bloco.
+    Permite rollback e auditoria.
+    """
+    __tablename__ = "block_versions"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    block_id = Column(Integer, ForeignKey("content_blocks.id"), nullable=False, index=True)
+    version = Column(Integer, nullable=False)
+    content = Column(Text, nullable=False)
+    content_hash = Column(String(64), nullable=True)
+    author_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    change_reason = Column(String(500), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    
+    block = relationship("ContentBlock", back_populates="versions")
+    author = relationship("User", foreign_keys=[author_id])
+
+
+class WhatsAppScript(Base):
+    """
+    Scripts de WhatsApp estruturados.
+    Texto curto, copiável, indexável.
+    """
+    __tablename__ = "whatsapp_scripts"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    product_id = Column(Integer, ForeignKey("products.id"), nullable=False, index=True)
+    title = Column(String(255), nullable=False)
+    content = Column(Text, nullable=False)
+    usage_type = Column(String(50), default="whatsapp")  # whatsapp, reuniao, email
+    is_active = Column(Boolean, default=True)
+    current_version = Column(Integer, default=1)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    
+    product = relationship("Product", back_populates="scripts")
+    creator = relationship("User", foreign_keys=[created_by])
+
+
+class PendingReviewItem(Base):
+    """
+    Itens aguardando revisão humana.
+    Apenas para High-Risk (tabelas com taxas, custos, etc.)
+    """
+    __tablename__ = "pending_review_items"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    block_id = Column(Integer, ForeignKey("content_blocks.id"), nullable=False, index=True)
+    original_content = Column(Text, nullable=False)
+    extracted_content = Column(Text, nullable=False)  # O que a IA extraiu
+    confidence_score = Column(Integer, default=0)
+    risk_reason = Column(String(255), nullable=True)  # "Contém taxas", "Contém percentuais"
+    reviewed_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    reviewed_at = Column(DateTime(timezone=True), nullable=True)
+    review_action = Column(String(30), nullable=True)  # approved, edited, rejected
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    
+    block = relationship("ContentBlock", foreign_keys=[block_id])
+    reviewer = relationship("User", foreign_keys=[reviewed_by])
