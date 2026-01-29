@@ -1,0 +1,247 @@
+Excelente pergunta. Aqui é onde muitos projetos de RAG “bons” viram projetos **excelentes** ou viram um pesadelo operacional.
+
+Vou estruturar em 5 partes práticas, focadas no dia a dia do broker, sem Notion, tudo no app próprio, e alinhado com boas práticas de RAG e atualização contínua. A literatura e práticas atuais reforçam exatamente isso: versionamento, updates incrementais, e UX voltada a manutenção frequente, não só ingestão inicial. ([News from generation RAG][1])
+
+---
+
+# 1. Princípio-chave: não navegar por “pastas”, mas por ENTIDADES VIVAS
+
+Para o seu caso, **estrutura de folders é ruim**. Ela é boa para humanos, mas péssima para:
+
+* Atualização frequente
+* Versionamento
+* Substituição parcial (one-pager, taxa, regra)
+* RAG com recência e validade
+
+O broker não pensa:
+“vou na pasta /ativos/fundos/xpto.pdf”
+Ele pensa:
+“vou atualizar o PRODUTO XPTO”
+
+Então o centro da navegação deve ser **Produto / Estratégia / Material Comercial**, não documento.
+
+---
+
+# 2. Modelo mental ideal para o broker (UX)
+
+Em vez de “Documentos”, o app deve girar em torno de:
+
+## A. Produtos
+
+Cada produto é uma entidade viva.
+
+Tela:
+Produtos > XPTO Fundo Multimercado
+
+Dentro do produto:
+
+* One-pager (versão atual)
+* Apresentações
+* Tabela de taxas
+* Materiais comerciais
+* Histórico de versões
+* Vigência atual
+
+Quando o broker diz:
+
+> “Saiu atualização de taxa do produto XPTO”
+
+Fluxo ideal:
+
+Produtos > XPTO > Taxas > Atualizar
+Upload do novo PDF/planilha
+Sistema:
+
+* Marca versão anterior como expirada
+* Ingestão só do novo conteúdo
+* Reindexa só os chunks afetados
+* Mantém histórico
+
+Para a IA, isso é ouro:
+
+* Sempre responde com a versão vigente
+* Nunca mistura taxas antigas
+
+---
+
+## B. Estratégias
+
+Ex: Carteira Recomendada, Estratégia Long & Short, Estratégia Dividendos
+
+Tela:
+Estratégias > Carteira Recomendada Janeiro 2026
+
+Componentes:
+
+* Descrição da estratégia
+* Lista de ativos vinculados
+* PDF da apresentação
+* Texto operacional (como explicar ao cliente)
+* Vigência
+
+Quando muda a carteira:
+
+* Atualiza só esse item
+* Mantém versões antigas arquivadas
+* IA só consulta status = approved + vigente
+
+---
+
+## C. Materiais Comerciais / Scripts
+
+Para coisas tipo:
+
+> “texto venda em 1 minuto”
+
+Isso não deve ser PDF. Deve ser **conteúdo estruturado**.
+
+Tela:
+Materiais Comerciais > Scripts WhatsApp
+
+Item:
+“Venda em 1 minuto - Produto XPTO”
+
+Campos:
+
+* Texto curto (copiável)
+* Produto relacionado
+* Uso (WhatsApp, Reunião, Email)
+* Status (ativo/inativo)
+
+Isso vira chunk perfeito para RAG:
+Alta precisão, zero ruído.
+
+---
+
+# 3. UX Pós-Ingestão: navegação recomendada
+
+## Tela principal: não “Documentos”, mas “Catálogo”
+
+### Menu principal:
+
+* Produtos
+* Estratégias
+* Materiais Comerciais
+* Relatórios
+* Upload rápido
+* Gestão (admin)
+
+---
+
+## Tela de Produto (exemplo XPTO)
+
+Cards:
+
+[ One-pager atual ]
+[ Tabela de taxas ]
+[ Apresentações ]
+[ Materiais comerciais ]
+[ Histórico ]
+
+Cada card mostra:
+
+* Última atualização
+* Vigência
+* Status IA (confiança média)
+* Botão: Atualizar / Substituir
+
+---
+
+## Upload contextual (crítico)
+
+O broker não faz:
+Upload > classificar depois
+
+Ele faz:
+Produto XPTO > Atualizar One-pager
+
+Isso já preenche:
+
+* Produto
+* Tipo de documento
+* Categoria
+* Tickers
+* Relacionamento semântico
+
+Resultado:
+Menos erro humano
+Mais precisão no RAG
+
+---
+
+# 4. Atualização parcial e versionamento (muito importante)
+
+Para evitar reprocessar tudo:
+
+### Estratégia técnica recomendada:
+
+* Hash por página/chunk
+* Se novo upload:
+
+  * Comparar com versão anterior
+  * Só re-embedding dos chunks alterados
+  * Marcar chunks antigos como archived
+  * Manter histórico
+
+Isso resolve:
+
+* Custo
+* Latência
+* Mistura de versões
+
+Prática comum em RAG maduro. ([kapa.ai][2])
+
+---
+
+# 5. Aprovação: como não burocratizar
+
+Você está certo: revisão pesada mata adoção.
+
+Modelo ideal:
+
+### Regra 80/20:
+
+* Texto simples: zero revisão
+* PDFs grandes:
+
+  * Só revisar:
+
+    * Tabelas financeiras
+    * Gráficos
+    * Campos críticos (taxas, custos, datas)
+* Scripts comerciais: sem revisão
+
+UX:
+
+Tela de revisão = só exceções
+Nunca tudo
+
+Isso mantém:
+Qualidade alta
+Atrito baixo
+
+---
+
+# Resumo Executivo (o que eu recomendo mudar)
+
+❌ Não:
+
+* Navegar por folders
+* Upload genérico
+* Pensar em PDF como unidade principal
+
+✅ Sim:
+
+* Navegação por Produto / Estratégia / Material
+* Upload contextual
+* Versionamento automático
+* Atualização parcial
+* Scripts como texto estruturado
+* RAG sempre filtrando por vigente
+
+---
+
+Se quiser, posso transformar isso num **mapa de telas (UX flow)** ou num **modelo lógico revisado** alinhado com essa navegação.
+
+[1]: https://ragaboutit.com/why-enterprise-rag-systems-need-continuous-learning-a-technical-guide-to-dynamic-knowledge-updates/?utm_source=chatgpt.com "Why Enterprise RAG Systems Need Continuous Learning: A Technical Guide to Dynamic Knowledge Updates - News from generation RAG"
+[2]: https://www.kapa.ai/blog/rag-best-practices?utm_source=chatgpt.com "RAG Best Practices: Lessons from 100+ Technical Teams - kapa.ai - Instant AI answers to technical questions"

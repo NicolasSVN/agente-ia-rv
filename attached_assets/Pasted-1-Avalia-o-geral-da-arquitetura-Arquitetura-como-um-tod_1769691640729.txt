@@ -1,0 +1,261 @@
+1. Avaliação geral da arquitetura
+
+Arquitetura como um todo: A- (excelente, com risco de overengineering)
+
+Vocês desenharam um pipeline de nível enterprise:
+
+Multimodal ingestion real
+
+Itens estruturados por página
+
+Aprovação híbrida por risco
+
+Retrieval com re-ranking por tipo de pergunta
+
+Metadados ricos
+
+Interface orientada a exceção
+
+Ciclo de melhoria baseado em falhas reais
+
+Isso coloca Stevan mais próximo de um copiloto institucional sério, não de um chatbot comum.
+
+Do ponto de vista de IA, é exatamente o que especialistas recomendam para PDFs com tabelas e gráficos. Flattening simples destrói semântica, especialmente para dados financeiros, como a própria comunidade aponta .
+
+2. Onde o plano está excelente (acertos claros)
+a) document_items como entidade de primeira classe
+
+Separar em text, table, chart é um enorme acerto. Isso permite:
+
+Chunking correto
+
+Re-ranking por tipo
+
+Respostas mais confiáveis
+
+Auditoria futura
+
+Isso é arquitetura de sistema de conhecimento, não só RAG.
+
+b) Revisão por exceção (não tudo manual)
+
+Esse é o ponto mais maduro do desenho. Vocês não exigem revisão de tudo. Só:
+
+Tabelas com baixa confiança
+
+Gráficos
+
+Números financeiros críticos
+
+Isso reduz brutalmente custo humano.
+
+c) Chunking inteligente (não fragmentar tabelas)
+
+Isso é fundamental. Fragmentar tabela é uma das maiores causas de respostas erradas em RAG financeiro.
+
+d) Retrieval híbrido + re-ranking por tipo de pergunta
+
+Esse ponto é de gente que já apanhou de RAG:
+
+Pergunta numérica → tabelas
+
+Tendência → gráficos
+
+Conceito → texto
+
+Isso aumenta muito a precisão percebida.
+
+e) Vigência e expiração
+
+Para corretora, isso é ouro. Evita responder com produto antigo.
+
+3. Onde está sofisticado demais para o ROI (advogado do diabo)
+
+Aqui entra o risco real: carga cognitiva + tempo do especialista humano.
+
+3.1 Revisão de gráficos sempre obrigatória
+
+Na prática:
+
+Todo PDF de produto tem gráficos
+
+Isso cria fila constante de revisão
+
+O responsável vira gargalo
+
+Risco:
+O humano começa a “aprovar tudo no automático” para ganhar tempo. Aí você perde o benefício.
+
+3.2 Extração por página + regiões + bbox
+
+Tecnicamente lindo. Operacionalmente:
+
+A maioria dos usuários não pensa em “regiões”
+
+Eles pensam em “slide 7 do HGLG”
+
+Se a UI não abstrair isso muito bem, vira ferramenta para analista técnico, não para broker.
+
+3.3 GPT-4 Vision em tudo que tem imagem
+
+Custo + latência + manutenção.
+
+Funciona, mas precisa governança para não explodir custo.
+
+4. O ponto mais importante: Aprovação humana é necessária?
+
+Resposta honesta:
+Sim, mas não no nível fino que está desenhado como default.
+
+O desenho atual é ótimo para:
+
+Dados regulatórios
+
+Preços, taxas, custos
+
+Recomendações oficiais
+
+Mas para 70% dos slides de produto, o ganho marginal de revisar tudo é menor que o custo operacional.
+
+Aqui entra uma regra de ouro de produto interno:
+
+Se o fluxo exigir mais de 30–60 segundos por documento para o especialista, a adoção cai.
+
+5. Ajuste recomendado: Versão mais eficiente (sem perder qualidade)
+
+Aqui está a versão que eu recomendaria para produção real em corretora.
+
+5.1 Dois níveis de ingestão (muito importante)
+Nível 1: Fast Lane (default)
+
+Para a maioria dos documentos.
+
+Texto: auto-aprovado
+
+Tabelas: auto-aprovadas se confiança ≥ 85%
+
+Gráficos: auto-descritos por IA e auto-aprovados
+
+Marcar tudo como “provisório”
+
+UI:
+Usuário não vê nada. Documento já entra em produção.
+
+Nível 2: High-Risk Lane
+
+Ativado automaticamente se detectar:
+
+Taxas
+
+Custos
+
+Rentabilidade
+
+DY
+
+Percentuais críticos
+
+Produtos estruturados
+
+Aí sim:
+
+Revisão obrigatória
+
+UI de edição aparece
+
+Isso mantém qualidade onde importa e remove burocracia no resto.
+
+5.2 Revisão assíncrona orientada a impacto
+
+Outra melhoria forte:
+
+Em vez de revisar tudo na ingestão, use sinais do uso real:
+
+Se um chunk é frequentemente usado em respostas
+
+Se gera muitas transferências humanas
+
+Se gera correções manuais
+
+Esses chunks entram em fila de revisão prioritária.
+
+Isso cria um sistema que melhora com uso real, não só com ingestão.
+
+5.3 UI: esconder complexidade do usuário
+
+Na interface, o usuário não deveria pensar em:
+
+item_type
+
+bbox
+
+regiões
+
+Ele deveria ver:
+
+Documento > Página/Slide > Itens detectados
+
+Com rótulos simples:
+
+Texto principal
+
+Tabela
+
+Gráfico
+
+Abstrair a engenharia.
+
+6. Sobre o plano como IHM (Interface Humano-Máquina)
+
+O desenho atual é muito bom, mas eu sugeriria:
+
+Tela de Upload
+
+Perfeita. Simples.
+
+Tela de Revisão
+
+Mudança crítica:
+
+Em vez de “revisão por item técnico”, usar:
+
+Agrupado por página/slide
+
+Mostrar o slide inteiro
+
+Destacar em overlay: tabelas e gráficos
+
+Clique para editar
+
+Isso alinha com o modelo mental do broker.
+
+7. Conclusão direta
+
+Seu plano:
+
+É tecnicamente de nível alto
+
+Resolve os problemas reais de RAG financeiro multimodal
+
+Está acima da média do mercado
+
+Mas, do ponto de vista de produto interno:
+
+⚠️ Risco de overengineering operacional
+⚠️ Risco de gargalo humano
+⚠️ Risco de abandono por burocracia
+
+Minha recomendação:
+
+Manter a arquitetura, mas introduzir:
+
+Fast Lane vs High-Risk Lane
+
+Auto-aprovação mais agressiva
+
+Revisão orientada por impacto real
+
+Isso transforma Stevan em:
+
+Não só tecnicamente correto
+Mas operacionalmente adotável em escala
