@@ -345,29 +345,64 @@ async def get_top_assessors(
     """Retorna Top 10 Assessores mais ativos."""
     date_start, date_end = parse_date_filter(period, start_date, end_date)
     
-    query = db.query(
-        ConversationInsight.assessor_name,
-        ConversationInsight.unidade,
-        func.count(ConversationInsight.id).label('count')
-    ).filter(
+    base_filters = [
         ConversationInsight.created_at >= date_start,
         ConversationInsight.created_at <= date_end,
-        ConversationInsight.assessor_name.isnot(None)
-    )
+        ConversationInsight.assessor_name.isnot(None),
+        ConversationInsight.assessor_name != ''
+    ]
     
     if macro_area:
-        query = query.filter(ConversationInsight.macro_area == macro_area)
+        base_filters.append(ConversationInsight.macro_area == macro_area)
     if unidade:
-        query = query.filter(ConversationInsight.unidade == unidade)
+        base_filters.append(ConversationInsight.unidade == unidade)
     if broker:
-        query = query.filter(ConversationInsight.broker_responsavel == broker)
+        base_filters.append(ConversationInsight.broker_responsavel == broker)
     
-    results = query.group_by(
+    count_query = db.query(
+        ConversationInsight.assessor_name,
+        func.count(ConversationInsight.id).label('total_count')
+    ).filter(*base_filters).group_by(
+        ConversationInsight.assessor_name
+    ).order_by(func.count(ConversationInsight.id).desc()).limit(10)
+    
+    top_assessors = count_query.all()
+    
+    if not top_assessors:
+        return []
+    
+    assessor_names = [r.assessor_name for r in top_assessors if r.assessor_name]
+    
+    unidade_counts = db.query(
+        ConversationInsight.assessor_name,
+        ConversationInsight.unidade,
+        func.count(ConversationInsight.id).label('cnt')
+    ).filter(
+        *base_filters,
+        ConversationInsight.assessor_name.in_(assessor_names),
+        ConversationInsight.unidade.isnot(None)
+    ).group_by(
         ConversationInsight.assessor_name,
         ConversationInsight.unidade
-    ).order_by(func.count(ConversationInsight.id).desc()).limit(10).all()
+    ).all()
     
-    return [{"nome": r.assessor_name, "unidade": r.unidade, "count": r.count} for r in results]
+    assessor_unidade_map = {}
+    for row in unidade_counts:
+        name = row.assessor_name
+        if name not in assessor_unidade_map or row.cnt > assessor_unidade_map[name][1]:
+            assessor_unidade_map[name] = (row.unidade, row.cnt)
+    
+    output = []
+    for r in top_assessors:
+        if r.assessor_name and r.total_count > 0:
+            best_unidade = assessor_unidade_map.get(r.assessor_name, (None, 0))[0]
+            output.append({
+                "nome": r.assessor_name,
+                "unidade": best_unidade,
+                "count": r.total_count
+            })
+    
+    return output
 
 
 @router.get("/complexity-map")

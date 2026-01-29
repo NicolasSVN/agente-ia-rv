@@ -22,10 +22,10 @@ import ChartCard from './components/ChartCard';
 import FilterBar from './components/FilterBar';
 import UnitsBarChart from './components/UnitsBarChart';
 import AssessorsBarChart from './components/AssessorsBarChart';
-import NestedDonutChart from './components/NestedDonutChart';
 import ProductsImageChart from './components/ProductsImageChart';
 import ComplexityChart from './components/ComplexityChart';
 import CampaignsSummary from './components/CampaignsSummary';
+import TwoLevelPieChart from './components/TwoLevelPieChart';
 import FeedbacksList from './components/FeedbacksList';
 
 ChartJS.register(
@@ -299,21 +299,24 @@ function App() {
                 <AssessorsBarChart data={topAssessors} />
               </div>
 
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+              <div className="mt-6">
                 <ComplexityChart data={ticketsByUnit} />
-                <NestedDonutChart
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+                <TwoLevelPieChart
                   title="Categorias de Duvidas"
                   data={categoriesChartFormatted}
                   tooltip="Distribuicao das conversas por tipo de assunto. Ajuda a identificar os temas mais frequentes."
                 />
-              </div>
-
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
-                <NestedDonutChart
+                <TwoLevelPieChart
                   title="IA vs Humanos"
                   data={resolutionChartFormatted}
                   tooltip="Proporcao de conversas resolvidas pela IA versus as que necessitaram intervencao humana."
                 />
+              </div>
+
+              <div className="mt-6">
                 <ProductsImageChart
                   data={productsChartFormatted}
                   title="Produtos em Alta"
