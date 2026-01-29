@@ -1,0 +1,34 @@
+Quero adicionar uma nova seção ao meu aplicativo chamada "Dados e Insights", que será um dashboard inteligente para a gestão de Renda Variável. Esta página deve ser visível apenas para os perfis de "Administrador" e "Gestão RV".
+
+O objetivo deste dashboard é transformar as conversas e interações do agente de IA em gráficos e relatórios fáceis de entender. Para isso, o sistema precisa primeiro aprender a coletar e analisar os dados por conta própria.
+
+**Parte 1: Tornando o Sistema Autoconsciente (Coleta e Análise de Dados)**
+
+-   Primeiro, crie um "diário de bordo" no banco de dados para registrar cada interação. Para cada mensagem que um assessor envia, o sistema deve salvar: quem perguntou, o que perguntou, o que o agente respondeu, e se a dúvida foi resolvida pela IA ou se precisou virar um chamado para um broker.
+-   **A parte mais inteligente:** Após cada conversa, o próprio agente de IA deve fazer uma autoanálise. Ele deve reler a conversa e descobrir duas coisas:
+    1.  **Qual foi a categoria da dúvida?** (Ex: "Dúvida sobre Produto", "Análise de Mercado", "Pedido de Material").
+    2.  **Quais produtos ou ativos financeiros foram mencionados?** (Ex: "PETR4", "Fundo XPTO").
+-   Essas informações (categoria e produtos) devem ser salvas junto com o registro da conversa. Isso vai alimentar todos os gráficos do dashboard.
+-   Também, garanta que o cadastro de cada assessor no sistema tenha campos como "Unidade", "Equipe" e "Macro Área", para que possamos usar essas informações nos filtros.
+
+**Parte 2: Construindo o Dashboard de Insights**
+
+Crie uma nova página chamada "Dashboard" com a seguinte estrutura:
+
+**Filtros no Topo da Página:**
+-   No topo, coloque os filtros principais: um seletor de **Período** (com opções como "Últimos 7 dias", "Últimos 30 dias" e um calendário para escolher datas), e menus para filtrar por **Macro Área**, **Unidade** e **Broker**.
+-   Adicione um botão ou link chamado **"Mais Filtros"**. Ao clicar, ele deve revelar filtros adicionais para todos os outros campos disponíveis no cadastro do assessor, permitindo uma análise bem específica.
+
+**Visualizações e Gráficos:**
+O dashboard deve vir pronto com os seguintes relatórios, que se atualizam sozinhos quando eu uso os filtros:
+
+1.  **Visão Geral Rápida:** No topo, mostre três cartões com os números mais importantes: "Total de Interações", "Total de Assessores Ativos" e a "Taxa de Resolução da IA (%)".
+2.  **Gráfico de Atividade:** Um gráfico de linha mostrando o volume de interações dia a dia no período selecionado.
+3.  **Gráfico de Pizza "De que os assessores falam?":** Mostrando as categorias de dúvidas mais frequentes que a própria IA identificou.
+4.  **Gráfico de Barras "Quais produtos estão em alta?":** Um ranking com os ativos e produtos mais mencionados nas conversas.
+5.  **Gráfico de Pizza "IA vs. Humanos":** Uma visualização simples mostrando a proporção de dúvidas que a IA resolveu sozinha em comparação com as que precisaram de um chamado para um broker.
+6.  **Rankings de Engajamento:** Duas tabelas simples mostrando o "Top 5 Unidades" e o "Top 10 Assessores" que mais interagem com o agente.
+7.  **Mapa de Complexidade:** Um gráfico de barras mostrando o "Volume de Chamados Abertos por Unidade", para entendermos onde estão as maiores dificuldades.
+8.  **Resumo das Campanhas:** Dois cartões mostrando o "Total de Campanhas Disparadas" e o "Total de Assessores Alcançados" pelas comunicações ativas.
+
+Por favor, construa toda essa funcionalidade: a lógica de coleta e autoanálise de dados no backend, e a página do dashboard no frontend com todos os filtros e gráficos prontos para uso. A interface deve ser limpa, profissional e intuitiva.
