@@ -8,6 +8,8 @@ export default function ComplexityChart({ data }) {
   const rootRef = useRef(null);
   const seriesRef = useRef(null);
   const xAxisRef = useRef(null);
+  const currentlyHoveredRef = useRef(null);
+  const circleTemplateRef = useRef(null);
 
   useLayoutEffect(() => {
     const root = am5.Root.new(chartRef.current);
@@ -21,21 +23,24 @@ export default function ComplexityChart({ data }) {
         panY: false,
         wheelX: 'none',
         wheelY: 'none',
+        paddingBottom: 50,
+        paddingTop: 40,
         paddingLeft: 0,
-        paddingRight: 20,
-        paddingBottom: 10,
+        paddingRight: 0,
       })
     );
 
+    const xRenderer = am5xy.AxisRendererX.new(root, {
+      minorGridEnabled: true,
+      minGridDistance: 60,
+    });
+    xRenderer.grid.template.set('visible', false);
+
     const xAxis = chart.xAxes.push(
       am5xy.CategoryAxis.new(root, {
+        paddingTop: 40,
         categoryField: 'unidade',
-        renderer: am5xy.AxisRendererX.new(root, {
-          minGridDistance: 30,
-          cellStartLocation: 0.1,
-          cellEndLocation: 0.9,
-        }),
-        tooltip: am5.Tooltip.new(root, {}),
+        renderer: xRenderer,
       })
     );
     xAxisRef.current = xAxis;
@@ -48,19 +53,16 @@ export default function ComplexityChart({ data }) {
       fontSize: 11,
       fill: am5.color(0x5a4f4c),
       oversizedBehavior: 'truncate',
-      maxWidth: 120,
+      maxWidth: 100,
     });
 
-    xAxis.get('renderer').grid.template.setAll({
-      visible: false,
-    });
+    const yRenderer = am5xy.AxisRendererY.new(root, {});
+    yRenderer.grid.template.set('strokeDasharray', [3]);
 
     const yAxis = chart.yAxes.push(
       am5xy.ValueAxis.new(root, {
         min: 0,
-        renderer: am5xy.AxisRendererY.new(root, {
-          strokeOpacity: 0.1,
-        }),
+        renderer: yRenderer,
       })
     );
 
@@ -69,17 +71,19 @@ export default function ComplexityChart({ data }) {
       fill: am5.color(0x5a4f4c),
     });
 
-    yAxis.get('renderer').grid.template.setAll({
-      strokeOpacity: 0.1,
-    });
-
     const series = chart.series.push(
       am5xy.ColumnSeries.new(root, {
+        name: 'Escalados',
         xAxis: xAxis,
         yAxis: yAxis,
         valueYField: 'count',
         categoryXField: 'unidade',
+        sequencedInterpolation: true,
+        calculateAggregates: true,
+        maskBullets: false,
         tooltip: am5.Tooltip.new(root, {
+          dy: -30,
+          pointerOrientation: 'vertical',
           labelText: '{categoryX}: {valueY} escalados',
         }),
       })
@@ -87,11 +91,96 @@ export default function ComplexityChart({ data }) {
     seriesRef.current = series;
 
     series.columns.template.setAll({
-      cornerRadiusTL: 6,
-      cornerRadiusTR: 6,
       strokeOpacity: 0,
-      fillOpacity: 0.9,
-      width: am5.percent(70),
+      cornerRadiusBR: 10,
+      cornerRadiusTR: 10,
+      cornerRadiusBL: 10,
+      cornerRadiusTL: 10,
+      maxWidth: 50,
+      fillOpacity: 0.8,
+    });
+
+    function handleHover(dataItem) {
+      if (dataItem && currentlyHoveredRef.current !== dataItem) {
+        handleOut();
+        currentlyHoveredRef.current = dataItem;
+        const bullet = dataItem.bullets?.[0];
+        if (bullet) {
+          bullet.animate({
+            key: 'locationY',
+            to: 1,
+            duration: 600,
+            easing: am5.ease.out(am5.ease.cubic),
+          });
+        }
+      }
+    }
+
+    function handleOut() {
+      if (currentlyHoveredRef.current) {
+        const bullet = currentlyHoveredRef.current.bullets?.[0];
+        if (bullet) {
+          bullet.animate({
+            key: 'locationY',
+            to: 0,
+            duration: 600,
+            easing: am5.ease.out(am5.ease.cubic),
+          });
+        }
+        currentlyHoveredRef.current = null;
+      }
+    }
+
+    series.columns.template.events.on('pointerover', function (e) {
+      handleHover(e.target.dataItem);
+    });
+
+    series.columns.template.events.on('pointerout', function () {
+      handleOut();
+    });
+
+    const circleTemplate = am5.Template.new({});
+    circleTemplateRef.current = circleTemplate;
+
+    series.bullets.push(function (root) {
+      const bulletContainer = am5.Container.new(root, {});
+
+      bulletContainer.children.push(
+        am5.Circle.new(root, { radius: 28 }, circleTemplate)
+      );
+
+      const maskCircle = bulletContainer.children.push(
+        am5.Circle.new(root, { radius: 22 })
+      );
+
+      const imageContainer = bulletContainer.children.push(
+        am5.Container.new(root, { mask: maskCircle })
+      );
+
+      imageContainer.children.push(
+        am5.Circle.new(root, {
+          radius: 22,
+          fill: am5.color(0xffffff),
+          fillOpacity: 0.9,
+        })
+      );
+
+      const label = bulletContainer.children.push(
+        am5.Label.new(root, {
+          text: '{valueY}',
+          fill: am5.color(0x772B21),
+          fontSize: 14,
+          fontWeight: '700',
+          centerX: am5.p50,
+          centerY: am5.p50,
+          populateText: true,
+        })
+      );
+
+      return am5.Bullet.new(root, {
+        locationY: 0,
+        sprite: bulletContainer,
+      });
     });
 
     series.set('heatRules', [
@@ -102,25 +191,29 @@ export default function ComplexityChart({ data }) {
         target: series.columns.template,
         key: 'fill',
       },
+      {
+        dataField: 'valueY',
+        min: am5.color(0xfbbf24),
+        max: am5.color(0xAC3631),
+        target: circleTemplate,
+        key: 'fill',
+      },
     ]);
 
-    series.bullets.push(function () {
-      return am5.Bullet.new(root, {
-        locationY: 1,
-        sprite: am5.Label.new(root, {
-          text: '{valueY}',
-          fill: am5.color(0x772B21),
-          centerY: am5.p100,
-          centerX: am5.p50,
-          populateText: true,
-          fontSize: 12,
-          fontWeight: '600',
-          dy: -5,
-        }),
-      });
+    const cursor = chart.set('cursor', am5xy.XYCursor.new(root, {}));
+    cursor.lineX.set('visible', false);
+    cursor.lineY.set('visible', false);
+
+    cursor.events.on('cursormoved', function () {
+      const dataItem = series.get('tooltip')?.dataItem;
+      if (dataItem) {
+        handleHover(dataItem);
+      } else {
+        handleOut();
+      }
     });
 
-    series.appear(1000);
+    series.appear();
     chart.appear(1000, 100);
 
     return () => {
@@ -132,7 +225,7 @@ export default function ComplexityChart({ data }) {
     if (!seriesRef.current || !xAxisRef.current || !data) return;
 
     const sortedData = [...data]
-      .filter(d => d.unidade && d.count > 0)
+      .filter((d) => d.unidade && d.count > 0)
       .sort((a, b) => b.count - a.count)
       .slice(0, 10);
 
@@ -161,7 +254,7 @@ export default function ComplexityChart({ data }) {
           <span className="font-semibold text-danger">{totalEscalados}</span>
         </div>
       </div>
-      <div ref={chartRef} style={{ width: '100%', height: '320px' }} />
+      <div ref={chartRef} style={{ width: '100%', height: '380px' }} />
     </div>
   );
 }

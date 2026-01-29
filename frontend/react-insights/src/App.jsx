@@ -25,7 +25,7 @@ import AssessorsBarChart from './components/AssessorsBarChart';
 import ProductsImageChart from './components/ProductsImageChart';
 import ComplexityChart from './components/ComplexityChart';
 import CampaignsSummary from './components/CampaignsSummary';
-import SemiCirclePieChart from './components/SemiCirclePieChart';
+import CategoryTreemap from './components/CategoryTreemap';
 import AnimatedGauge from './components/AnimatedGauge';
 import FeedbacksList from './components/FeedbacksList';
 
@@ -314,7 +314,7 @@ function App() {
               </div>
 
               <div className="mt-6">
-                <SemiCirclePieChart
+                <CategoryTreemap
                   title="Categorias de Duvidas"
                   data={categoriesChartFormatted}
                   tooltip="Distribuicao das conversas por tipo de assunto. Ajuda a identificar os temas mais frequentes."
