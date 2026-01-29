@@ -129,16 +129,24 @@ async def get_rag_metrics(
     
     blocks_query = db.query(func.sum(IngestionLog.blocks_created))
     pending_query = db.query(func.sum(IngestionLog.blocks_pending_review))
+    tables_query = db.query(func.sum(IngestionLog.tables_detected))
+    charts_query = db.query(func.sum(IngestionLog.charts_detected))
     
     if start_date:
         blocks_query = blocks_query.filter(IngestionLog.created_at >= start_date)
         pending_query = pending_query.filter(IngestionLog.created_at >= start_date)
+        tables_query = tables_query.filter(IngestionLog.created_at >= start_date)
+        charts_query = charts_query.filter(IngestionLog.created_at >= start_date)
     if end_date:
         blocks_query = blocks_query.filter(IngestionLog.created_at <= end_date)
         pending_query = pending_query.filter(IngestionLog.created_at <= end_date)
+        tables_query = tables_query.filter(IngestionLog.created_at <= end_date)
+        charts_query = charts_query.filter(IngestionLog.created_at <= end_date)
     
     total_blocks_created = blocks_query.scalar() or 0
     total_pending_review = pending_query.scalar() or 0
+    total_tables_detected = tables_query.scalar() or 0
+    total_charts_detected = charts_query.scalar() or 0
     
     return {
         "retrieval": {
@@ -152,6 +160,8 @@ async def get_rag_metrics(
         "ingestion": {
             "total_documents": total_ingestions,
             "total_blocks_created": int(total_blocks_created),
-            "total_pending_review": int(total_pending_review)
+            "total_pending_review": int(total_pending_review),
+            "tables_detected": int(total_tables_detected),
+            "charts_detected": int(total_charts_detected)
         }
     }

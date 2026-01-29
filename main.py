@@ -327,24 +327,9 @@ async def conversas_page(request: Request):
 @app.get("/produtos", response_class=HTMLResponse)
 async def produtos_page(request: Request):
     """
-    CMS de Produtos.
-    Gerencia produtos, materiais, blocos de conteúdo e scripts.
-    Requer autenticação como admin, gestao_rv ou broker.
+    Redireciona para o CMS de Produtos em /base-conhecimento.
     """
-    token = request.cookies.get("access_token")
-    
-    if not token:
-        return RedirectResponse(url="/login")
-    
-    payload = decode_token(token)
-    if not payload:
-        return RedirectResponse(url="/login")
-    
-    user_role = payload.get("role")
-    if user_role not in ["admin", "gestao_rv", "broker"]:
-        return RedirectResponse(url="/login?error=permission")
-    
-    return templates.TemplateResponse("produtos.html", {"request": request, "user_role": user_role})
+    return RedirectResponse(url="/base-conhecimento", status_code=301)
 
 
 @app.get("/revisao", response_class=HTMLResponse)
