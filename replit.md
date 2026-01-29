@@ -133,7 +133,11 @@ A new design system features a minimizable vertical sidebar, light theme, and th
 **Localização:** `frontend/react-knowledge/`
 
 **Páginas:**
-- **Dashboard (`/`)** - Grid de produtos com busca, filtros por categoria, criação de novo produto
+- **Dashboard (`/`)** - Grid de produtos com busca global, filtros por categoria, criação de novo produto
+  - **Busca Global:** Pesquisa com correspondência parcial (ILIKE) em toda a base de conhecimento
+  - Pesquisa em: produtos (nome, ticker, gestor, categoria, descrição), materiais, blocos de conteúdo, documentos, scripts
+  - Resultados organizados em seções colapsáveis com destaque do termo buscado e contexto do match
+  - Debounce de 300ms para performance
 - **Upload Inteligente (`/upload`)** - Wizard 3 etapas seguindo a "Regra de Ouro":
   1. Upload do PDF (drag & drop)
   2. Configuração (tipo de material, produto relacionado, período, tags)
@@ -158,6 +162,11 @@ A new design system features a minimizable vertical sidebar, light theme, and th
 - `InlineEdit` - Edição inline com estados visuais
 - `Toast` - Notificações contextuais
 - `Sidebar` - Navegação colapsável
+- `GlobalSearchResults` - Resultados de busca global organizados por categoria com highlight
+
+**API de Busca Global:**
+- `GET /api/search/global?q=termo` - Busca em toda base com correspondência parcial
+- `GET /api/search/quick?q=termo` - Busca rápida para autocomplete
 
 **Build:** `cd frontend/react-knowledge && npm run build`
 
