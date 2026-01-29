@@ -27,9 +27,9 @@ export function Modal({ open, onClose, title, children, size = 'md' }) {
             initial={{ opacity: 0, scale: 0.95, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 20 }}
-            style={{ left: 'calc(240px + (100% - 240px) / 2)' }}
+            style={{ left: 'calc(50vw + 120px)' }}
             className={`fixed top-1/2 -translate-x-1/2 -translate-y-1/2
-                       w-[calc(100%-240px-2rem)] ${sizeClasses[size]} bg-white rounded-lg 
+                       ${sizeClasses[size]} bg-white rounded-lg 
                        shadow-2xl z-[9999] max-h-[90vh] flex flex-col`}
           >
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">

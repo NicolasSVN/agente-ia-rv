@@ -42,7 +42,7 @@ export function ToastProvider({ children }) {
       {children}
       {createPortal(
         <div 
-          style={{ left: 'calc(240px + (100% - 240px) / 2)' }}
+          style={{ left: 'calc(50vw + 120px)' }}
           className="fixed top-4 -translate-x-1/2 z-[9999] flex flex-col items-center gap-2"
         >
           <AnimatePresence>
