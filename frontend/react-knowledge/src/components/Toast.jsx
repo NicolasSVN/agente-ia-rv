@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { CheckCircle, XCircle, AlertCircle, Info, X } from 'lucide-react';
 
@@ -39,31 +40,34 @@ export function ToastProvider({ children }) {
   return (
     <ToastContext.Provider value={{ addToast }}>
       {children}
-      <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[100] flex flex-col items-center gap-2">
-        <AnimatePresence>
-          {toasts.map((toast) => {
-            const Icon = icons[toast.type];
-            return (
-              <motion.div
-                key={toast.id}
-                initial={{ opacity: 0, y: -20 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -20 }}
-                className={`flex items-center gap-3 px-4 py-3 rounded-card border shadow-card bg-card ${colors[toast.type]}`}
-              >
-                <Icon className="w-5 h-5 flex-shrink-0" />
-                <span className="text-sm font-medium text-foreground">{toast.message}</span>
-                <button
-                  onClick={() => removeToast(toast.id)}
-                  className="ml-2 p-1 rounded hover:bg-black/5"
+      {createPortal(
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[9999] flex flex-col items-center gap-2">
+          <AnimatePresence>
+            {toasts.map((toast) => {
+              const Icon = icons[toast.type];
+              return (
+                <motion.div
+                  key={toast.id}
+                  initial={{ opacity: 0, y: -20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -20 }}
+                  className={`flex items-center gap-3 px-4 py-3 rounded-lg border shadow-lg bg-white ${colors[toast.type]}`}
                 >
-                  <X className="w-4 h-4" />
-                </button>
-              </motion.div>
-            );
-          })}
-        </AnimatePresence>
-      </div>
+                  <Icon className="w-5 h-5 flex-shrink-0" />
+                  <span className="text-sm font-medium text-gray-900">{toast.message}</span>
+                  <button
+                    onClick={() => removeToast(toast.id)}
+                    className="ml-2 p-1 rounded hover:bg-black/5"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </motion.div>
+              );
+            })}
+          </AnimatePresence>
+        </div>,
+        document.body
+      )}
     </ToastContext.Provider>
   );
 }
