@@ -13,18 +13,18 @@ import {
   Legend,
   Filler
 } from 'chart.js';
-import { Line, Pie, Bar } from 'react-chartjs-2';
+import { Line } from 'react-chartjs-2';
 import './index.css';
 
 import Sidebar from './components/Sidebar';
 import KPICard from './components/KPICard';
 import ChartCard from './components/ChartCard';
 import FilterBar from './components/FilterBar';
-import BrazilMap from './components/BrazilMap';
-import UnitsRanking from './components/UnitsRanking';
-import AssessorsRanking from './components/AssessorsRanking';
+import UnitsBarChart from './components/UnitsBarChart';
+import AssessorsBarChart from './components/AssessorsBarChart';
+import NestedDonutChart from './components/NestedDonutChart';
+import ProductsImageChart from './components/ProductsImageChart';
 import FeedbacksList from './components/FeedbacksList';
-import InfoTooltip from './components/InfoTooltip';
 
 ChartJS.register(
   CategoryScale,
@@ -53,7 +53,6 @@ function App() {
   const [topUnits, setTopUnits] = useState([]);
   const [topAssessors, setTopAssessors] = useState([]);
   const [feedbacks, setFeedbacks] = useState([]);
-  const [hoveredUnit, setHoveredUnit] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -141,11 +140,6 @@ function App() {
     fetchData();
   }, [fetchData]);
 
-  const unitVolumes = topUnits?.reduce((acc, unit) => {
-    acc[unit.unidade] = unit.count;
-    return acc;
-  }, {}) || {};
-
   const activityChartData = {
     labels: activityData?.labels?.map(d => {
       const date = new Date(d);
@@ -164,39 +158,20 @@ function App() {
     }]
   };
 
-  const categoriesChartData = {
-    labels: categoriesData?.labels || [],
-    datasets: [{
-      data: categoriesData?.data || [],
-      backgroundColor: [
-        '#772B21', '#10b981', '#f59e0b', '#6b8e23', '#dc7f37',
-        '#8b4513', '#381811', '#AC3631', '#CFE3DA', '#5a4f4c',
-        '#3b82f6', '#8b5cf6'
-      ],
-      borderWidth: 2,
-      borderColor: '#fff',
-    }]
-  };
+  const categoriesChartFormatted = categoriesData?.labels?.map((label, index) => ({
+    label: label,
+    value: categoriesData.data[index],
+  })) || [];
 
-  const productsChartData = {
-    labels: productsData?.labels || [],
-    datasets: [{
-      label: 'Mencoes',
-      data: productsData?.data || [],
-      backgroundColor: '#772B21',
-      borderRadius: 6,
-    }]
-  };
+  const resolutionChartFormatted = resolutionData?.labels?.map((label, index) => ({
+    label: label,
+    value: resolutionData.data[index],
+  })) || [];
 
-  const resolutionChartData = {
-    labels: resolutionData?.labels || [],
-    datasets: [{
-      data: resolutionData?.data || [],
-      backgroundColor: ['#10b981', '#f59e0b'],
-      borderWidth: 2,
-      borderColor: '#fff',
-    }]
-  };
+  const productsChartFormatted = productsData?.labels?.map((label, index) => ({
+    label: label,
+    value: productsData.data[index],
+  })) || [];
 
   if (error) {
     return (
@@ -282,7 +257,7 @@ function App() {
                 tooltip="Serie historica do volume de interacoes por dia. Permite identificar tendencias e picos de atividade."
                 fullWidth
               >
-                <div style={{ height: '300px' }}>
+                <div style={{ height: '280px' }}>
                   <Line
                     data={activityChartData}
                     options={{
@@ -306,94 +281,33 @@ function App() {
                 </div>
               </ChartCard>
 
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-6">
-                <div className="lg:col-span-2">
-                  <div className="bg-white rounded-xl border border-border p-5 shadow-card">
-                    <div className="flex items-center mb-4">
-                      <h3 className="text-base font-semibold text-foreground">Mapa de Calor das Unidades</h3>
-                      <InfoTooltip text="Visualizacao geografica do volume de interacoes por unidade. Pontos maiores e mais intensos indicam maior atividade." />
-                    </div>
-                    <BrazilMap
-                      unitVolumes={unitVolumes}
-                      hoveredUnit={hoveredUnit}
-                      onHover={setHoveredUnit}
-                    />
-                  </div>
-                </div>
-                <UnitsRanking
-                  units={topUnits}
-                  hoveredUnit={hoveredUnit}
-                  onHover={setHoveredUnit}
-                />
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-6">
-                <ChartCard
-                  title="Categorias de Duvidas"
-                  tooltip="Distribuicao das conversas por tipo de assunto. Ajuda a identificar os temas mais frequentes."
-                >
-                  <div style={{ height: '250px' }}>
-                    <Pie
-                      data={categoriesChartData}
-                      options={{
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        plugins: {
-                          legend: {
-                            position: 'right',
-                            labels: { boxWidth: 12, font: { size: 11 } },
-                          },
-                        },
-                      }}
-                    />
-                  </div>
-                </ChartCard>
-
-                <ChartCard
-                  title="Produtos em Alta"
-                  tooltip="Ranking dos produtos/tickers mais mencionados nas conversas. Indica demanda e interesse dos assessores."
-                >
-                  <div style={{ height: '250px' }}>
-                    <Bar
-                      data={productsChartData}
-                      options={{
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        indexAxis: 'y',
-                        plugins: { legend: { display: false } },
-                        scales: {
-                          x: { grid: { color: 'rgba(0,0,0,0.05)' }, ticks: { precision: 0 } },
-                          y: { grid: { display: false } },
-                        },
-                      }}
-                    />
-                  </div>
-                </ChartCard>
-
-                <ChartCard
-                  title="IA vs Humanos"
-                  tooltip="Proporcao de conversas resolvidas pela IA versus as que necessitaram intervencao humana."
-                >
-                  <div style={{ height: '250px' }}>
-                    <Pie
-                      data={resolutionChartData}
-                      options={{
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        plugins: {
-                          legend: {
-                            position: 'bottom',
-                            labels: { boxWidth: 12, font: { size: 11 } },
-                          },
-                        },
-                      }}
-                    />
-                  </div>
-                </ChartCard>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+                <UnitsBarChart data={topUnits} />
+                <AssessorsBarChart data={topAssessors} />
               </div>
 
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
-                <AssessorsRanking assessors={topAssessors} />
+                <NestedDonutChart
+                  title="Categorias de Duvidas"
+                  data={categoriesChartFormatted}
+                  tooltip="Distribuicao das conversas por tipo de assunto. Ajuda a identificar os temas mais frequentes."
+                />
+                <NestedDonutChart
+                  title="IA vs Humanos"
+                  data={resolutionChartFormatted}
+                  tooltip="Proporcao de conversas resolvidas pela IA versus as que necessitaram intervencao humana."
+                />
+              </div>
+
+              <div className="mt-6">
+                <ProductsImageChart
+                  data={productsChartFormatted}
+                  title="Produtos em Alta"
+                  tooltip="Ranking dos produtos/tickers mais mencionados nas conversas. Indica demanda e interesse dos assessores."
+                />
+              </div>
+
+              <div className="mt-6">
                 <FeedbacksList feedbacks={feedbacks} />
               </div>
             </>

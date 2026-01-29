@@ -78,6 +78,34 @@ export default function FilterBar({ filters, onFilterChange, filterOptions }) {
           )}
         </AnimatePresence>
 
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-semibold text-muted uppercase">Unidade</label>
+          <select
+            value={filters.unidade || ''}
+            onChange={(e) => onFilterChange({ ...filters, unidade: e.target.value || null })}
+            className="px-3 py-2.5 bg-white border border-border rounded-lg text-sm min-w-[140px] focus:outline-none focus:ring-2 focus:ring-primary/20"
+          >
+            <option value="">Todas</option>
+            {filterOptions?.unidades?.map((item) => (
+              <option key={item} value={item}>{item}</option>
+            ))}
+          </select>
+        </div>
+
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-semibold text-muted uppercase">Broker</label>
+          <select
+            value={filters.broker || ''}
+            onChange={(e) => onFilterChange({ ...filters, broker: e.target.value || null })}
+            className="px-3 py-2.5 bg-white border border-border rounded-lg text-sm min-w-[140px] focus:outline-none focus:ring-2 focus:ring-primary/20"
+          >
+            <option value="">Todos</option>
+            {filterOptions?.brokers?.map((item) => (
+              <option key={item} value={item}>{item}</option>
+            ))}
+          </select>
+        </div>
+
         <button
           onClick={() => setShowMore(!showMore)}
           className={`flex items-center gap-2 px-4 py-2.5 border rounded-lg text-sm transition-colors ${
@@ -109,34 +137,6 @@ export default function FilterBar({ filters, onFilterChange, filterOptions }) {
                 >
                   <option value="">Todas</option>
                   {filterOptions?.macro_areas?.map((item) => (
-                    <option key={item} value={item}>{item}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="flex flex-col gap-1">
-                <label className="text-xs font-semibold text-muted uppercase">Unidade</label>
-                <select
-                  value={filters.unidade || ''}
-                  onChange={(e) => onFilterChange({ ...filters, unidade: e.target.value || null })}
-                  className="px-3 py-2.5 bg-white border border-border rounded-lg text-sm min-w-[160px] focus:outline-none focus:ring-2 focus:ring-primary/20"
-                >
-                  <option value="">Todas</option>
-                  {filterOptions?.unidades?.map((item) => (
-                    <option key={item} value={item}>{item}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="flex flex-col gap-1">
-                <label className="text-xs font-semibold text-muted uppercase">Broker</label>
-                <select
-                  value={filters.broker || ''}
-                  onChange={(e) => onFilterChange({ ...filters, broker: e.target.value || null })}
-                  className="px-3 py-2.5 bg-white border border-border rounded-lg text-sm min-w-[160px] focus:outline-none focus:ring-2 focus:ring-primary/20"
-                >
-                  <option value="">Todos</option>
-                  {filterOptions?.brokers?.map((item) => (
                     <option key={item} value={item}>{item}</option>
                   ))}
                 </select>
