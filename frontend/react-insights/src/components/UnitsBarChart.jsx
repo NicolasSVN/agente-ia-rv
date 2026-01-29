@@ -220,7 +220,7 @@ export default function UnitsBarChart({ data }) {
         <h3 className="text-base font-semibold text-foreground">Top 10 Unidades por Engajamento</h3>
         <InfoTooltip text="Ranking de unidades com maior volume de interacoes com o agente IA no periodo selecionado." />
       </div>
-      <div ref={chartRef} style={{ width: '100%', height: '500px' }} />
+      <div ref={chartRef} style={{ width: '100%', height: '440px' }} />
     </div>
   );
 }

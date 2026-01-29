@@ -134,7 +134,7 @@ export default function SemiCirclePieChart({ title, data, tooltip }) {
           </div>
         )}
       </div>
-      <div ref={chartRef} style={{ width: '100%', height: '280px' }} />
+      <div ref={chartRef} style={{ width: '100%', height: '340px' }} />
     </div>
   );
 }

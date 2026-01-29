@@ -189,7 +189,7 @@ export default function AnimatedGauge({ title, percentage, label, tooltip }) {
           </div>
         )}
       </div>
-      <div ref={chartRef} style={{ width: '100%', height: '220px' }} />
+      <div ref={chartRef} style={{ width: '100%', height: '260px' }} />
       {label && (
         <div className="text-center mt-2">
           <span className="text-sm text-muted">{label}</span>

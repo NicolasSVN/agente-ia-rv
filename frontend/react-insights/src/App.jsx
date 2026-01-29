@@ -313,21 +313,21 @@ function App() {
                 <ComplexityChart data={ticketsByUnit} />
               </div>
 
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+              <div className="mt-6">
                 <SemiCirclePieChart
                   title="Categorias de Duvidas"
                   data={categoriesChartFormatted}
                   tooltip="Distribuicao das conversas por tipo de assunto. Ajuda a identificar os temas mais frequentes."
                 />
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
                 <AnimatedGauge
                   title="Taxa de Resolucao IA"
                   percentage={iaPercentage}
                   label="Conversas resolvidas pela IA"
                   tooltip="Proporcao de conversas resolvidas pela IA versus as que necessitaram intervencao humana."
                 />
-              </div>
-
-              <div className="mt-6">
                 <ProductsImageChart
                   data={productsChartFormatted}
                   title="Produtos em Alta"
