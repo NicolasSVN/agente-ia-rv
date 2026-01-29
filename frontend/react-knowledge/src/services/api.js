@@ -1,0 +1,188 @@
+const BASE_URL = '/api';
+
+async function fetchAPI(endpoint, options = {}) {
+  const token = localStorage.getItem('token');
+  const headers = {
+    ...options.headers,
+  };
+
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
+  if (!(options.body instanceof FormData)) {
+    headers['Content-Type'] = 'application/json';
+  }
+
+  const response = await fetch(`${BASE_URL}${endpoint}`, {
+    ...options,
+    headers,
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: 'Erro desconhecido' }));
+    throw new Error(error.detail || `HTTP ${response.status}`);
+  }
+
+  return response.json();
+}
+
+export const productsAPI = {
+  list: (params = {}) => {
+    const query = new URLSearchParams(params).toString();
+    return fetchAPI(`/products${query ? `?${query}` : ''}`);
+  },
+
+  get: (id) => fetchAPI(`/products/${id}`),
+
+  create: (data) => fetchAPI('/products', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  }),
+
+  update: (id, data) => fetchAPI(`/products/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  }),
+
+  delete: (id) => fetchAPI(`/products/${id}`, {
+    method: 'DELETE',
+  }),
+
+  getCategories: () => fetchAPI('/products/categories'),
+
+  getExpiring: (days = 30) => fetchAPI(`/products/expiring?days=${days}`),
+};
+
+export const materialsAPI = {
+  get: (productId, materialId) =>
+    fetchAPI(`/products/${productId}/materials/${materialId}`),
+
+  create: (productId, data) =>
+    fetchAPI(`/products/${productId}/materials`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  delete: (productId, materialId) =>
+    fetchAPI(`/products/${productId}/materials/${materialId}`, {
+      method: 'DELETE',
+    }),
+
+  uploadPDF: (productId, materialId, file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return fetchAPI(`/products/${productId}/materials/${materialId}/upload`, {
+      method: 'POST',
+      body: formData,
+    });
+  },
+
+  publish: (materialId) =>
+    fetchAPI(`/products/materials/${materialId}/publish`, {
+      method: 'POST',
+    }),
+
+  reindex: (productId, materialId) =>
+    fetchAPI(`/products/${productId}/materials/${materialId}/reindex`, {
+      method: 'POST',
+    }),
+};
+
+export const blocksAPI = {
+  create: (productId, materialId, data) =>
+    fetchAPI(`/products/${productId}/materials/${materialId}/blocks`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  update: (productId, materialId, blockId, data) =>
+    fetchAPI(`/products/${productId}/materials/${materialId}/blocks/${blockId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+
+  delete: (productId, materialId, blockId) =>
+    fetchAPI(`/products/${productId}/materials/${materialId}/blocks/${blockId}`, {
+      method: 'DELETE',
+    }),
+
+  getVersions: (productId, materialId, blockId) =>
+    fetchAPI(`/products/${productId}/materials/${materialId}/blocks/${blockId}/versions`),
+
+  restoreVersion: (productId, materialId, blockId, version) =>
+    fetchAPI(`/products/${productId}/materials/${materialId}/blocks/${blockId}/restore/${version}`, {
+      method: 'POST',
+    }),
+
+  approve: (blockId) =>
+    fetchAPI(`/products/blocks/${blockId}/approve`, {
+      method: 'POST',
+    }),
+};
+
+export const reviewAPI = {
+  listPending: () => fetchAPI('/products/review/pending'),
+
+  approve: (itemId) =>
+    fetchAPI(`/products/review/${itemId}/approve`, {
+      method: 'POST',
+    }),
+
+  edit: (itemId, data) =>
+    fetchAPI(`/products/review/${itemId}/edit`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  reject: (itemId, data) =>
+    fetchAPI(`/products/review/${itemId}/reject`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+};
+
+export const scriptsAPI = {
+  create: (productId, data) =>
+    fetchAPI(`/products/${productId}/scripts`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  update: (productId, scriptId, data) =>
+    fetchAPI(`/products/${productId}/scripts/${scriptId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+
+  delete: (productId, scriptId) =>
+    fetchAPI(`/products/${productId}/scripts/${scriptId}`, {
+      method: 'DELETE',
+    }),
+};
+
+export const knowledgeAPI = {
+  list: () => fetchAPI('/knowledge/documents'),
+  
+  upload: (file, title, category, description) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('title', title);
+    formData.append('category', category);
+    if (description) formData.append('description', description);
+    return fetchAPI('/knowledge/upload', {
+      method: 'POST',
+      body: formData,
+    });
+  },
+
+  reindex: (docId) =>
+    fetchAPI(`/knowledge/documents/${docId}/reindex`, {
+      method: 'POST',
+    }),
+
+  delete: (docId) =>
+    fetchAPI(`/knowledge/documents/${docId}`, {
+      method: 'DELETE',
+    }),
+};

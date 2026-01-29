@@ -307,6 +307,71 @@ if os.path.exists(react_insights_dist_path):
         return HTMLResponse(content="Not Found", status_code=404)
 
 
+# ==============================================================================
+# BASE DE CONHECIMENTO REACT APP
+# ==============================================================================
+react_knowledge_dist_path = os.path.join(os.path.dirname(__file__), "frontend", "react-knowledge", "dist")
+react_knowledge_assets_path = os.path.join(os.path.dirname(__file__), "frontend", "react-knowledge", "dist", "assets")
+
+if os.path.exists(react_knowledge_assets_path):
+    app.mount("/base-conhecimento/assets", StaticFiles(directory=react_knowledge_assets_path), name="react-knowledge-assets")
+
+@app.get("/base-conhecimento", response_class=HTMLResponse)
+async def base_conhecimento_page(request: Request):
+    """
+    Base de Conhecimento em React.
+    Acesso restrito a admin, gestao_rv e broker.
+    """
+    token = request.cookies.get("access_token")
+    
+    if not token:
+        return RedirectResponse(url="/login")
+    
+    payload = decode_token(token)
+    if not payload:
+        return RedirectResponse(url="/login")
+    
+    user_role = payload.get("role")
+    if user_role not in ["admin", "gestao_rv", "broker"]:
+        return RedirectResponse(url="/login?error=permission")
+    
+    react_build_path = os.path.join(react_knowledge_dist_path, "index.html")
+    if os.path.exists(react_build_path):
+        with open(react_build_path, 'r') as f:
+            content = f.read()
+        return HTMLResponse(content=content)
+    else:
+        return HTMLResponse(content="<h1>App não encontrado. Execute npm run build em frontend/react-knowledge/</h1>", status_code=404)
+
+if os.path.exists(react_knowledge_dist_path):
+    @app.get("/base-conhecimento/{path:path}")
+    async def serve_react_knowledge(path: str, request: Request):
+        token = request.cookies.get("access_token")
+        
+        if not token:
+            return RedirectResponse(url="/login")
+        
+        payload = decode_token(token)
+        if not payload:
+            return RedirectResponse(url="/login")
+        
+        user_role = payload.get("role")
+        if user_role not in ["admin", "gestao_rv", "broker"]:
+            return RedirectResponse(url="/login?error=permission")
+        
+        file_path = os.path.join(react_knowledge_dist_path, path)
+        if os.path.exists(file_path) and os.path.isfile(file_path):
+            from fastapi.responses import FileResponse
+            return FileResponse(file_path)
+        
+        index_path = os.path.join(react_knowledge_dist_path, "index.html")
+        if os.path.exists(index_path):
+            with open(index_path, 'r') as f:
+                content = f.read()
+            return HTMLResponse(content=content)
+        return HTMLResponse(content="Not Found", status_code=404)
+
+
 @app.get("/agent-brain", response_class=HTMLResponse)
 async def agent_brain_page(request: Request):
     """
