@@ -21,6 +21,7 @@ from services.whatsapp_client import zapi_client
 from services.openai_agent import openai_agent
 from services.vector_store import get_vector_store
 from services.sse_manager import get_sse_manager
+from services.insight_analyzer import save_conversation_insight
 import asyncio
 
 router = APIRouter(prefix="/api/webhook", tags=["WhatsApp Webhook"])
@@ -486,6 +487,20 @@ async def process_text_message(phone: str, message: str, db: Session, message_re
                 ticket_id=ticket.id if ticket else None,
                 sender_type=SenderType.BOT.value
             )
+            
+            try:
+                await save_conversation_insight(
+                    db=db,
+                    conversation_id=str(conversation.id) if conversation else None,
+                    user_message=normalized_message,
+                    agent_response=response,
+                    resolved_by_ai=not is_human_transfer,
+                    escalated_to_human=is_human_transfer,
+                    ticket_id=ticket.id if ticket else None,
+                    assessor_phone=phone
+                )
+            except Exception as insight_err:
+                print(f"[WEBHOOK] Erro ao salvar insight: {insight_err}")
         
     except Exception as e:
         print(f"[WEBHOOK] Erro ao processar mensagem: {e}")
