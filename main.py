@@ -483,10 +483,16 @@ async def teste_agente_page(request: Request):
     return templates.TemplateResponse("teste_agente.html", {"request": request, "user_role": user_role})
 
 
+react_conversations_dist_path = os.path.join(os.path.dirname(__file__), "frontend", "react-conversations", "dist")
+react_conversations_assets_path = os.path.join(react_conversations_dist_path, "assets")
+
+if os.path.exists(react_conversations_assets_path):
+    app.mount("/conversas/assets", StaticFiles(directory=react_conversations_assets_path), name="conversas-assets")
+
 @app.get("/conversas", response_class=HTMLResponse)
 async def conversas_page(request: Request):
     """
-    Página de gerenciamento de Conversas.
+    Página de gerenciamento de Conversas (React).
     Mostra histórico de todas as conversas e permite intervenção humana.
     Requer autenticação como admin, gestao_rv ou broker.
     """
@@ -502,6 +508,22 @@ async def conversas_page(request: Request):
     user_role = payload.get("role")
     if user_role not in ["admin", "gestao_rv", "broker"]:
         return RedirectResponse(url="/login?error=permission")
+    
+    if os.path.exists(react_conversations_assets_path):
+        assets = os.listdir(react_conversations_assets_path)
+        js_file = next((f for f in assets if f.endswith('.js')), None)
+        css_file = next((f for f in assets if f.endswith('.css')), None)
+        
+        if js_file and css_file:
+            return templates.TemplateResponse(
+                "conversas_react.html",
+                {
+                    "request": request,
+                    "user_role": user_role,
+                    "js_file": js_file,
+                    "css_file": css_file
+                }
+            )
     
     return templates.TemplateResponse("conversas.html", {"request": request, "user_role": user_role})
 
