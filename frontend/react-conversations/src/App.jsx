@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Search, Plus, User, Bot, Send, Phone, UserCheck, Loader2, MessageCircle } from 'lucide-react';
+import { Search, Plus, User, Bot, Send, UserCheck, Loader2, MessageCircle, CheckCheck } from 'lucide-react';
 
 const API_BASE = '/api';
 
@@ -27,11 +27,16 @@ function formatTimeAgo(dateStr) {
   return date.toLocaleDateString('pt-BR');
 }
 
+function formatTime(dateStr) {
+  if (!dateStr) return '';
+  return new Date(dateStr).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+}
+
 function StatusBadge({ status }) {
   const styles = {
-    bot_active: 'bg-green-100 text-green-800',
-    human_takeover: 'bg-amber-100 text-amber-800',
-    closed: 'bg-gray-100 text-gray-600',
+    bot_active: 'bg-emerald-100 text-emerald-700 border-emerald-200',
+    human_takeover: 'bg-amber-100 text-amber-700 border-amber-200',
+    closed: 'bg-gray-100 text-gray-500 border-gray-200',
   };
   const labels = {
     bot_active: 'Bot',
@@ -39,42 +44,61 @@ function StatusBadge({ status }) {
     closed: 'Encerrada',
   };
   return (
-    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${styles[status] || 'bg-gray-100'}`}>
+    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border ${styles[status] || 'bg-gray-100 border-gray-200'}`}>
       {labels[status] || status}
     </span>
   );
 }
 
-function ChatBubble({ message, isLast }) {
+function ChatBubble({ message, contactName }) {
   const isOutbound = message.direction === 'outbound';
-  const senderLabels = { bot: 'Agente IA', human: 'Operador', contact: '' };
-  const time = new Date(message.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  const senderLabels = { bot: 'Agente IA', human: 'Operador' };
+  const senderName = isOutbound ? senderLabels[message.sender_type] || 'Sistema' : contactName || 'Contato';
+  const time = formatTime(message.created_at);
   const content = message.body || message.transcription || '[Mídia]';
 
   if (isOutbound) {
     return (
-      <div className="flex justify-end gap-2 mb-3">
-        <div className={`max-w-[70%] rounded-2xl rounded-br px-4 py-3 ${
-          message.sender_type === 'bot' ? 'bg-indigo-500' : 'bg-emerald-500'
-        } text-white`}>
-          {senderLabels[message.sender_type] && (
-            <div className="text-xs font-semibold mb-1 opacity-90">{senderLabels[message.sender_type]}</div>
+      <div className="flex items-start gap-2.5 justify-end mb-4">
+        <div className={`flex flex-col w-full max-w-[320px] leading-1.5 p-4 border rounded-s-xl rounded-ee-xl ${
+          message.sender_type === 'bot' 
+            ? 'bg-blue-600 border-blue-600' 
+            : 'bg-emerald-600 border-emerald-600'
+        }`}>
+          <div className="flex items-center space-x-2 rtl:space-x-reverse mb-1">
+            <span className="text-sm font-semibold text-white">{senderName}</span>
+            <span className="text-xs text-white/70">{time}</span>
+          </div>
+          <p className="text-sm font-normal text-white whitespace-pre-wrap">{content}</p>
+          <div className="flex items-center justify-end gap-1 mt-1.5">
+            <CheckCheck className="w-3.5 h-3.5 text-white/70" />
+            <span className="text-xs text-white/70">Enviada</span>
+          </div>
+        </div>
+        <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${
+          message.sender_type === 'bot' ? 'bg-blue-100' : 'bg-emerald-100'
+        }`}>
+          {message.sender_type === 'bot' ? (
+            <Bot className="w-4 h-4 text-blue-600" />
+          ) : (
+            <UserCheck className="w-4 h-4 text-emerald-600" />
           )}
-          <p className="text-sm leading-relaxed whitespace-pre-wrap">{content}</p>
-          <div className="text-xs mt-1 opacity-70 text-right">{time}</div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="flex justify-start gap-2 mb-3">
-      <div className="w-8 h-8 rounded-full bg-primary-light flex items-center justify-center text-primary text-sm font-semibold flex-shrink-0">
-        <User className="w-4 h-4" />
+    <div className="flex items-start gap-2.5 mb-4">
+      <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center">
+        <User className="w-4 h-4 text-gray-600" />
       </div>
-      <div className="max-w-[70%] rounded-2xl rounded-bl px-4 py-3 bg-white border border-border">
-        <p className="text-sm leading-relaxed text-foreground whitespace-pre-wrap">{content}</p>
-        <div className="text-xs mt-1 text-muted">{time}</div>
+      <div className="flex flex-col w-full max-w-[320px] leading-1.5 p-4 border border-gray-200 bg-gray-100 rounded-e-xl rounded-es-xl">
+        <div className="flex items-center space-x-2 rtl:space-x-reverse mb-1">
+          <span className="text-sm font-semibold text-gray-900">{senderName}</span>
+          <span className="text-xs text-gray-500">{time}</span>
+        </div>
+        <p className="text-sm font-normal text-gray-900 whitespace-pre-wrap">{content}</p>
       </div>
     </div>
   );
@@ -82,26 +106,46 @@ function ChatBubble({ message, isLast }) {
 
 function ConversationItem({ conversation, isActive, onClick }) {
   const displayName = conversation.assessor_name || conversation.contact_name || 'Desconhecido';
+  const initials = displayName.charAt(0).toUpperCase();
+  
   return (
     <div
       onClick={onClick}
-      className={`relative p-4 border-b border-border cursor-pointer transition-colors ${
-        isActive ? 'bg-primary-light border-l-4 border-l-primary' : 'hover:bg-background'
+      className={`flex items-center gap-3 p-3 cursor-pointer transition-all duration-150 border-l-4 ${
+        isActive 
+          ? 'bg-blue-50 border-l-blue-600' 
+          : 'bg-white border-l-transparent hover:bg-gray-50'
       }`}
     >
-      <div className="flex justify-between items-start mb-1">
-        <div className="flex items-center gap-2">
-          <span className="font-semibold text-foreground text-sm">{displayName}</span>
+      <div className="relative flex-shrink-0">
+        <div className={`w-12 h-12 rounded-full flex items-center justify-center text-white font-semibold text-sm ${
+          conversation.status === 'human_takeover' ? 'bg-amber-500' : 'bg-gray-400'
+        }`}>
+          {initials}
+        </div>
+        {conversation.status === 'bot_active' && (
+          <div className="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full bg-emerald-500 border-2 border-white flex items-center justify-center">
+            <Bot className="w-2.5 h-2.5 text-white" />
+          </div>
+        )}
+      </div>
+      
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center justify-between mb-0.5">
+          <span className="font-semibold text-gray-900 text-sm truncate">{displayName}</span>
+          <span className="text-xs text-gray-500 flex-shrink-0 ml-2">{formatTimeAgo(conversation.last_message_at)}</span>
+        </div>
+        <div className="text-xs text-gray-500 mb-1">{formatPhone(conversation.phone)}</div>
+        <div className="flex items-center justify-between">
+          <p className="text-sm text-gray-600 truncate flex-1">{conversation.last_message_preview || 'Sem mensagens'}</p>
           <StatusBadge status={conversation.status} />
         </div>
-        <span className="text-xs text-muted">{formatTimeAgo(conversation.last_message_at)}</span>
       </div>
-      <div className="text-xs text-muted mb-1">{formatPhone(conversation.phone)}</div>
-      <div className="text-sm text-muted truncate">{conversation.last_message_preview || 'Sem mensagens'}</div>
+      
       {conversation.unread_count > 0 && (
-        <span className="absolute top-3 right-3 bg-red-500 text-white text-xs px-2 py-0.5 rounded-full font-semibold">
-          {conversation.unread_count}
-        </span>
+        <div className="flex-shrink-0 w-5 h-5 rounded-full bg-red-500 flex items-center justify-center">
+          <span className="text-xs text-white font-bold">{conversation.unread_count}</span>
+        </div>
       )}
     </div>
   );
@@ -128,42 +172,42 @@ function NewConversationModal({ isOpen, onClose, onSubmit, isLoading }) {
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
-      <div className="bg-white rounded-2xl w-full max-w-md mx-4 shadow-xl" onClick={e => e.stopPropagation()}>
-        <div className="p-5 border-b border-border flex justify-between items-center">
-          <h3 className="font-semibold text-lg text-foreground">Nova Conversa</h3>
-          <button onClick={onClose} className="text-muted hover:text-foreground text-2xl">&times;</button>
+      <div className="bg-white rounded-lg w-full max-w-md mx-4 shadow-2xl" onClick={e => e.stopPropagation()}>
+        <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+          <h3 className="font-semibold text-lg text-gray-900">Nova Conversa</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
         </div>
-        <div className="p-5 space-y-4">
+        <div className="p-6 space-y-4">
           <div>
-            <label className="block text-sm font-medium text-foreground mb-2">Número de Telefone</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Número de Telefone</label>
             <input
               type="text"
               value={phone}
               onChange={e => setPhone(e.target.value)}
               placeholder="Ex: 5511999999999"
-              className="w-full px-4 py-3 border border-border rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent outline-none"
+              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors"
             />
-            <p className="text-xs text-muted mt-1">Formato: código do país + DDD + número</p>
+            <p className="text-xs text-gray-500 mt-1.5">Formato: código do país + DDD + número</p>
           </div>
           <div>
-            <label className="block text-sm font-medium text-foreground mb-2">Mensagem Inicial</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Mensagem Inicial</label>
             <textarea
               value={message}
               onChange={e => setMessage(e.target.value)}
               placeholder="Digite a mensagem..."
               rows={4}
-              className="w-full px-4 py-3 border border-border rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent outline-none resize-none"
+              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors resize-none"
             />
           </div>
         </div>
-        <div className="p-5 border-t border-border flex gap-3 justify-end">
-          <button onClick={onClose} className="px-4 py-2 text-muted hover:text-foreground font-medium">
+        <div className="px-6 py-4 border-t border-gray-200 flex gap-3 justify-end bg-gray-50 rounded-b-lg">
+          <button onClick={onClose} className="px-4 py-2 text-gray-600 hover:text-gray-800 font-medium transition-colors">
             Cancelar
           </button>
           <button
             onClick={handleSubmit}
             disabled={isLoading}
-            className="px-5 py-2 bg-primary text-white rounded-lg font-medium hover:bg-primary-dark disabled:opacity-50 flex items-center gap-2"
+            className="px-5 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-colors"
           >
             {isLoading && <Loader2 className="w-4 h-4 animate-spin" />}
             Enviar Mensagem
@@ -335,44 +379,46 @@ function App() {
     return () => eventSourceRef.current?.close();
   }, [currentConversation]);
 
+  const contactName = currentConversation?.assessor_name || currentConversation?.contact_name || 'Contato';
+
   return (
-    <div className="py-4">
-      <div className="flex justify-between items-start mb-6">
+    <div className="h-full flex flex-col">
+      <div className="flex justify-between items-center mb-4">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Conversas</h1>
-          <p className="text-muted">Visualize e gerencie todas as conversas do agente</p>
+          <h1 className="text-2xl font-bold text-gray-900">Conversas</h1>
+          <p className="text-gray-500 text-sm">Visualize e gerencie todas as conversas do agente</p>
         </div>
         <button
           onClick={() => setShowNewModal(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg font-medium hover:bg-primary-dark"
+          className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors shadow-sm"
         >
           <Plus className="w-4 h-4" />
           Nova Conversa
         </button>
       </div>
 
-      <div className="grid grid-cols-[380px_1fr] gap-6" style={{ height: 'calc(100vh - 200px)' }}>
-        <div className="bg-white rounded-2xl border border-border flex flex-col overflow-hidden">
-          <div className="p-4 border-b border-border">
-            <div className="relative mb-3">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted" />
+      <div className="flex-1 grid grid-cols-[360px_1fr] gap-4 min-h-0">
+        <div className="bg-white rounded-xl border border-gray-200 flex flex-col overflow-hidden shadow-sm">
+          <div className="p-3 border-b border-gray-100 bg-gray-50">
+            <div className="relative mb-2.5">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
               <input
                 type="text"
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
                 placeholder="Buscar por número ou nome..."
-                className="w-full pl-10 pr-4 py-2.5 border border-border rounded-lg text-sm focus:ring-2 focus:ring-primary focus:border-transparent outline-none"
+                className="w-full pl-9 pr-4 py-2 bg-white border border-gray-200 rounded-lg text-sm text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors"
               />
             </div>
-            <div className="flex gap-2">
+            <div className="flex gap-1.5">
               {[{ value: '', label: 'Todas' }, { value: 'bot_active', label: 'Bot' }, { value: 'human_takeover', label: 'Humano' }].map(f => (
                 <button
                   key={f.value}
                   onClick={() => setStatusFilter(f.value)}
-                  className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+                  className={`flex-1 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
                     statusFilter === f.value
-                      ? 'bg-primary text-white border-primary'
-                      : 'bg-white text-muted border-border hover:bg-background'
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-100'
                   }`}
                 >
                   {f.label}
@@ -381,13 +427,16 @@ function App() {
             </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto scrollbar-thin">
+          <div className="flex-1 overflow-y-auto divide-y divide-gray-100">
             {isLoading ? (
-              <div className="flex justify-center p-10">
-                <Loader2 className="w-8 h-8 animate-spin text-primary" />
+              <div className="flex justify-center items-center h-32">
+                <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
               </div>
             ) : conversations.length === 0 ? (
-              <div className="p-10 text-center text-muted">Nenhuma conversa encontrada</div>
+              <div className="flex flex-col items-center justify-center h-32 text-gray-400">
+                <MessageCircle className="w-8 h-8 mb-2 opacity-50" />
+                <span className="text-sm">Nenhuma conversa</span>
+              </div>
             ) : (
               conversations.map(conv => (
                 <ConversationItem
@@ -401,78 +450,81 @@ function App() {
           </div>
         </div>
 
-        <div className="bg-white rounded-2xl border border-border flex flex-col overflow-hidden">
+        <div className="bg-white rounded-xl border border-gray-200 flex flex-col overflow-hidden shadow-sm">
           {!currentConversation ? (
-            <div className="flex-1 flex flex-col items-center justify-center text-muted">
-              <MessageCircle className="w-16 h-16 mb-4 opacity-30" />
-              <h3 className="text-lg font-semibold text-foreground mb-2">Selecione uma conversa</h3>
-              <p>Clique em uma conversa à esquerda para visualizar o histórico</p>
+            <div className="flex-1 flex flex-col items-center justify-center text-gray-400">
+              <div className="w-20 h-20 rounded-full bg-gray-100 flex items-center justify-center mb-4">
+                <MessageCircle className="w-10 h-10 text-gray-300" />
+              </div>
+              <h3 className="text-lg font-semibold text-gray-700 mb-1">Selecione uma conversa</h3>
+              <p className="text-sm">Clique em uma conversa à esquerda para visualizar</p>
             </div>
           ) : (
             <>
-              <div className="p-4 border-b border-border flex justify-between items-center">
+              <div className="px-4 py-3 border-b border-gray-200 bg-gray-50 flex justify-between items-center">
                 <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 rounded-full bg-primary-light flex items-center justify-center text-primary font-semibold text-lg">
-                    {(currentConversation.assessor_name || currentConversation.contact_name || '?').charAt(0).toUpperCase()}
+                  <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-semibold ${
+                    currentConversation.status === 'human_takeover' ? 'bg-amber-500' : 'bg-gray-400'
+                  }`}>
+                    {contactName.charAt(0).toUpperCase()}
                   </div>
                   <div>
-                    <h3 className="font-semibold text-foreground">
-                      {currentConversation.assessor_name || currentConversation.contact_name || 'Desconhecido'}
-                    </h3>
-                    <p className="text-sm text-muted">{formatPhone(currentConversation.phone)}</p>
+                    <h3 className="font-semibold text-gray-900 text-sm">{contactName}</h3>
+                    <p className="text-xs text-gray-500">{formatPhone(currentConversation.phone)}</p>
                   </div>
                 </div>
                 <button
                   onClick={toggleTakeover}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-sm transition-colors ${
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
                     currentConversation.status === 'human_takeover'
-                      ? 'bg-green-100 text-green-800 hover:bg-green-200'
-                      : 'bg-amber-100 text-amber-800 hover:bg-amber-200'
+                      ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'
+                      : 'bg-amber-100 text-amber-700 hover:bg-amber-200'
                   }`}
                 >
                   {currentConversation.status === 'human_takeover' ? (
                     <>
-                      <Bot className="w-4 h-4" />
+                      <Bot className="w-3.5 h-3.5" />
                       Devolver ao Agente
                     </>
                   ) : (
                     <>
-                      <UserCheck className="w-4 h-4" />
+                      <UserCheck className="w-3.5 h-3.5" />
                       Assumir Conversa
                     </>
                   )}
                 </button>
               </div>
 
-              <div className="flex-1 overflow-y-auto p-4 bg-background scrollbar-thin">
+              <div className="flex-1 overflow-y-auto p-4 bg-gray-50">
                 {messages.length === 0 ? (
-                  <div className="text-center text-muted py-10">Nenhuma mensagem ainda</div>
+                  <div className="flex items-center justify-center h-full text-gray-400 text-sm">
+                    Nenhuma mensagem ainda
+                  </div>
                 ) : (
                   <>
-                    {messages.map((msg, idx) => (
-                      <ChatBubble key={msg.id} message={msg} isLast={idx === messages.length - 1} />
+                    {messages.map((msg) => (
+                      <ChatBubble key={msg.id} message={msg} contactName={contactName} />
                     ))}
                     <div ref={messagesEndRef} />
                   </>
                 )}
               </div>
 
-              <div className="p-4 border-t border-border flex gap-3">
+              <div className="p-3 border-t border-gray-200 bg-white flex gap-2">
                 <input
                   type="text"
                   value={messageInput}
                   onChange={e => setMessageInput(e.target.value)}
-                  onKeyPress={e => e.key === 'Enter' && sendMessage()}
+                  onKeyPress={e => e.key === 'Enter' && !e.shiftKey && sendMessage()}
                   placeholder="Digite sua mensagem..."
-                  className="flex-1 px-4 py-3 border border-border rounded-xl focus:ring-2 focus:ring-primary focus:border-transparent outline-none"
+                  className="flex-1 px-4 py-2.5 bg-gray-100 border border-gray-200 rounded-full text-sm text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 focus:bg-white outline-none transition-all"
                 />
                 <button
                   onClick={sendMessage}
                   disabled={isSending || !messageInput.trim()}
-                  className="px-5 py-3 bg-primary text-white rounded-xl font-medium hover:bg-primary-dark disabled:opacity-50 flex items-center gap-2"
+                  className="px-4 py-2.5 bg-blue-600 text-white rounded-full font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-colors"
                 >
                   {isSending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-                  Enviar
                 </button>
               </div>
             </>
