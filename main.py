@@ -416,6 +416,72 @@ async def agent_brain_page(request: Request):
     return templates.TemplateResponse("agent_brain.html", {"request": request, "user_role": user_role})
 
 
+@app.get("/upload-inteligente", response_class=HTMLResponse)
+async def upload_inteligente_page(request: Request):
+    """
+    Página de Upload Inteligente - upload de documentos com extração via GPT-4 Vision.
+    Requer autenticação como admin ou gestao_rv.
+    """
+    token = request.cookies.get("access_token")
+    
+    if not token:
+        return RedirectResponse(url="/login")
+    
+    payload = decode_token(token)
+    if not payload:
+        return RedirectResponse(url="/login")
+    
+    user_role = payload.get("role")
+    if user_role not in ["admin", "gestao_rv"]:
+        return RedirectResponse(url="/login?error=permission")
+    
+    return templates.TemplateResponse("upload_inteligente.html", {"request": request, "user_role": user_role})
+
+
+@app.get("/fila-revisao", response_class=HTMLResponse)
+async def fila_revisao_page(request: Request):
+    """
+    Fila de Revisão - aprovação de conteúdo de alto risco.
+    Requer autenticação como admin ou gestao_rv.
+    """
+    token = request.cookies.get("access_token")
+    
+    if not token:
+        return RedirectResponse(url="/login")
+    
+    payload = decode_token(token)
+    if not payload:
+        return RedirectResponse(url="/login")
+    
+    user_role = payload.get("role")
+    if user_role not in ["admin", "gestao_rv"]:
+        return RedirectResponse(url="/login?error=permission")
+    
+    return templates.TemplateResponse("fila_revisao.html", {"request": request, "user_role": user_role})
+
+
+@app.get("/documentos", response_class=HTMLResponse)
+async def documentos_page(request: Request):
+    """
+    Página de Documentos - gerenciamento de documentos da base de conhecimento.
+    Requer autenticação como admin ou gestao_rv.
+    """
+    token = request.cookies.get("access_token")
+    
+    if not token:
+        return RedirectResponse(url="/login")
+    
+    payload = decode_token(token)
+    if not payload:
+        return RedirectResponse(url="/login")
+    
+    user_role = payload.get("role")
+    if user_role not in ["admin", "gestao_rv"]:
+        return RedirectResponse(url="/login?error=permission")
+    
+    return templates.TemplateResponse("documentos.html", {"request": request, "user_role": user_role})
+
+
 @app.get("/assessores", response_class=HTMLResponse)
 async def assessores_page(request: Request):
     """

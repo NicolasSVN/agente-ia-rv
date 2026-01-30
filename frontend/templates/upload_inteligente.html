@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Upload Inteligente - Agente IA - RV</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="/static/tailwind.config.js"></script>
+    <link rel="stylesheet" href="/static/global.css">
+    <script src="/static/notifications.js?v={{ now().timestamp() if now else 1706371200 }}"></script>
+    <style>
+        .upload-zone {
+            border: 2px dashed #d1d5db;
+            border-radius: 16px;
+            padding: 48px;
+            text-align: center;
+            transition: all 0.2s ease;
+            background: #fefefe;
+        }
+        
+        .upload-zone:hover,
+        .upload-zone.dragover {
+            border-color: #92400e;
+            background: #fffbeb;
+        }
+        
+        .upload-zone.dragover {
+            transform: scale(1.01);
+        }
+        
+        .file-list {
+            margin-top: 24px;
+        }
+        
+        .file-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 16px;
+            background: white;
+            border: 1px solid #e5e7eb;
+            border-radius: 12px;
+            margin-bottom: 12px;
+        }
+        
+        .file-item .file-info {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        
+        .file-item .file-icon {
+            width: 40px;
+            height: 40px;
+            background: #fef3c7;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .progress-bar {
+            height: 4px;
+            background: #e5e7eb;
+            border-radius: 2px;
+            overflow: hidden;
+            margin-top: 8px;
+        }
+        
+        .progress-bar .progress {
+            height: 100%;
+            background: #92400e;
+            transition: width 0.3s ease;
+        }
+        
+        .status-badge {
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+        
+        .status-badge.pending { background: #fef3c7; color: #92400e; }
+        .status-badge.processing { background: #dbeafe; color: #1d4ed8; }
+        .status-badge.completed { background: #dcfce7; color: #166534; }
+        .status-badge.error { background: #fee2e2; color: #dc2626; }
+    </style>
+</head>
+<body>
+    <div class="app-layout">
+        {% include '_sidebar.html' %}
+
+        <main class="main-content" id="mainContent" style="margin-left: 260px;">
+            <div class="page-container">
+                <div class="page-header">
+                    <h1 class="page-title">Upload Inteligente</h1>
+                    <p class="page-subtitle">Faça upload de documentos para extração automática com IA</p>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <div class="lg:col-span-2">
+                        <div class="card">
+                            <div class="card-header">
+                                <h2 class="card-title">Novo Upload</h2>
+                            </div>
+                            <div class="card-body">
+                                <div class="upload-zone" id="uploadZone">
+                                    <svg class="w-16 h-16 mx-auto mb-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
+                                    </svg>
+                                    <h3 class="text-lg font-semibold text-gray-700 mb-2">Arraste arquivos aqui</h3>
+                                    <p class="text-gray-500 mb-4">ou clique para selecionar</p>
+                                    <input type="file" id="fileInput" class="hidden" multiple accept=".pdf,.doc,.docx,.txt,.xlsx,.xls">
+                                    <button onclick="document.getElementById('fileInput').click()" class="btn btn-primary">
+                                        Selecionar Arquivos
+                                    </button>
+                                    <p class="text-xs text-gray-400 mt-4">Formatos aceitos: PDF, DOC, DOCX, TXT, XLSX, XLS (máx. 50MB)</p>
+                                </div>
+
+                                <div class="file-list" id="fileList"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div>
+                        <div class="card mb-6">
+                            <div class="card-header">
+                                <h2 class="card-title">Como funciona</h2>
+                            </div>
+                            <div class="card-body">
+                                <div class="space-y-4">
+                                    <div class="flex items-start gap-3">
+                                        <div class="w-8 h-8 bg-amber-100 rounded-full flex items-center justify-center flex-shrink-0">
+                                            <span class="text-amber-700 font-bold text-sm">1</span>
+                                        </div>
+                                        <div>
+                                            <h4 class="font-medium text-gray-800">Upload do documento</h4>
+                                            <p class="text-sm text-gray-500">Faça upload de PDFs, documentos ou planilhas</p>
+                                        </div>
+                                    </div>
+                                    <div class="flex items-start gap-3">
+                                        <div class="w-8 h-8 bg-amber-100 rounded-full flex items-center justify-center flex-shrink-0">
+                                            <span class="text-amber-700 font-bold text-sm">2</span>
+                                        </div>
+                                        <div>
+                                            <h4 class="font-medium text-gray-800">Extração com IA</h4>
+                                            <p class="text-sm text-gray-500">GPT-4 Vision analisa e extrai informações</p>
+                                        </div>
+                                    </div>
+                                    <div class="flex items-start gap-3">
+                                        <div class="w-8 h-8 bg-amber-100 rounded-full flex items-center justify-center flex-shrink-0">
+                                            <span class="text-amber-700 font-bold text-sm">3</span>
+                                        </div>
+                                        <div>
+                                            <h4 class="font-medium text-gray-800">Revisão e aprovação</h4>
+                                            <p class="text-sm text-gray-500">Conteúdo é enviado para revisão antes de publicar</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="card">
+                            <div class="card-header">
+                                <h2 class="card-title">Estatísticas</h2>
+                            </div>
+                            <div class="card-body">
+                                <div class="space-y-4">
+                                    <div class="flex justify-between items-center">
+                                        <span class="text-gray-600">Documentos hoje</span>
+                                        <span class="font-semibold text-gray-800">0</span>
+                                    </div>
+                                    <div class="flex justify-between items-center">
+                                        <span class="text-gray-600">Aguardando revisão</span>
+                                        <span class="font-semibold text-amber-600">0</span>
+                                    </div>
+                                    <div class="flex justify-between items-center">
+                                        <span class="text-gray-600">Aprovados este mês</span>
+                                        <span class="font-semibold text-green-600">0</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        const uploadZone = document.getElementById('uploadZone');
+        const fileInput = document.getElementById('fileInput');
+        const fileList = document.getElementById('fileList');
+
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            uploadZone.addEventListener(eventName, preventDefaults, false);
+        });
+
+        function preventDefaults(e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+
+        ['dragenter', 'dragover'].forEach(eventName => {
+            uploadZone.addEventListener(eventName, () => uploadZone.classList.add('dragover'), false);
+        });
+
+        ['dragleave', 'drop'].forEach(eventName => {
+            uploadZone.addEventListener(eventName, () => uploadZone.classList.remove('dragover'), false);
+        });
+
+        uploadZone.addEventListener('drop', handleDrop, false);
+        fileInput.addEventListener('change', handleFiles, false);
+
+        function handleDrop(e) {
+            const dt = e.dataTransfer;
+            const files = dt.files;
+            handleFileList(files);
+        }
+
+        function handleFiles(e) {
+            const files = e.target.files;
+            handleFileList(files);
+        }
+
+        function handleFileList(files) {
+            [...files].forEach(file => {
+                addFileToList(file);
+            });
+        }
+
+        function addFileToList(file) {
+            const fileItem = document.createElement('div');
+            fileItem.className = 'file-item';
+            fileItem.innerHTML = `
+                <div class="file-info">
+                    <div class="file-icon">
+                        <svg class="w-5 h-5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                        </svg>
+                    </div>
+                    <div>
+                        <p class="font-medium text-gray-800">${file.name}</p>
+                        <p class="text-sm text-gray-500">${formatFileSize(file.size)}</p>
+                    </div>
+                </div>
+                <span class="status-badge pending">Aguardando</span>
+            `;
+            fileList.appendChild(fileItem);
+        }
+
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+    </script>
+</body>
+</html>
