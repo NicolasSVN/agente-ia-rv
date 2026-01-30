@@ -62,7 +62,7 @@ export default function AssessorsBarChart({ data }) {
 
     const series = chart.series.push(
       am5xy.ColumnSeries.new(root, {
-        name: 'Interacoes',
+        name: 'Interações',
         xAxis: xAxis,
         yAxis: yAxis,
         valueXField: 'count',
@@ -73,7 +73,7 @@ export default function AssessorsBarChart({ data }) {
         tooltip: am5.Tooltip.new(root, {
           dy: -30,
           pointerOrientation: 'vertical',
-          labelText: '{name}\n{unidade}\n{valueX} interacoes',
+          labelText: '{name}\n{unidade}\n{valueX} interações',
         }),
       })
     );
@@ -217,7 +217,7 @@ export default function AssessorsBarChart({ data }) {
     <div className="bg-white rounded-xl border border-border p-5 shadow-card h-full">
       <div className="flex items-center mb-4">
         <h3 className="text-base font-semibold text-foreground">Top 10 Assessores por Engajamento</h3>
-        <InfoTooltip text="Ranking de assessores com maior volume de interacoes com o agente IA no periodo selecionado." />
+        <InfoTooltip text="Ranking de assessores com maior volume de interações com o agente IA no período selecionado." />
       </div>
       <div ref={chartRef} style={{ width: '100%', height: '520px' }} />
     </div>

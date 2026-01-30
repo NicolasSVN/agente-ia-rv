@@ -153,7 +153,7 @@ function App() {
       return date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
     }) || [],
     datasets: [{
-      label: 'Interacoes',
+      label: 'Interações',
       data: activityData?.data || [],
       fill: true,
       borderColor: '#772B21',
@@ -254,8 +254,8 @@ function App() {
 
               <div className="mt-6">
                 <ChartCard
-                  title="Atividade Diaria"
-                  tooltip="Serie historica do volume de interacoes por dia. Permite identificar tendencias e picos de atividade."
+                  title="Atividade Diária"
+                  tooltip="Série histórica do volume de interações por dia. Permite identificar tendências e picos de atividade."
                   fullWidth
                 >
                   <div style={{ height: '280px' }}>
@@ -300,13 +300,16 @@ function App() {
                 />
               </div>
 
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+              <div className="mt-6">
                 <AnimatedGauge
                   title="Taxa de Resolução IA"
                   percentage={metrics?.ai_resolution_rate || 0}
                   label={`Conversas resolvidas pela IA (${metrics?.escalated_count || 0} escalados)`}
                   tooltip="Proporção de conversas resolvidas pela IA versus as que necessitaram intervenção humana."
                 />
+              </div>
+
+              <div className="mt-6">
                 <ProductsImageChart
                   data={productsChartFormatted}
                   title="Produtos em Alta"

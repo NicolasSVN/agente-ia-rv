@@ -9,7 +9,7 @@ export default function AssessorsRanking({ assessors }) {
     <div className="bg-white rounded-xl border border-border p-5 shadow-card h-full">
       <div className="flex items-center mb-4">
         <h3 className="text-base font-semibold text-foreground">Top 10 Assessores</h3>
-        <InfoTooltip text="Ranking dos assessores com maior volume de interacoes com o agente IA no periodo selecionado." />
+        <InfoTooltip text="Ranking dos assessores com maior volume de interações com o agente IA no período selecionado." />
       </div>
       
       <div className="space-y-3">
@@ -61,7 +61,7 @@ export default function AssessorsRanking({ assessors }) {
         })}
         
         {displayAssessors.length === 0 && (
-          <p className="text-center text-muted py-4">Nenhum dado disponivel</p>
+          <p className="text-center text-muted py-4">Nenhum dado disponível</p>
         )}
       </div>
     </div>

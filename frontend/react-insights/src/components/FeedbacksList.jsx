@@ -4,15 +4,31 @@ import InfoTooltip from './InfoTooltip';
 
 const feedbackTypeStyles = {
   sugestao: 'bg-blue-100 text-blue-800',
+  suggestion: 'bg-blue-100 text-blue-800',
   elogio: 'bg-green-100 text-green-800',
+  positive: 'bg-green-100 text-green-800',
   reclamacao: 'bg-red-100 text-red-800',
+  negative: 'bg-red-100 text-red-800',
   duvida: 'bg-yellow-100 text-yellow-800',
+};
+
+const feedbackTypeLabels = {
+  sugestao: 'Sugestão',
+  suggestion: 'Sugestão',
+  elogio: 'Elogio',
+  positive: 'Elogio',
+  reclamacao: 'Reclamação',
+  negative: 'Reclamação',
+  duvida: 'Dúvida',
 };
 
 const sentimentEmojis = {
   positivo: '😊',
+  positive: '😊',
   neutro: '😐',
+  neutral: '😐',
   negativo: '😞',
+  negative: '😞',
 };
 
 export default function FeedbacksList({ feedbacks }) {
@@ -56,13 +72,13 @@ export default function FeedbacksList({ feedbacks }) {
             >
               <div className="flex justify-between items-start mb-3">
                 <div>
-                  <p className="font-medium text-foreground">{feedback.assessor_name || 'Anonimo'}</p>
+                  <p className="font-medium text-foreground">{feedback.assessor_name || 'Anônimo'}</p>
                   <p className="text-xs text-muted">{feedback.unidade}</p>
                 </div>
                 <div className="flex items-center gap-2">
                   {feedback.feedback_type && (
                     <span className={`px-2 py-1 rounded-full text-xs font-medium ${feedbackTypeStyles[feedback.feedback_type] || 'bg-gray-100 text-gray-600'}`}>
-                      {feedback.feedback_type}
+                      {feedbackTypeLabels[feedback.feedback_type] || feedback.feedback_type}
                     </span>
                   )}
                   {feedback.sentiment && (
@@ -88,7 +104,7 @@ export default function FeedbacksList({ feedbacks }) {
           ))}
           
           {displayFeedbacks.length === 0 && (
-            <p className="text-center text-muted py-8">Nenhum feedback disponivel</p>
+            <p className="text-center text-muted py-8">Nenhum feedback disponível</p>
           )}
         </div>
       </AnimatePresence>

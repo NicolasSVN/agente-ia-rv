@@ -32,7 +32,7 @@ export default function FilterBar({ filters, onFilterChange, filterOptions }) {
     <div className="bg-white rounded-xl border border-border p-5 shadow-card mb-6">
       <div className="flex flex-wrap items-center gap-4">
         <div className="flex items-center gap-1">
-          <span className="text-sm font-medium text-foreground mr-2">Periodo:</span>
+          <span className="text-sm font-medium text-foreground mr-2">Período:</span>
           <div className="flex items-center bg-gray-100 rounded-lg p-1">
             {periods.map((p) => (
               <button
@@ -81,7 +81,7 @@ export default function FilterBar({ filters, onFilterChange, filterOptions }) {
                   onChange={(e) => onFilterChange({ ...filters, start_date: e.target.value })}
                   className="px-3 py-1.5 bg-white border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
                 />
-                <span className="text-muted">ate</span>
+                <span className="text-muted">até</span>
                 <input
                   type="date"
                   value={filters.end_date || ''}
@@ -126,7 +126,7 @@ export default function FilterBar({ filters, onFilterChange, filterOptions }) {
           >
             <div className="flex flex-wrap gap-4">
               <div className="flex flex-col gap-1">
-                <label className="text-xs font-semibold text-muted uppercase">Macro Area</label>
+                <label className="text-xs font-semibold text-muted uppercase">Macro Área</label>
                 <select
                   value={filters.macro_area || ''}
                   onChange={(e) => onFilterChange({ ...filters, macro_area: e.target.value || null })}
