@@ -25,7 +25,7 @@ import AssessorsBarChart from './components/AssessorsBarChart';
 import ProductsImageChart from './components/ProductsImageChart';
 import ComplexityChart from './components/ComplexityChart';
 import CampaignsSummary from './components/CampaignsSummary';
-import CategoryTreemap from './components/CategoryTreemap';
+import CategoryRadialChart from './components/CategoryRadialChart';
 import AnimatedGauge from './components/AnimatedGauge';
 import FeedbacksList from './components/FeedbacksList';
 
@@ -314,10 +314,10 @@ function App() {
               </div>
 
               <div className="mt-6">
-                <CategoryTreemap
-                  title="Categorias de Duvidas"
+                <CategoryRadialChart
+                  title="Categorias de Dúvidas"
                   data={categoriesChartFormatted}
-                  tooltip="Distribuicao das conversas por tipo de assunto. Ajuda a identificar os temas mais frequentes."
+                  tooltip="Distribuição das conversas por tipo de assunto. Volumes absolutos de cada categoria."
                 />
               </div>
 
