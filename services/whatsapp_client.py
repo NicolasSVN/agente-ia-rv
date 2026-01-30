@@ -15,10 +15,12 @@ class ZAPIClient:
     """Cliente para interação com a Z-API."""
     
     def __init__(self):
-        self.instance_id = settings.ZAPI_INSTANCE_ID or os.getenv("ZAPI_INSTANCE_ID", "")
-        self.token = settings.ZAPI_TOKEN or os.getenv("ZAPI_TOKEN", "")
-        self.client_token = settings.ZAPI_CLIENT_TOKEN or os.getenv("ZAPI_CLIENT_TOKEN", "")
+        self.instance_id = os.getenv("ZAPI_INSTANCE_ID", "") or settings.ZAPI_INSTANCE_ID
+        self.token = os.getenv("ZAPI_TOKEN", "") or settings.ZAPI_TOKEN
+        self.client_token = os.getenv("ZAPI_CLIENT_TOKEN", "") or settings.ZAPI_CLIENT_TOKEN
         self.base_url = f"https://api.z-api.io/instances/{self.instance_id}/token/{self.token}"
+        
+        print(f"[Z-API] Inicializado - Instance: {self.instance_id[:8]}..., Token configurado: {bool(self.token)}, Client-Token configurado: {bool(self.client_token)}")
     
     def _get_headers(self) -> dict:
         """Retorna headers de autenticação para a Z-API."""
