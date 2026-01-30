@@ -175,15 +175,6 @@ function App() {
     value: resolutionData.data[index],
   })) || [];
 
-  const iaPercentage = (() => {
-    if (!resolutionData?.labels || !resolutionData?.data) return 0;
-    const total = resolutionData.data.reduce((sum, val) => sum + val, 0);
-    if (total === 0) return 0;
-    const iaIndex = resolutionData.labels.findIndex(l => l.toLowerCase().includes('ia') || l.toLowerCase() === 'ia');
-    if (iaIndex === -1) return 0;
-    return Math.round((resolutionData.data[iaIndex] / total) * 100);
-  })();
-
   const productsChartFormatted = productsData?.labels?.map((label, index) => ({
     label: label,
     value: productsData.data[index],
@@ -231,11 +222,11 @@ function App() {
             </div>
           ) : (
             <>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
                 <KPICard
-                  title="Total de Interacoes"
+                  title="Total de Interações"
                   value={metrics?.total_interactions?.toLocaleString('pt-BR') || '0'}
-                  tooltip="Numero total de conversas iniciadas com o agente IA no periodo selecionado."
+                  tooltip="Número total de conversas iniciadas com o agente IA no período selecionado."
                   icon={
                     <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
@@ -246,22 +237,10 @@ function App() {
                 <KPICard
                   title="Assessores Ativos"
                   value={metrics?.active_assessors?.toLocaleString('pt-BR') || '0'}
-                  tooltip="Quantidade de assessores unicos que interagiram com o agente IA no periodo."
+                  tooltip="Quantidade de assessores únicos que interagiram com o agente IA no período."
                   icon={
                     <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                    </svg>
-                  }
-                  color="success"
-                />
-                <KPICard
-                  title="Taxa de Resolucao IA"
-                  value={`${metrics?.ai_resolution_rate || 0}%`}
-                  subtitle={`${metrics?.escalated_count || 0} escalados para humano`}
-                  tooltip="Percentual de conversas resolvidas completamente pela IA sem necessidade de intervencao humana."
-                  icon={
-                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
                   }
                   color="success"
@@ -323,10 +302,10 @@ function App() {
 
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
                 <AnimatedGauge
-                  title="Taxa de Resolucao IA"
-                  percentage={iaPercentage}
-                  label="Conversas resolvidas pela IA"
-                  tooltip="Proporcao de conversas resolvidas pela IA versus as que necessitaram intervencao humana."
+                  title="Taxa de Resolução IA"
+                  percentage={metrics?.ai_resolution_rate || 0}
+                  label={`Conversas resolvidas pela IA (${metrics?.escalated_count || 0} escalados)`}
+                  tooltip="Proporção de conversas resolvidas pela IA versus as que necessitaram intervenção humana."
                 />
                 <ProductsImageChart
                   data={productsChartFormatted}
