@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Search, Plus, User, Bot, Send, UserCheck, Loader2, MessageCircle, CheckCheck } from 'lucide-react';
+import { Search, Plus, User, Bot, Send, UserCheck, Loader2, MessageCircle, CheckCheck, MoreVertical, Copy, Reply, Trash2, Forward, X, Phone, Image as ImageIcon, FileText, Mic } from 'lucide-react';
 
 const API_BASE = '/api';
 
@@ -33,53 +33,92 @@ function formatTime(dateStr) {
 }
 
 function StatusBadge({ status }) {
-  const styles = {
-    bot_active: 'bg-emerald-100 text-emerald-700 border-emerald-200',
-    human_takeover: 'bg-amber-100 text-amber-700 border-amber-200',
-    closed: 'bg-gray-100 text-gray-500 border-gray-200',
+  const config = {
+    bot_active: { bg: 'bg-primary/10', text: 'text-primary', border: 'border-primary/20', label: 'Bot' },
+    human_takeover: { bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-200', label: 'Humano' },
+    closed: { bg: 'bg-gray-100', text: 'text-gray-500', border: 'border-gray-200', label: 'Encerrada' },
   };
-  const labels = {
-    bot_active: 'Bot',
-    human_takeover: 'Humano',
-    closed: 'Encerrada',
-  };
+  const c = config[status] || config.closed;
   return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border ${styles[status] || 'bg-gray-100 border-gray-200'}`}>
-      {labels[status] || status}
+    <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold border ${c.bg} ${c.text} ${c.border}`}>
+      {c.label}
     </span>
   );
 }
 
-function ChatBubble({ message, contactName }) {
+function MessageContextMenu({ x, y, onClose, onCopy, onDelete }) {
+  useEffect(() => {
+    const handleClick = () => onClose();
+    document.addEventListener('click', handleClick);
+    return () => document.removeEventListener('click', handleClick);
+  }, [onClose]);
+
+  return (
+    <div 
+      className="fixed bg-slate-700 rounded-lg shadow-xl py-2 min-w-[140px] z-50 border border-slate-600"
+      style={{ left: x, top: y }}
+      onClick={e => e.stopPropagation()}
+    >
+      <button onClick={onCopy} className="w-full px-4 py-2 text-left text-sm text-gray-200 hover:bg-slate-600 flex items-center gap-3">
+        <Copy className="w-4 h-4" /> Copiar
+      </button>
+      <button className="w-full px-4 py-2 text-left text-sm text-gray-200 hover:bg-slate-600 flex items-center gap-3">
+        <Reply className="w-4 h-4" /> Responder
+      </button>
+      <button className="w-full px-4 py-2 text-left text-sm text-gray-200 hover:bg-slate-600 flex items-center gap-3">
+        <Forward className="w-4 h-4" /> Encaminhar
+      </button>
+      <button onClick={onDelete} className="w-full px-4 py-2 text-left text-sm text-red-400 hover:bg-slate-600 flex items-center gap-3">
+        <Trash2 className="w-4 h-4" /> Excluir
+      </button>
+    </div>
+  );
+}
+
+function ChatBubble({ message, contactName, onContextMenu }) {
   const isOutbound = message.direction === 'outbound';
   const senderLabels = { bot: 'Agente IA', human: 'Operador' };
   const senderName = isOutbound ? senderLabels[message.sender_type] || 'Sistema' : contactName || 'Contato';
   const time = formatTime(message.created_at);
   const content = message.body || message.transcription || '[Mídia]';
+  const [showMenu, setShowMenu] = useState(false);
+
+  const handleRightClick = (e) => {
+    e.preventDefault();
+    onContextMenu(e, message);
+  };
 
   if (isOutbound) {
     return (
-      <div className="flex items-start gap-2.5 justify-end mb-4">
-        <div className={`flex flex-col w-full max-w-[320px] leading-1.5 p-4 border rounded-s-xl rounded-ee-xl ${
-          message.sender_type === 'bot' 
-            ? 'bg-blue-600 border-blue-600' 
-            : 'bg-emerald-600 border-emerald-600'
-        }`}>
-          <div className="flex items-center space-x-2 rtl:space-x-reverse mb-1">
-            <span className="text-sm font-semibold text-white">{senderName}</span>
-            <span className="text-xs text-white/70">{time}</span>
-          </div>
-          <p className="text-sm font-normal text-white whitespace-pre-wrap">{content}</p>
-          <div className="flex items-center justify-end gap-1 mt-1.5">
-            <CheckCheck className="w-3.5 h-3.5 text-white/70" />
-            <span className="text-xs text-white/70">Enviada</span>
+      <div className="flex items-start gap-2 justify-end mb-3 group" onContextMenu={handleRightClick}>
+        <div className="relative">
+          <button 
+            onClick={(e) => onContextMenu(e, message)}
+            className="absolute -left-8 top-2 opacity-0 group-hover:opacity-100 p-1 hover:bg-gray-200 rounded transition-opacity"
+          >
+            <MoreVertical className="w-4 h-4 text-gray-500" />
+          </button>
+          <div className={`flex flex-col max-w-[380px] leading-relaxed p-3 rounded-2xl rounded-br-sm shadow-sm ${
+            message.sender_type === 'bot' 
+              ? 'bg-primary text-white' 
+              : 'bg-emerald-600 text-white'
+          }`}>
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-xs font-semibold opacity-90">{senderName}</span>
+              <span className="text-[10px] opacity-70">{time}</span>
+            </div>
+            <p className="text-sm whitespace-pre-wrap break-words">{content}</p>
+            <div className="flex items-center justify-end gap-1 mt-1">
+              <CheckCheck className="w-3.5 h-3.5 opacity-70" />
+              <span className="text-[10px] opacity-70">Enviada</span>
+            </div>
           </div>
         </div>
         <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${
-          message.sender_type === 'bot' ? 'bg-blue-100' : 'bg-emerald-100'
+          message.sender_type === 'bot' ? 'bg-primary/10' : 'bg-emerald-100'
         }`}>
           {message.sender_type === 'bot' ? (
-            <Bot className="w-4 h-4 text-blue-600" />
+            <Bot className="w-4 h-4 text-primary" />
           ) : (
             <UserCheck className="w-4 h-4 text-emerald-600" />
           )}
@@ -89,16 +128,24 @@ function ChatBubble({ message, contactName }) {
   }
 
   return (
-    <div className="flex items-start gap-2.5 mb-4">
-      <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center">
+    <div className="flex items-start gap-2 mb-3 group" onContextMenu={handleRightClick}>
+      <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gray-300 flex items-center justify-center">
         <User className="w-4 h-4 text-gray-600" />
       </div>
-      <div className="flex flex-col w-full max-w-[320px] leading-1.5 p-4 border border-gray-200 bg-gray-100 rounded-e-xl rounded-es-xl">
-        <div className="flex items-center space-x-2 rtl:space-x-reverse mb-1">
-          <span className="text-sm font-semibold text-gray-900">{senderName}</span>
-          <span className="text-xs text-gray-500">{time}</span>
+      <div className="relative">
+        <div className="flex flex-col max-w-[380px] leading-relaxed p-3 bg-white border border-gray-200 rounded-2xl rounded-bl-sm shadow-sm">
+          <div className="flex items-center gap-2 mb-1">
+            <span className="text-xs font-semibold text-gray-800">{senderName}</span>
+            <span className="text-[10px] text-gray-400">{time}</span>
+          </div>
+          <p className="text-sm text-gray-800 whitespace-pre-wrap break-words">{content}</p>
         </div>
-        <p className="text-sm font-normal text-gray-900 whitespace-pre-wrap">{content}</p>
+        <button 
+          onClick={(e) => onContextMenu(e, message)}
+          className="absolute -right-8 top-2 opacity-0 group-hover:opacity-100 p-1 hover:bg-gray-200 rounded transition-opacity"
+        >
+          <MoreVertical className="w-4 h-4 text-gray-500" />
+        </button>
       </div>
     </div>
   );
@@ -107,44 +154,46 @@ function ChatBubble({ message, contactName }) {
 function ConversationItem({ conversation, isActive, onClick }) {
   const displayName = conversation.assessor_name || conversation.contact_name || 'Desconhecido';
   const initials = displayName.charAt(0).toUpperCase();
+  const preview = conversation.last_message_preview || 'Sem mensagens';
+  const time = formatTimeAgo(conversation.last_message_at || conversation.updated_at);
   
   return (
     <div
       onClick={onClick}
-      className={`flex items-center gap-3 p-3 cursor-pointer transition-all duration-150 border-l-4 ${
+      className={`flex items-center gap-3 px-4 py-3 cursor-pointer transition-all border-b border-gray-100 ${
         isActive 
-          ? 'bg-blue-50 border-l-blue-600' 
-          : 'bg-white border-l-transparent hover:bg-gray-50'
+          ? 'bg-primary/5 border-l-4 border-l-primary' 
+          : 'hover:bg-gray-50 border-l-4 border-l-transparent'
       }`}
     >
       <div className="relative flex-shrink-0">
-        <div className={`w-12 h-12 rounded-full flex items-center justify-center text-white font-semibold text-sm ${
+        <div className={`w-12 h-12 rounded-full flex items-center justify-center text-white font-semibold text-base ${
           conversation.status === 'human_takeover' ? 'bg-amber-500' : 'bg-gray-400'
         }`}>
           {initials}
         </div>
         {conversation.status === 'bot_active' && (
-          <div className="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full bg-emerald-500 border-2 border-white flex items-center justify-center">
-            <Bot className="w-2.5 h-2.5 text-white" />
+          <div className="absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full bg-primary border-2 border-white flex items-center justify-center">
+            <Bot className="w-3 h-3 text-white" />
           </div>
         )}
       </div>
       
       <div className="flex-1 min-w-0">
         <div className="flex items-center justify-between mb-0.5">
-          <span className="font-semibold text-gray-900 text-sm truncate">{displayName}</span>
-          <span className="text-xs text-gray-500 flex-shrink-0 ml-2">{formatTimeAgo(conversation.last_message_at)}</span>
+          <span className="font-semibold text-foreground text-sm truncate max-w-[180px]">{displayName}</span>
+          <span className="text-[11px] text-muted flex-shrink-0 ml-2">{time}</span>
         </div>
-        <div className="text-xs text-gray-500 mb-1">{formatPhone(conversation.phone)}</div>
-        <div className="flex items-center justify-between">
-          <p className="text-sm text-gray-600 truncate flex-1">{conversation.last_message_preview || 'Sem mensagens'}</p>
+        <div className="text-xs text-muted mb-1 truncate">{formatPhone(conversation.phone)}</div>
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-sm text-muted truncate flex-1">{preview}</p>
           <StatusBadge status={conversation.status} />
         </div>
       </div>
       
       {conversation.unread_count > 0 && (
-        <div className="flex-shrink-0 w-5 h-5 rounded-full bg-red-500 flex items-center justify-center">
-          <span className="text-xs text-white font-bold">{conversation.unread_count}</span>
+        <div className="flex-shrink-0 w-5 h-5 rounded-full bg-primary flex items-center justify-center">
+          <span className="text-[10px] text-white font-bold">{conversation.unread_count}</span>
         </div>
       )}
     </div>
@@ -172,42 +221,47 @@ function NewConversationModal({ isOpen, onClose, onSubmit, isLoading }) {
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
-      <div className="bg-white rounded-lg w-full max-w-md mx-4 shadow-2xl" onClick={e => e.stopPropagation()}>
-        <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
-          <h3 className="font-semibold text-lg text-gray-900">Nova Conversa</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
+      <div className="bg-white rounded-xl w-full max-w-md mx-4 shadow-2xl" onClick={e => e.stopPropagation()}>
+        <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center">
+          <h3 className="font-semibold text-lg text-foreground">Nova Conversa</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 p-1 hover:bg-gray-100 rounded-full transition-colors">
+            <X className="w-5 h-5" />
+          </button>
         </div>
         <div className="p-6 space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Número de Telefone</label>
-            <input
-              type="text"
-              value={phone}
-              onChange={e => setPhone(e.target.value)}
-              placeholder="Ex: 5511999999999"
-              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors"
-            />
-            <p className="text-xs text-gray-500 mt-1.5">Formato: código do país + DDD + número</p>
+            <label className="block text-sm font-medium text-foreground mb-2">Número de Telefone</label>
+            <div className="relative">
+              <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <input
+                type="text"
+                value={phone}
+                onChange={e => setPhone(e.target.value)}
+                placeholder="5511999999999"
+                className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-lg text-foreground placeholder-gray-400 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
+              />
+            </div>
+            <p className="text-xs text-muted mt-1.5">Código do país + DDD + número</p>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Mensagem Inicial</label>
+            <label className="block text-sm font-medium text-foreground mb-2">Mensagem Inicial</label>
             <textarea
               value={message}
               onChange={e => setMessage(e.target.value)}
               placeholder="Digite a mensagem..."
               rows={4}
-              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors resize-none"
+              className="w-full px-4 py-2.5 border border-gray-200 rounded-lg text-foreground placeholder-gray-400 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all resize-none"
             />
           </div>
         </div>
-        <div className="px-6 py-4 border-t border-gray-200 flex gap-3 justify-end bg-gray-50 rounded-b-lg">
-          <button onClick={onClose} className="px-4 py-2 text-gray-600 hover:text-gray-800 font-medium transition-colors">
+        <div className="px-6 py-4 border-t border-gray-100 flex gap-3 justify-end bg-gray-50 rounded-b-xl">
+          <button onClick={onClose} className="px-4 py-2 text-muted hover:text-foreground font-medium transition-colors">
             Cancelar
           </button>
           <button
             onClick={handleSubmit}
             disabled={isLoading}
-            className="px-5 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-colors"
+            className="px-5 py-2 bg-primary text-white rounded-lg font-medium hover:bg-primary-dark disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-colors"
           >
             {isLoading && <Loader2 className="w-4 h-4 animate-spin" />}
             Enviar Mensagem
@@ -232,6 +286,7 @@ function App() {
   const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(true);
   const [totalCount, setTotalCount] = useState(0);
+  const [contextMenu, setContextMenu] = useState(null);
   const messagesEndRef = useRef(null);
   const messagesContainerRef = useRef(null);
   const eventSourceRef = useRef(null);
@@ -260,8 +315,14 @@ function App() {
       const items = Array.isArray(data) ? data : (data.items || []);
       const total = Array.isArray(data) ? data.length : (data.total || items.length);
       
+      const sortedItems = [...items].sort((a, b) => {
+        const dateA = new Date(a.last_message_at || a.updated_at || 0);
+        const dateB = new Date(b.last_message_at || b.updated_at || 0);
+        return dateB - dateA;
+      });
+      
       setConversations(prev => {
-        const newList = append ? [...prev, ...items] : items;
+        const newList = append ? [...prev, ...sortedItems] : sortedItems;
         setHasMore(newList.length < total);
         return newList;
       });
@@ -362,10 +423,10 @@ function App() {
       
       const listRes = await fetch(`${API_BASE}/conversations/?limit=${PAGE_SIZE}&offset=0`, { credentials: 'include' });
       const listData = await listRes.json();
-      const items = listData.items || [];
+      const items = Array.isArray(listData) ? listData : (listData.items || []);
       setConversations(items);
-      setTotalCount(listData.total || 0);
-      setHasMore(items.length < (listData.total || 0));
+      setTotalCount(Array.isArray(listData) ? items.length : (listData.total || 0));
+      setHasMore(items.length < (Array.isArray(listData) ? items.length : (listData.total || 0)));
       setPage(0);
       
       if (result.conversation_id) {
@@ -377,6 +438,27 @@ function App() {
     } finally {
       setIsCreating(false);
     }
+  };
+
+  const handleMessageContextMenu = (e, message) => {
+    e.preventDefault();
+    const rect = e.currentTarget?.getBoundingClientRect() || { left: e.clientX, top: e.clientY };
+    setContextMenu({
+      x: Math.min(e.clientX, window.innerWidth - 160),
+      y: Math.min(e.clientY, window.innerHeight - 200),
+      message
+    });
+  };
+
+  const handleCopyMessage = () => {
+    if (contextMenu?.message) {
+      navigator.clipboard.writeText(contextMenu.message.body || '');
+    }
+    setContextMenu(null);
+  };
+
+  const handleDeleteMessage = () => {
+    setContextMenu(null);
   };
 
   useEffect(() => {
@@ -437,32 +519,32 @@ function App() {
   const contactName = currentConversation?.assessor_name || currentConversation?.contact_name || 'Contato';
 
   return (
-    <div className="h-full flex flex-col overflow-hidden">
-      <div className="flex-shrink-0 flex justify-between items-center mb-4">
+    <div className="h-screen flex flex-col bg-background">
+      <div className="flex-shrink-0 px-6 py-4 bg-white border-b border-border flex justify-between items-center">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Conversas</h1>
-          <p className="text-gray-500 text-sm">Visualize e gerencie todas as conversas do agente</p>
+          <h1 className="text-xl font-bold text-foreground">Conversas</h1>
+          <p className="text-muted text-sm">Visualize e gerencie todas as conversas do agente</p>
         </div>
         <button
           onClick={() => setShowNewModal(true)}
-          className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors shadow-sm"
+          className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg font-medium hover:bg-primary-dark transition-colors shadow-sm"
         >
           <Plus className="w-4 h-4" />
           Nova Conversa
         </button>
       </div>
 
-      <div className="flex-1 grid grid-cols-[360px_1fr] gap-4 min-h-0 overflow-hidden">
-        <div className="bg-white rounded-xl border border-gray-200 flex flex-col overflow-hidden shadow-sm">
-          <div className="p-3 border-b border-gray-100 bg-gray-50">
+      <div className="flex-1 flex min-h-0 overflow-hidden">
+        <div className="w-[360px] flex-shrink-0 bg-white border-r border-border flex flex-col">
+          <div className="p-3 border-b border-border">
             <div className="relative mb-2.5">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted" />
               <input
                 type="text"
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
                 placeholder="Buscar por número ou nome..."
-                className="w-full pl-9 pr-4 py-2 bg-white border border-gray-200 rounded-lg text-sm text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors"
+                className="w-full pl-10 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm text-foreground placeholder-muted focus:ring-2 focus:ring-primary/20 focus:border-primary focus:bg-white outline-none transition-all"
               />
             </div>
             <div className="flex gap-1.5">
@@ -472,8 +554,8 @@ function App() {
                   onClick={() => setStatusFilter(f.value)}
                   className={`flex-1 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
                     statusFilter === f.value
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-100'
+                      ? 'bg-primary text-white'
+                      : 'bg-gray-100 text-muted hover:bg-gray-200'
                   }`}
                 >
                   {f.label}
@@ -482,15 +564,15 @@ function App() {
             </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto divide-y divide-gray-100 min-h-0">
+          <div className="flex-1 overflow-y-auto scrollbar-thin min-h-0">
             {isLoading && conversations.length === 0 ? (
               <div className="flex justify-center items-center h-32">
-                <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
+                <Loader2 className="w-6 h-6 animate-spin text-primary" />
               </div>
             ) : conversations.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-32 text-gray-400">
-                <MessageCircle className="w-8 h-8 mb-2 opacity-50" />
-                <span className="text-sm">Nenhuma conversa</span>
+              <div className="flex flex-col items-center justify-center h-32 text-muted">
+                <MessageCircle className="w-10 h-10 mb-2 opacity-30" />
+                <span className="text-sm">Nenhuma conversa encontrada</span>
               </div>
             ) : (
               <>
@@ -506,7 +588,7 @@ function App() {
                   <button
                     onClick={loadMoreConversations}
                     disabled={isLoading}
-                    className="w-full py-3 text-sm text-blue-600 hover:bg-blue-50 font-medium flex items-center justify-center gap-2 transition-colors"
+                    className="w-full py-3 text-sm text-primary hover:bg-primary/5 font-medium flex items-center justify-center gap-2 transition-colors"
                   >
                     {isLoading ? (
                       <Loader2 className="w-4 h-4 animate-spin" />
@@ -518,25 +600,26 @@ function App() {
               </>
             )}
           </div>
+          
           {conversations.length > 0 && (
-            <div className="flex-shrink-0 px-3 py-2 border-t border-gray-100 bg-gray-50 text-xs text-gray-500 text-center">
-              Exibindo {conversations.length} {totalCount > 0 ? `de ${totalCount}` : ''} conversas
+            <div className="flex-shrink-0 px-4 py-2 border-t border-border bg-gray-50 text-xs text-muted text-center">
+              {conversations.length} {totalCount > 0 ? `de ${totalCount}` : ''} conversas
             </div>
           )}
         </div>
 
-        <div className="bg-white rounded-xl border border-gray-200 flex flex-col overflow-hidden shadow-sm">
+        <div className="flex-1 flex flex-col bg-gray-50 min-h-0">
           {!currentConversation ? (
-            <div className="flex-1 flex flex-col items-center justify-center text-gray-400">
-              <div className="w-20 h-20 rounded-full bg-gray-100 flex items-center justify-center mb-4">
-                <MessageCircle className="w-10 h-10 text-gray-300" />
+            <div className="flex-1 flex flex-col items-center justify-center text-muted">
+              <div className="w-24 h-24 rounded-full bg-gray-200 flex items-center justify-center mb-4">
+                <MessageCircle className="w-12 h-12 text-gray-400" />
               </div>
-              <h3 className="text-lg font-semibold text-gray-700 mb-1">Selecione uma conversa</h3>
+              <h3 className="text-lg font-semibold text-foreground mb-1">Selecione uma conversa</h3>
               <p className="text-sm">Clique em uma conversa à esquerda para visualizar</p>
             </div>
           ) : (
             <>
-              <div className="px-4 py-3 border-b border-gray-200 bg-gray-50 flex justify-between items-center">
+              <div className="flex-shrink-0 px-4 py-3 bg-white border-b border-border flex justify-between items-center">
                 <div className="flex items-center gap-3">
                   <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-semibold ${
                     currentConversation.status === 'human_takeover' ? 'bg-amber-500' : 'bg-gray-400'
@@ -544,8 +627,8 @@ function App() {
                     {contactName.charAt(0).toUpperCase()}
                   </div>
                   <div>
-                    <h3 className="font-semibold text-gray-900 text-sm">{contactName}</h3>
-                    <p className="text-xs text-gray-500">{formatPhone(currentConversation.phone)}</p>
+                    <h3 className="font-semibold text-foreground text-sm">{contactName}</h3>
+                    <p className="text-xs text-muted">{formatPhone(currentConversation.phone)}</p>
                   </div>
                 </div>
                 <button
@@ -573,35 +656,40 @@ function App() {
               <div 
                 ref={messagesContainerRef}
                 onScroll={handleMessagesScroll}
-                className="flex-1 overflow-y-auto p-4 bg-gray-50 min-h-0"
+                className="flex-1 overflow-y-auto p-4 scrollbar-thin min-h-0"
               >
                 {messages.length === 0 ? (
-                  <div className="flex items-center justify-center h-full text-gray-400 text-sm">
+                  <div className="flex items-center justify-center h-full text-muted text-sm">
                     Nenhuma mensagem ainda
                   </div>
                 ) : (
                   <>
                     {messages.map((msg) => (
-                      <ChatBubble key={msg.id} message={msg} contactName={contactName} />
+                      <ChatBubble 
+                        key={msg.id} 
+                        message={msg} 
+                        contactName={contactName}
+                        onContextMenu={handleMessageContextMenu}
+                      />
                     ))}
                     <div ref={messagesEndRef} />
                   </>
                 )}
               </div>
 
-              <div className="p-3 border-t border-gray-200 bg-white flex gap-2">
+              <div className="flex-shrink-0 p-3 bg-white border-t border-border flex gap-2 items-center">
                 <input
                   type="text"
                   value={messageInput}
                   onChange={e => setMessageInput(e.target.value)}
                   onKeyPress={e => e.key === 'Enter' && !e.shiftKey && sendMessage()}
                   placeholder="Digite sua mensagem..."
-                  className="flex-1 px-4 py-2.5 bg-gray-100 border border-gray-200 rounded-full text-sm text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 focus:bg-white outline-none transition-all"
+                  className="flex-1 px-4 py-2.5 bg-gray-100 border border-transparent rounded-full text-sm text-foreground placeholder-muted focus:ring-2 focus:ring-primary/20 focus:border-primary focus:bg-white outline-none transition-all"
                 />
                 <button
                   onClick={sendMessage}
                   disabled={isSending || !messageInput.trim()}
-                  className="px-4 py-2.5 bg-blue-600 text-white rounded-full font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-colors"
+                  className="w-10 h-10 bg-primary text-white rounded-full font-medium hover:bg-primary-dark disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center transition-colors"
                 >
                   {isSending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
                 </button>
@@ -617,6 +705,16 @@ function App() {
         onSubmit={startNewConversation}
         isLoading={isCreating}
       />
+
+      {contextMenu && (
+        <MessageContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          onClose={() => setContextMenu(null)}
+          onCopy={handleCopyMessage}
+          onDelete={handleDeleteMessage}
+        />
+      )}
     </div>
   );
 }

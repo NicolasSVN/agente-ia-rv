@@ -36,13 +36,8 @@
             flex-direction: column;
             overflow: hidden;
         }
-        #react-conversations-root * {
-            box-sizing: border-box;
-        }
-        #react-conversations-root input,
-        #react-conversations-root button,
-        #react-conversations-root textarea {
-            font-family: 'Inter', sans-serif;
+        .page-container {
+            padding: 0 !important;
         }
     </style>
 </head>
@@ -175,8 +170,8 @@
         }
     </script>
 
-    <link rel="stylesheet" crossorigin href="/conversas/assets/{{ css_file }}">
     <link rel="stylesheet" href="/static/global.css">
+    <link rel="stylesheet" crossorigin href="/conversas/assets/{{ css_file }}">
     <script type="module" crossorigin src="/conversas/assets/{{ js_file }}"></script>
 </body>
 </html>
