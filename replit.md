@@ -1,11 +1,9 @@
 # Agente IA - RV - Agente de IA para Assessores Financeiros
 
 ## Overview
-
-This project is a comprehensive FastAPI application designed as an AI agent for financial advisors, named Stevan. Its primary purpose is to streamline communication, knowledge retrieval, and client management within financial advisory services. The system integrates WhatsApp, leverages semantic search on an internal Product CMS knowledge base, and features an administrative dashboard with Insights analytics, user management, and campaign tools. The vision is to enhance advisor efficiency, improve client interaction, and provide robust tools for managing advisory operations by centralizing information and automating routine tasks.
+This project is a comprehensive FastAPI application serving as an AI agent named Stevan, designed for financial advisors. Its core purpose is to enhance efficiency in financial advisory services by streamlining communication, knowledge retrieval, and client management. Key capabilities include WhatsApp integration, semantic search on a Product CMS knowledge base, and an administrative dashboard with analytics, user management, and campaign tools. The project aims to centralize information, automate routine tasks, and improve client interaction within advisory operations.
 
 ## User Preferences
-
 I prefer detailed explanations.
 I want an iterative development process.
 Ask before making major architectural changes.
@@ -15,171 +13,156 @@ I prefer a clean and minimalist UI design.
 Ensure all user-facing texts are in grammatically correct Portuguese with proper accentuation.
 
 ## System Architecture
+The application is built using FastAPI with a modular architecture.
 
-The application is built using FastAPI with a modular structure.
-
-**UI/UX Decisions:**
-A new design system features a minimizable vertical sidebar, light theme, and the Inter font. Global CSS centralizes styling. Navigation is dynamic based on user roles, and a custom toast notification system provides consistent feedback.
+**UI/UX Decisions:** The design system features a minimizable vertical sidebar, a light theme, and the Inter font. Global CSS centralizes styling, navigation is dynamic based on user roles, and a custom toast notification system provides consistent feedback. Modern React + Tailwind screens follow strict isolation rules, utilizing Tailwind Preflight and utilities exclusively for spacing and styling to ensure a modern SaaS-like user experience.
 
 **Technical Implementations:**
-- **AI Agent (Stevan):** Integrates OpenAI for chat and embeddings, offering real-time configuration of personality, rules, and model parameters. Stevan acts as an internal support broker for SVN's Variable Income area, focusing on explaining strategies and products. Its communication is professional yet approachable, and it escalates to human specialists when necessary.
-- **Semantic Search:** Utilizes ChromaDB and OpenAI embeddings for semantic search over the internal Product CMS knowledge base, with background document chunking and indexing.
-- **FII External Lookup:** Automatically fetches public data for FIIs not in the knowledge base from FundsExplorer.com.br, supporting various FII types and providing a disclaimer.
-- **WhatsApp Integration:** Uses Z-API for communication, supporting various message types, logging interactions, and featuring a "Central de Mensagens" interface with real-time updates and full LID support for conversation identification.
-- **Authentication & Authorization:** JWT-based authentication with role-based access control (`admin`, `gestao_rv`, `broker`, `client`).
+- **AI Agent (Stevan):** Integrates OpenAI for chat and embeddings, configurable for personality, rules, and model parameters. It acts as an internal support broker, explaining strategies and products, and escalating to human specialists when necessary.
+- **Semantic Search:** Employs ChromaDB and OpenAI embeddings for semantic search across the internal Product CMS knowledge base, with background document chunking and indexing.
+- **FII External Lookup:** Automatically fetches public FII data from FundsExplorer.com.br when not available in the knowledge base.
+- **WhatsApp Integration:** Uses Z-API for various message types, logs interactions, and provides a "Central de Mensagens" interface with real-time updates and conversation identification.
+- **Authentication & Authorization:** JWT-based with role-based access control (`admin`, `gestao_rv`, `broker`, `client`).
 - **Database:** PostgreSQL (or SQLite for development) with SQLAlchemy ORM for models including users, tickets, agent configurations, message templates, campaigns, and knowledge documents.
-- **Admin Dashboard:** Provides comprehensive tools for:
-    - **User Management:** CRUD operations.
-    - **Integration Management:** UI-based configuration and testing of API keys (OpenAI, Z-API).
-    - **Assessor Base:** CRUD operations for financial advisors, with bulk import functionality.
-    - **Campaign Management:** A 4-step wizard for mass WhatsApp messages with personalized variables, template system, attachment support, and real-time dispatch progress via SSE.
-    - **Central de Mensagens:** WhatsApp Web-style interface for conversation management, real-time updates, human takeover, and new conversation initiation.
-    - **Knowledge Base Management:** Upload, index, categorize, and reindex various document types.
-    - **CMS de Produtos:** Product-centric content management system with:
-        - Products, Materials, and ContentBlocks hierarchy
-        - PDF upload with GPT-4 Vision for automatic block extraction
-        - Fast Lane / High-Risk Lane approval system (auto-approve text, review tables/charts with financial keywords)
-        - Semantic indexing of approved blocks to ChromaDB
-        - WhatsApp scripts per product for commercial use
-        - Versionamento automático de blocos de conteúdo
-        - **Vigência e Governança:** Campos valid_from/valid_until para controle de validade de produtos e materiais
-        - **Status de Publicação:** Draft/Published/Archived status para materiais, com workflow de publicação que indexa conteúdo automaticamente
-        - **Filtro de Expiração:** VectorStore filtra automaticamente conteúdo expirado e não-publicado
-        - **Badges Visuais:** Indicadores de "Rascunho", "Publicado", "Expirando em X dias", "Expirado"
-        - **Rollback de Versões:** UI para visualizar histórico de versões de blocos e restaurar versões anteriores
-        - **Priorização de Materiais Vivos:** Busca prioriza one-pages e tabelas de taxas sobre conteúdo de PDF
-        - **Alertas de Expiração:** Endpoint /api/products/expiring para consultar materiais expirando
-    - **Observabilidade e Auditoria:**
-        - RetrievalLog: Auditoria de todas as buscas RAG (query, chunks usados, versões, distâncias, tempo de resposta)
-        - IngestionLog: Log estruturado de ingestão de documentos (blocos criados, tabelas/gráficos detectados)
-        - Analytics RAG: Endpoint /api/analytics/rag-metrics com taxa de transferência humana, tipos de query, tempo médio
-        - Re-ranking inteligente: Perguntas numéricas priorizam tabelas, conceituais priorizam texto
-        - Threshold de similaridade: Filtro com distância máxima de 0.8 para garantir relevância
-        - ContentBlock tracking: Campos created_by e updated_by para rastrear autoria
-- **AI Agent Response Framework:** Employs a `ConversationState` machine, message normalization, and flexible contact identification. It integrates AI for classifying user intent (Greeting, Scope, Documental, Out of Scope) and determining human transfer criteria. It also features conversation context accumulation for follow-up questions and AI-driven ticker search with intelligent confirmation flows, ensuring natural language interpretation over fixed regex patterns.
-    - **Insights Dashboard:** Dashboard de gestão para Renda Variável com:
-        - ConversationInsight: Modelo para armazenar insights de conversas (categoria, produtos, tickers, resolução, feedback)
-        - Autoanálise automática via GPT após cada conversa no webhook WhatsApp
-        - 12 categorias de classificação (Dúvida sobre Produto, Análise de Mercado, Estratégia de Investimento, etc.)
-        - Filtros dinâmicos: Período (7/30/90/365 dias, personalizado), Macro Área, Unidade, Broker, Equipe
-        - 3 KPI cards: Total de Interações, Assessores Ativos, Taxa de Resolução IA
-        - 5 gráficos Chart.js: Atividade Diária (linha), Categorias (pizza), Produtos em Alta (barras), IA vs Humanos (pizza), Volume por Unidade (barras horizontal)
-        - Rankings: Top 5 Unidades, Top 10 Assessores
-        - Resumo de Campanhas e Feedbacks expansíveis
-        - Acesso restrito a admin e gestao_rv
-        - 10 endpoints em /api/insights/*
+- **Admin Dashboard:** Provides tools for user management, integration management, advisor base management (with bulk import), campaign management (4-step wizard for mass personalized WhatsApp messages, templates, attachments, SSE for progress), "Central de Mensagens" (WhatsApp Web-style interface with human takeover), and knowledge base management (upload, index, categorize documents).
+- **Product CMS:** Manages products, materials, and content blocks. Features include PDF upload with GPT-4 Vision for block extraction, a Fast Lane/High-Risk Lane approval system, semantic indexing, WhatsApp scripts per product, versioning, validity control, publication statuses, expiration filtering, visual badges, and version rollback.
+- **Observability and Auditing:** Includes `RetrievalLog` for RAG search audits, `IngestionLog` for document ingestion, RAG analytics metrics, intelligent re-ranking, similarity thresholds, and content block tracking.
+- **AI Agent Response Framework:** Utilizes a `ConversationState` machine, message normalization, flexible contact identification, and AI-driven intent classification (Greeting, Scope, Documental, Out of Scope) to determine human transfer. Features conversation context accumulation and AI-driven ticker search.
+- **Insights Dashboard:** A management dashboard for Variable Income with `ConversationInsight` model, automatic GPT-based post-conversation analysis, 12 classification categories, dynamic filters, KPI cards (Total Interactions, Active Advisors, AI Resolution Rate), 5 Chart.js graphs (Daily Activity, Categories, Trending Products, AI vs. Humans, Volume by Unit), rankings (Top 5 Units, Top 10 Advisors), campaign summaries, and restricted access.
 
-**Feature Specifications:**
-- Dynamic control over AI behavior parameters.
-- Real-time campaign dispatch with SSE.
-- Background document processing for the knowledge base.
-- Customizable fields for profiles and campaigns.
-- Automated admin user creation via environment variables.
+**Feature Specifications:** Dynamic control over AI behavior parameters, real-time campaign dispatch with SSE, background document processing, customizable fields, and automated admin user creation.
 
 ## External Dependencies
-
 - **OpenAI API:** For AI agent interactions and text embeddings.
-- **Z-API:** For WhatsApp messaging integration (inbound and outbound).
+- **Z-API:** For WhatsApp messaging integration.
 - **PostgreSQL:** Primary relational database.
 - **ChromaDB:** Vector database for semantic search.
 - **Jinja2:** Templating engine for frontend rendering.
 - **Inter Font (Google Fonts):** Standardized typography.
-- **Tailwind CSS:** Utility-first CSS framework (CDN mode for gradual migration).
+- **Tailwind CSS:** Utility-first CSS framework.
+- **React 18 + Vite + React Router DOM:** For the modern Knowledge Base UI.
+- **Radix UI:** For UI components (Dialog, Tabs, Select, Tooltip).
+- **Framer Motion:** For animations and transitions.
+- **Lucide React:** For icons.
+- **react-dropzone:** For file uploads.
 
-## Tailwind CSS Migration
+## Contrato Técnico de Front-End — SVN
 
-**Status:** Fase 1 - Setup concluído (CDN mode)
+**Padrão Oficial para Telas React + Tailwind**
 
-**Arquivos de configuração:**
-- `frontend/static/tailwind.config.js` - Tokens do Design System SVN
-- `frontend/templates/tailwind_test.html` - Página de referência de componentes
+Este documento define as regras obrigatórias para qualquer tela construída em React + Tailwind no projeto SVN.
 
-**Mapeamento CSS → Tailwind:**
+**Objetivo:** Garantir UX moderna, consistência visual, isolamento de legado e evitar conflitos de CSS.
 
-| Classe CSS Original | Classe Tailwind Equivalente |
-|---------------------|----------------------------|
-| `.btn.btn-primary` | `px-4 py-2 bg-primary text-white rounded-btn font-medium hover:bg-primary-dark` |
-| `.btn.btn-secondary` | `px-4 py-2 bg-card text-foreground border border-border rounded-btn font-medium` |
-| `.form-input` | `w-full px-3 py-2 bg-card border border-border rounded-input text-foreground` |
-| `.form-label` | `block text-sm font-medium text-foreground mb-1` |
-| `.card` | `bg-card rounded-card border border-border p-6 shadow-card` |
-| `.alert.alert-success` | `p-4 bg-success/10 border border-success/20 rounded-card text-success` |
-| `.page-title` | `text-2xl font-bold text-foreground` |
-| `.page-subtitle` | `text-muted` |
+### 1. Isolamento Total de CSS (Regra Mais Importante)
 
-**Cores personalizadas (tailwind.config.js):**
-- `primary` (#772B21), `primary-dark` (#381811), `primary-light` (#CFE3DA)
-- `background` (#FFF8F3), `card` (#ffffff), `foreground` (#221B19)
-- `muted` (#5a4f4c), `border` (#e5dcd7)
-- `success` (#10b981), `warning` (#f59e0b), `danger` (#AC3631)
-- `svn-brown` (#8b4513), `svn-orange` (#dc7f37), `svn-green` (#6b8e23)
+**PROIBIDO - Nunca usar em telas React:**
+```css
+* { margin: 0; padding: 0; box-sizing: border-box; }
+```
 
-**Acesso à página de teste:** `/tailwind-test` (apenas admin)
+**Nunca carregar:**
+- `global.css` legado
+- `style.css` legado
+- Classes genéricas: `.btn`, `.form-group`, `.page-*`, `.container`, `.sidebar-*`
 
-## Base de Conhecimento React (Produção)
+**OBRIGATÓRIO:**
+- Tailwind Preflight como único reset
+- Spacing controlado EXCLUSIVAMENTE por Tailwind
+- Exemplo correto: `<div className="p-4 space-y-4">`
 
-**Status:** Implementação completa em produção
+### 2. Regra de Arquitetura por Rota
 
-**Acesso:** `/base-conhecimento` (admin, gestao_rv, broker)
+| Tipo | Exemplo |
+|------|---------|
+| Jinja legado | `/conversas` |
+| React moderno | `/conversas-react` |
+| React moderno | `/base-conhecimento` |
 
-**Stack:**
-- React 18 + Vite + React Router DOM
-- Tailwind CSS (tokens do Design System SVN)
-- Radix UI (Dialog, Tabs, Select, Tooltip)
-- Framer Motion (animações e transições)
-- Lucide React (ícones)
-- react-dropzone (upload de arquivos)
+**Regras:**
+- Nunca misturar Jinja + React no mesmo layout
+- Cada rota React deve ter HTML base mínimo
 
-**Localização:** `frontend/react-knowledge/`
+### 3. Template HTML Base para React
 
-**Páginas:**
-- **Dashboard (`/`)** - Grid de produtos com busca global, filtros por categoria, criação de novo produto
-  - **Busca Global:** Pesquisa com correspondência parcial (ILIKE) em toda a base de conhecimento
-  - Pesquisa em: produtos (nome, ticker, gestor, categoria, descrição), materiais, blocos de conteúdo, documentos, scripts
-  - Resultados organizados em seções colapsáveis com destaque do termo buscado e contexto do match
-  - Debounce de 300ms para performance
-- **Upload Inteligente (`/upload`)** - Wizard 3 etapas seguindo a "Regra de Ouro":
-  1. Upload do PDF (drag & drop)
-  2. Configuração (tipo de material, produto relacionado, período, tags)
-  3. Processamento automático (IA extrai blocos semânticos)
-- **Detalhe do Produto (`/product/:id`)** - Visão hierárquica com abas:
-  - Materiais: lista expandível com blocos, edição inline, histórico de versões, publicação
-  - Scripts WhatsApp: criação e gestão de mensagens comerciais
-  - Informações: edição inline dos dados do produto
-- **Fila de Revisão (`/review`)** - Itens de alto risco pendentes com aprovar/editar/rejeitar
-- **Documentos (`/documents`)** - Base de conhecimento geral com upload, reindex, exclusão
+O template que serve React deve conter SOMENTE:
+- Sidebar (se necessário)
+- `<div id="root"></div>`
+- Nenhum reset CSS
+- Nenhum global.css
+- Nenhum style inline genérico
 
-**Princípio "Regra de Ouro":**
-- Broker faz upload único → Sistema processa automaticamente → Revisão é opcional
-- IA extrai tabelas, gráficos, textos e cria blocos semânticos
-- Auto-relacionamento com hierarquia de produtos
+**Exemplo mínimo:**
+```html
+<body>
+  <div id="root"></div>
+  <script src="react-bundle.js"></script>
+</body>
+```
 
-**Componentes reutilizáveis:**
-- `StatusBadge` - Estados visuais (ativo, expirando, rascunho, pendente)
-- `Button` - 5 variantes (primary, secondary, danger, success, ghost)
-- `Modal` - Diálogos com Radix UI + Framer Motion
-- `FileUpload` - Upload com drag & drop e preview
-- `InlineEdit` - Edição inline com estados visuais
-- `Toast` - Notificações contextuais
-- `Sidebar` - Navegação colapsável
-- `GlobalSearchResults` - Resultados de busca global organizados por categoria com highlight
+### 4. Design System (Fonte da Verdade)
 
-**API de Busca Global:**
-- `GET /api/search/global?q=termo` - Busca em toda base com correspondência parcial
-- `GET /api/search/quick?q=termo` - Busca rápida para autocomplete
+**Fonte única de UI:**
+- Tailwind tokens
+- Variáveis no `tailwind.config.js` ou `@theme` no CSS
 
-**Build:** `cd frontend/react-knowledge && npm run build`
+**Não duplicar cores no CSS legado. Não criar novo sistema paralelo.**
 
-**Backend Preservado:**
-- APIs de produtos/materiais/blocos inalteradas
-- Upload de PDF com GPT-4 Vision funcional
-- Sistema Fast Lane / High-Risk Lane mantido
-- Indexação semântica ChromaDB preservada
+### 5. Componentes Obrigatórios (Padrão UX)
 
-## React POC - Base de Conhecimento UX (Legado)
+Toda tela React moderna deve usar:
+- Cards com hover
+- Skeleton loaders
+- Drawer ou modal (Radix UI)
+- Inline edit (sem reload)
+- Search com debounce
+- Filtros dinâmicos
+- Empty states visuais
 
-**Status:** POC substituída pela implementação de produção acima
+### 6. Spacing & Layout
 
-**Acesso:** `/tailwind-test-knowledge` (apenas admin)
+**PROIBIDO - Margens no CSS:**
+```css
+.card { margin: 12px; }
+```
 
-**Build:** `cd frontend/react-poc && npm run build`
+**OBRIGATÓRIO - Tailwind utilities:**
+```jsx
+<div className="mt-3 px-4 gap-2 grid">
+```
+
+### 7. Animações e Feedback
+
+Sempre que houver Load, Save, Open drawer, Hover, usar **Framer Motion** para:
+- Fade
+- Slide
+- Microfeedback
+
+**Objetivo:** Sensação de app moderno, não sistema legado.
+
+### 8. Checklist Técnico para Nova Tela React
+
+Antes de marcar como "pronto", validar:
+- Não carrega global.css
+- Não existe seletor `* {}`
+- Nenhuma classe `.btn`, `.form-group`, `.page-*`
+- Spacing 100% Tailwind
+- Skeleton loaders implementados
+- Empty state desenhado
+- Drawer ou modal Radix funcional
+- Search + filtro funcionando
+- UX testado sem refresh de página
+
+### 9. Regra de Ouro
+
+> Se a tela parecer sistema legado, está errada.
+> Se parecer SaaS moderno, está certa.
+> **UX vem antes de "funcionar".**
+
+### 10. Objetivo Estratégico
+
+Esse padrão existe para:
+- Evitar regressão visual
+- Garantir evolução real de UX
+- Evitar CSS fantasma
+- Garantir que o usuário veja valor
