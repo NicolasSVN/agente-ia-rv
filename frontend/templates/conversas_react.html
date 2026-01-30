@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Conversas - Agente IA - RV</title>
-    <link rel="stylesheet" href="/static/global.css">
     <script src="/static/notifications.js?v={{ now().timestamp() if now else 1706371200 }}"></script>
     <style>
         #react-conversations-root {
@@ -142,7 +141,8 @@
         }
     </script>
 
-    <script type="module" crossorigin src="/conversas/assets/{{ js_file }}"></script>
     <link rel="stylesheet" crossorigin href="/conversas/assets/{{ css_file }}">
+    <link rel="stylesheet" href="/static/global.css">
+    <script type="module" crossorigin src="/conversas/assets/{{ js_file }}"></script>
 </body>
 </html>
