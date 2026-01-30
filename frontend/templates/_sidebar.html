@@ -226,24 +226,60 @@
 
   function openKnowledge() {
     isKnowledgeOpen = true;
-    knowledgeContent.style.maxHeight = knowledgeContent.scrollHeight + 'px';
     knowledgeChevron.style.transform = 'rotate(90deg)';
-    setTimeout(() => {
-      settingsContent.style.maxHeight = settingsContent.scrollHeight + 'px';
-    }, 50);
+    
+    // First ensure settings is open so we can calculate dimensions
+    if (!isSettingsOpen) {
+      openSettings();
+    }
+    
+    // Use requestAnimationFrame to ensure DOM is updated before calculating heights
+    requestAnimationFrame(() => {
+      // Temporarily set to auto to get real scrollHeight
+      knowledgeContent.style.maxHeight = 'none';
+      const knowledgeHeight = knowledgeContent.scrollHeight;
+      knowledgeContent.style.maxHeight = '0';
+      
+      // Force reflow then animate
+      knowledgeContent.offsetHeight;
+      knowledgeContent.style.maxHeight = knowledgeHeight + 'px';
+      
+      // Recalculate parent settings height after a short delay
+      setTimeout(() => {
+        settingsContent.style.maxHeight = 'none';
+        const settingsHeight = settingsContent.scrollHeight;
+        settingsContent.style.maxHeight = settingsHeight + 'px';
+      }, 50);
+    });
   }
 
   function closeKnowledge() {
     isKnowledgeOpen = false;
     knowledgeContent.style.maxHeight = '0';
     knowledgeChevron.style.transform = 'rotate(0deg)';
+    
+    // Recalculate parent settings height
+    setTimeout(() => {
+      if (isSettingsOpen) {
+        settingsContent.style.maxHeight = settingsContent.scrollHeight + 'px';
+      }
+    }, 50);
   }
 
+  // Initialize accordions based on current route
   if (configRoutes.includes(currentPath)) {
-    openSettings();
-  }
-  if (knowledgeRoutes.includes(currentPath)) {
-    openKnowledge();
+    // Delay to ensure DOM is ready
+    requestAnimationFrame(() => {
+      openSettings();
+      if (knowledgeRoutes.includes(currentPath)) {
+        setTimeout(() => openKnowledge(), 100);
+      }
+    });
+  } else if (knowledgeRoutes.includes(currentPath)) {
+    requestAnimationFrame(() => {
+      openSettings();
+      setTimeout(() => openKnowledge(), 100);
+    });
   }
 
   if (settingsToggle) {
