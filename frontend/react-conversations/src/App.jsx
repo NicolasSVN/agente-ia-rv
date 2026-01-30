@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Search, Plus, User, Bot, Send, UserCheck, Loader2, MessageCircle, CheckCheck, MoreVertical, Copy, Reply, Trash2, Forward, X, Phone, Image as ImageIcon, FileText, Mic } from 'lucide-react';
+import { Search, Plus, User, Bot, Send, UserCheck, Loader2, MessageCircle, CheckCheck, MoreVertical, Copy, Reply, Trash2, Forward, X, Phone } from 'lucide-react';
 
 const API_BASE = '/api';
 
@@ -35,12 +35,12 @@ function formatTime(dateStr) {
 function StatusBadge({ status }) {
   const config = {
     bot_active: { bg: 'bg-primary/10', text: 'text-primary', border: 'border-primary/20', label: 'Bot' },
-    human_takeover: { bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-200', label: 'Humano' },
+    human_takeover: { bg: 'bg-amber-100', text: 'text-amber-700', border: 'border-amber-200', label: 'Humano' },
     closed: { bg: 'bg-gray-100', text: 'text-gray-500', border: 'border-gray-200', label: 'Encerrada' },
   };
   const c = config[status] || config.closed;
   return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold border ${c.bg} ${c.text} ${c.border}`}>
+    <span className={`inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium border ${c.bg} ${c.text} ${c.border}`}>
       {c.label}
     </span>
   );
@@ -55,20 +55,20 @@ function MessageContextMenu({ x, y, onClose, onCopy, onDelete }) {
 
   return (
     <div 
-      className="fixed bg-slate-700 rounded-lg shadow-xl py-2 min-w-[140px] z-50 border border-slate-600"
+      className="fixed bg-white rounded-lg shadow-lg border border-gray-200 py-2 min-w-[160px] z-50"
       style={{ left: x, top: y }}
       onClick={e => e.stopPropagation()}
     >
-      <button onClick={onCopy} className="w-full px-4 py-2 text-left text-sm text-gray-200 hover:bg-slate-600 flex items-center gap-3">
-        <Copy className="w-4 h-4" /> Copiar
-      </button>
-      <button className="w-full px-4 py-2 text-left text-sm text-gray-200 hover:bg-slate-600 flex items-center gap-3">
+      <button className="w-full px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-3 font-medium">
         <Reply className="w-4 h-4" /> Responder
       </button>
-      <button className="w-full px-4 py-2 text-left text-sm text-gray-200 hover:bg-slate-600 flex items-center gap-3">
+      <button className="w-full px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-3 font-medium">
         <Forward className="w-4 h-4" /> Encaminhar
       </button>
-      <button onClick={onDelete} className="w-full px-4 py-2 text-left text-sm text-red-400 hover:bg-slate-600 flex items-center gap-3">
+      <button onClick={onCopy} className="w-full px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-3 font-medium">
+        <Copy className="w-4 h-4" /> Copiar
+      </button>
+      <button onClick={onDelete} className="w-full px-4 py-2.5 text-left text-sm text-red-600 hover:bg-gray-100 flex items-center gap-3 font-medium">
         <Trash2 className="w-4 h-4" /> Excluir
       </button>
     </div>
@@ -81,37 +81,35 @@ function ChatBubble({ message, contactName, onContextMenu }) {
   const senderName = isOutbound ? senderLabels[message.sender_type] || 'Sistema' : contactName || 'Contato';
   const time = formatTime(message.created_at);
   const content = message.body || message.transcription || '[Mídia]';
-  const [showMenu, setShowMenu] = useState(false);
 
-  const handleRightClick = (e) => {
+  const handleMenuClick = (e) => {
     e.preventDefault();
+    e.stopPropagation();
     onContextMenu(e, message);
   };
 
   if (isOutbound) {
     return (
-      <div className="flex items-start gap-2 justify-end mb-3 group" onContextMenu={handleRightClick}>
-        <div className="relative">
-          <button 
-            onClick={(e) => onContextMenu(e, message)}
-            className="absolute -left-8 top-2 opacity-0 group-hover:opacity-100 p-1 hover:bg-gray-200 rounded transition-opacity"
-          >
-            <MoreVertical className="w-4 h-4 text-gray-500" />
-          </button>
-          <div className={`flex flex-col max-w-[380px] leading-relaxed p-3 rounded-2xl rounded-br-sm shadow-sm ${
-            message.sender_type === 'bot' 
-              ? 'bg-primary text-white' 
-              : 'bg-emerald-600 text-white'
-          }`}>
-            <div className="flex items-center gap-2 mb-1">
-              <span className="text-xs font-semibold opacity-90">{senderName}</span>
-              <span className="text-[10px] opacity-70">{time}</span>
-            </div>
-            <p className="text-sm whitespace-pre-wrap break-words">{content}</p>
-            <div className="flex items-center justify-end gap-1 mt-1">
-              <CheckCheck className="w-3.5 h-3.5 opacity-70" />
-              <span className="text-[10px] opacity-70">Enviada</span>
-            </div>
+      <div className="flex items-start gap-2.5 justify-end mb-4">
+        <button 
+          onClick={handleMenuClick}
+          className="self-center p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+        >
+          <MoreVertical className="w-5 h-5" />
+        </button>
+        <div className={`flex flex-col w-full max-w-[320px] leading-relaxed p-4 rounded-s-xl rounded-ee-xl ${
+          message.sender_type === 'bot' 
+            ? 'bg-primary text-white' 
+            : 'bg-emerald-600 text-white'
+        }`}>
+          <div className="flex items-center space-x-2 rtl:space-x-reverse mb-1">
+            <span className="text-sm font-semibold">{senderName}</span>
+            <span className="text-sm opacity-75">{time}</span>
+          </div>
+          <p className="text-sm py-2 whitespace-pre-wrap break-words">{content}</p>
+          <div className="flex items-center gap-1.5 text-xs opacity-75">
+            <CheckCheck className="w-4 h-4" />
+            <span>Enviada</span>
           </div>
         </div>
         <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${
@@ -128,25 +126,23 @@ function ChatBubble({ message, contactName, onContextMenu }) {
   }
 
   return (
-    <div className="flex items-start gap-2 mb-3 group" onContextMenu={handleRightClick}>
-      <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gray-300 flex items-center justify-center">
-        <User className="w-4 h-4 text-gray-600" />
+    <div className="flex items-start gap-2.5 mb-4">
+      <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center">
+        <User className="w-4 h-4 text-gray-500" />
       </div>
-      <div className="relative">
-        <div className="flex flex-col max-w-[380px] leading-relaxed p-3 bg-white border border-gray-200 rounded-2xl rounded-bl-sm shadow-sm">
-          <div className="flex items-center gap-2 mb-1">
-            <span className="text-xs font-semibold text-gray-800">{senderName}</span>
-            <span className="text-[10px] text-gray-400">{time}</span>
-          </div>
-          <p className="text-sm text-gray-800 whitespace-pre-wrap break-words">{content}</p>
+      <div className="flex flex-col w-full max-w-[320px] leading-relaxed p-4 border border-gray-200 bg-gray-50 rounded-e-xl rounded-es-xl">
+        <div className="flex items-center space-x-2 rtl:space-x-reverse mb-1">
+          <span className="text-sm font-semibold text-gray-900">{senderName}</span>
+          <span className="text-sm text-gray-500">{time}</span>
         </div>
-        <button 
-          onClick={(e) => onContextMenu(e, message)}
-          className="absolute -right-8 top-2 opacity-0 group-hover:opacity-100 p-1 hover:bg-gray-200 rounded transition-opacity"
-        >
-          <MoreVertical className="w-4 h-4 text-gray-500" />
-        </button>
+        <p className="text-sm py-2 text-gray-900 whitespace-pre-wrap break-words">{content}</p>
       </div>
+      <button 
+        onClick={handleMenuClick}
+        className="self-center p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+      >
+        <MoreVertical className="w-5 h-5" />
+      </button>
     </div>
   );
 }
@@ -160,14 +156,14 @@ function ConversationItem({ conversation, isActive, onClick }) {
   return (
     <div
       onClick={onClick}
-      className={`flex items-center gap-3 px-4 py-3 cursor-pointer transition-all border-b border-gray-100 ${
+      className={`flex items-center gap-4 px-4 py-4 cursor-pointer transition-all border-b border-gray-100 ${
         isActive 
           ? 'bg-primary/5 border-l-4 border-l-primary' 
           : 'hover:bg-gray-50 border-l-4 border-l-transparent'
       }`}
     >
       <div className="relative flex-shrink-0">
-        <div className={`w-12 h-12 rounded-full flex items-center justify-center text-white font-semibold text-base ${
+        <div className={`w-12 h-12 rounded-full flex items-center justify-center text-white font-semibold text-lg ${
           conversation.status === 'human_takeover' ? 'bg-amber-500' : 'bg-gray-400'
         }`}>
           {initials}
@@ -180,20 +176,20 @@ function ConversationItem({ conversation, isActive, onClick }) {
       </div>
       
       <div className="flex-1 min-w-0">
-        <div className="flex items-center justify-between mb-0.5">
-          <span className="font-semibold text-foreground text-sm truncate max-w-[180px]">{displayName}</span>
-          <span className="text-[11px] text-muted flex-shrink-0 ml-2">{time}</span>
+        <div className="flex items-center justify-between mb-1">
+          <span className="font-semibold text-gray-900 text-sm truncate max-w-[160px]">{displayName}</span>
+          <span className="text-xs text-gray-500 flex-shrink-0 ml-2">{time}</span>
         </div>
-        <div className="text-xs text-muted mb-1 truncate">{formatPhone(conversation.phone)}</div>
-        <div className="flex items-center justify-between gap-2">
-          <p className="text-sm text-muted truncate flex-1">{preview}</p>
+        <div className="text-xs text-gray-500 mb-1.5">{formatPhone(conversation.phone)}</div>
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-sm text-gray-500 truncate flex-1">{preview}</p>
           <StatusBadge status={conversation.status} />
         </div>
       </div>
       
       {conversation.unread_count > 0 && (
-        <div className="flex-shrink-0 w-5 h-5 rounded-full bg-primary flex items-center justify-center">
-          <span className="text-[10px] text-white font-bold">{conversation.unread_count}</span>
+        <div className="flex-shrink-0 w-6 h-6 rounded-full bg-primary flex items-center justify-center">
+          <span className="text-xs text-white font-bold">{conversation.unread_count}</span>
         </div>
       )}
     </div>
@@ -222,46 +218,46 @@ function NewConversationModal({ isOpen, onClose, onSubmit, isLoading }) {
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
       <div className="bg-white rounded-xl w-full max-w-md mx-4 shadow-2xl" onClick={e => e.stopPropagation()}>
-        <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center">
-          <h3 className="font-semibold text-lg text-foreground">Nova Conversa</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 p-1 hover:bg-gray-100 rounded-full transition-colors">
+        <div className="px-6 py-5 border-b border-gray-100 flex justify-between items-center">
+          <h3 className="font-semibold text-lg text-gray-900">Nova Conversa</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 p-2 hover:bg-gray-100 rounded-full transition-colors">
             <X className="w-5 h-5" />
           </button>
         </div>
-        <div className="p-6 space-y-4">
+        <div className="p-6 space-y-5">
           <div>
-            <label className="block text-sm font-medium text-foreground mb-2">Número de Telefone</label>
+            <label className="block text-sm font-medium text-gray-900 mb-2">Número de Telefone</label>
             <div className="relative">
-              <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <Phone className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
               <input
                 type="text"
                 value={phone}
                 onChange={e => setPhone(e.target.value)}
                 placeholder="5511999999999"
-                className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-lg text-foreground placeholder-gray-400 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
+                className="w-full pl-12 pr-4 py-3 border border-gray-200 rounded-lg text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
               />
             </div>
-            <p className="text-xs text-muted mt-1.5">Código do país + DDD + número</p>
+            <p className="text-xs text-gray-500 mt-2">Código do país + DDD + número</p>
           </div>
           <div>
-            <label className="block text-sm font-medium text-foreground mb-2">Mensagem Inicial</label>
+            <label className="block text-sm font-medium text-gray-900 mb-2">Mensagem Inicial</label>
             <textarea
               value={message}
               onChange={e => setMessage(e.target.value)}
               placeholder="Digite a mensagem..."
               rows={4}
-              className="w-full px-4 py-2.5 border border-gray-200 rounded-lg text-foreground placeholder-gray-400 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all resize-none"
+              className="w-full px-4 py-3 border border-gray-200 rounded-lg text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all resize-none"
             />
           </div>
         </div>
-        <div className="px-6 py-4 border-t border-gray-100 flex gap-3 justify-end bg-gray-50 rounded-b-xl">
-          <button onClick={onClose} className="px-4 py-2 text-muted hover:text-foreground font-medium transition-colors">
+        <div className="px-6 py-5 border-t border-gray-100 flex gap-3 justify-end bg-gray-50 rounded-b-xl">
+          <button onClick={onClose} className="px-5 py-2.5 text-gray-600 hover:text-gray-900 font-medium transition-colors">
             Cancelar
           </button>
           <button
             onClick={handleSubmit}
             disabled={isLoading}
-            className="px-5 py-2 bg-primary text-white rounded-lg font-medium hover:bg-primary-dark disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-colors"
+            className="px-6 py-2.5 bg-primary text-white rounded-lg font-medium hover:bg-primary-dark disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-colors"
           >
             {isLoading && <Loader2 className="w-4 h-4 animate-spin" />}
             Enviar Mensagem
@@ -442,10 +438,9 @@ function App() {
 
   const handleMessageContextMenu = (e, message) => {
     e.preventDefault();
-    const rect = e.currentTarget?.getBoundingClientRect() || { left: e.clientX, top: e.clientY };
     setContextMenu({
-      x: Math.min(e.clientX, window.innerWidth - 160),
-      y: Math.min(e.clientY, window.innerHeight - 200),
+      x: Math.min(e.clientX, window.innerWidth - 180),
+      y: Math.min(e.clientY, window.innerHeight - 220),
       message
     });
   };
@@ -519,43 +514,43 @@ function App() {
   const contactName = currentConversation?.assessor_name || currentConversation?.contact_name || 'Contato';
 
   return (
-    <div className="h-screen flex flex-col bg-background">
-      <div className="flex-shrink-0 px-6 py-4 bg-white border-b border-border flex justify-between items-center">
+    <div className="h-full flex flex-col bg-background">
+      <div className="flex-shrink-0 px-6 py-5 bg-white border-b border-gray-200 flex justify-between items-center">
         <div>
-          <h1 className="text-xl font-bold text-foreground">Conversas</h1>
-          <p className="text-muted text-sm">Visualize e gerencie todas as conversas do agente</p>
+          <h1 className="text-xl font-bold text-gray-900">Conversas</h1>
+          <p className="text-gray-500 text-sm mt-1">Visualize e gerencie todas as conversas do agente</p>
         </div>
         <button
           onClick={() => setShowNewModal(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg font-medium hover:bg-primary-dark transition-colors shadow-sm"
+          className="flex items-center gap-2 px-5 py-2.5 bg-primary text-white rounded-lg font-medium hover:bg-primary-dark transition-colors shadow-sm"
         >
-          <Plus className="w-4 h-4" />
+          <Plus className="w-5 h-5" />
           Nova Conversa
         </button>
       </div>
 
       <div className="flex-1 flex min-h-0 overflow-hidden">
-        <div className="w-[360px] flex-shrink-0 bg-white border-r border-border flex flex-col">
-          <div className="p-3 border-b border-border">
-            <div className="relative mb-2.5">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted" />
+        <div className="w-[380px] flex-shrink-0 bg-white border-r border-gray-200 flex flex-col">
+          <div className="p-4 border-b border-gray-200">
+            <div className="relative mb-4">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
               <input
                 type="text"
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
                 placeholder="Buscar por número ou nome..."
-                className="w-full pl-10 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm text-foreground placeholder-muted focus:ring-2 focus:ring-primary/20 focus:border-primary focus:bg-white outline-none transition-all"
+                className="w-full pl-12 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-primary/20 focus:border-primary focus:bg-white outline-none transition-all"
               />
             </div>
-            <div className="flex gap-1.5">
+            <div className="flex gap-2">
               {[{ value: '', label: 'Todas' }, { value: 'bot_active', label: 'Bot' }, { value: 'human_takeover', label: 'Humano' }].map(f => (
                 <button
                   key={f.value}
                   onClick={() => setStatusFilter(f.value)}
-                  className={`flex-1 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                  className={`flex-1 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
                     statusFilter === f.value
                       ? 'bg-primary text-white'
-                      : 'bg-gray-100 text-muted hover:bg-gray-200'
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                   }`}
                 >
                   {f.label}
@@ -564,15 +559,15 @@ function App() {
             </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto scrollbar-thin min-h-0">
+          <div className="flex-1 overflow-y-auto min-h-0">
             {isLoading && conversations.length === 0 ? (
               <div className="flex justify-center items-center h-32">
-                <Loader2 className="w-6 h-6 animate-spin text-primary" />
+                <Loader2 className="w-8 h-8 animate-spin text-primary" />
               </div>
             ) : conversations.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-32 text-muted">
-                <MessageCircle className="w-10 h-10 mb-2 opacity-30" />
-                <span className="text-sm">Nenhuma conversa encontrada</span>
+              <div className="flex flex-col items-center justify-center h-32 text-gray-500">
+                <MessageCircle className="w-10 h-10 mb-3 opacity-30" />
+                <p className="text-sm">Nenhuma conversa encontrada</p>
               </div>
             ) : (
               <>
@@ -585,68 +580,52 @@ function App() {
                   />
                 ))}
                 {hasMore && (
-                  <button
-                    onClick={loadMoreConversations}
-                    disabled={isLoading}
-                    className="w-full py-3 text-sm text-primary hover:bg-primary/5 font-medium flex items-center justify-center gap-2 transition-colors"
-                  >
-                    {isLoading ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                      'Carregar mais conversas'
-                    )}
-                  </button>
+                  <div className="p-4">
+                    <button
+                      onClick={loadMoreConversations}
+                      disabled={isLoading}
+                      className="w-full py-3 text-sm text-primary hover:bg-primary/5 rounded-lg font-medium transition-colors disabled:opacity-50"
+                    >
+                      {isLoading ? 'Carregando...' : 'Carregar mais'}
+                    </button>
+                  </div>
                 )}
               </>
             )}
           </div>
-          
-          {conversations.length > 0 && (
-            <div className="flex-shrink-0 px-4 py-2 border-t border-border bg-gray-50 text-xs text-muted text-center">
-              {conversations.length} {totalCount > 0 ? `de ${totalCount}` : ''} conversas
-            </div>
-          )}
         </div>
 
         <div className="flex-1 flex flex-col bg-gray-50 min-h-0">
-          {!currentConversation ? (
-            <div className="flex-1 flex flex-col items-center justify-center text-muted">
-              <div className="w-24 h-24 rounded-full bg-gray-200 flex items-center justify-center mb-4">
-                <MessageCircle className="w-12 h-12 text-gray-400" />
-              </div>
-              <h3 className="text-lg font-semibold text-foreground mb-1">Selecione uma conversa</h3>
-              <p className="text-sm">Clique em uma conversa à esquerda para visualizar</p>
-            </div>
-          ) : (
+          {currentConversation ? (
             <>
-              <div className="flex-shrink-0 px-4 py-3 bg-white border-b border-border flex justify-between items-center">
-                <div className="flex items-center gap-3">
-                  <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-semibold ${
+              <div className="flex-shrink-0 px-6 py-4 bg-white border-b border-gray-200 flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <div className={`w-12 h-12 rounded-full flex items-center justify-center text-white font-semibold text-lg ${
                     currentConversation.status === 'human_takeover' ? 'bg-amber-500' : 'bg-gray-400'
                   }`}>
                     {contactName.charAt(0).toUpperCase()}
                   </div>
                   <div>
-                    <h3 className="font-semibold text-foreground text-sm">{contactName}</h3>
-                    <p className="text-xs text-muted">{formatPhone(currentConversation.phone)}</p>
+                    <h2 className="font-semibold text-gray-900 text-lg">{contactName}</h2>
+                    <p className="text-sm text-gray-500">{formatPhone(currentConversation.phone)}</p>
                   </div>
                 </div>
                 <button
                   onClick={toggleTakeover}
-                  className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                  className={`flex items-center gap-2 px-5 py-2.5 rounded-lg font-medium text-sm transition-colors ${
                     currentConversation.status === 'human_takeover'
-                      ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'
-                      : 'bg-amber-100 text-amber-700 hover:bg-amber-200'
+                      ? 'bg-amber-100 text-amber-700 hover:bg-amber-200'
+                      : 'bg-primary/10 text-primary hover:bg-primary/20'
                   }`}
                 >
                   {currentConversation.status === 'human_takeover' ? (
                     <>
-                      <Bot className="w-3.5 h-3.5" />
-                      Devolver ao Agente
+                      <Bot className="w-5 h-5" />
+                      Devolver ao Bot
                     </>
                   ) : (
                     <>
-                      <UserCheck className="w-3.5 h-3.5" />
+                      <UserCheck className="w-5 h-5" />
                       Assumir Conversa
                     </>
                   )}
@@ -656,18 +635,19 @@ function App() {
               <div 
                 ref={messagesContainerRef}
                 onScroll={handleMessagesScroll}
-                className="flex-1 overflow-y-auto p-4 scrollbar-thin min-h-0"
+                className="flex-1 overflow-y-auto p-6 min-h-0"
               >
                 {messages.length === 0 ? (
-                  <div className="flex items-center justify-center h-full text-muted text-sm">
-                    Nenhuma mensagem ainda
+                  <div className="flex flex-col items-center justify-center h-full text-gray-400">
+                    <MessageCircle className="w-16 h-16 mb-4 opacity-30" />
+                    <p>Nenhuma mensagem ainda</p>
                   </div>
                 ) : (
                   <>
-                    {messages.map((msg) => (
-                      <ChatBubble 
-                        key={msg.id} 
-                        message={msg} 
+                    {messages.map(msg => (
+                      <ChatBubble
+                        key={msg.id}
+                        message={msg}
                         contactName={contactName}
                         onContextMenu={handleMessageContextMenu}
                       />
@@ -677,24 +657,32 @@ function App() {
                 )}
               </div>
 
-              <div className="flex-shrink-0 p-3 bg-white border-t border-border flex gap-2 items-center">
-                <input
-                  type="text"
-                  value={messageInput}
-                  onChange={e => setMessageInput(e.target.value)}
-                  onKeyPress={e => e.key === 'Enter' && !e.shiftKey && sendMessage()}
-                  placeholder="Digite sua mensagem..."
-                  className="flex-1 px-4 py-2.5 bg-gray-100 border border-transparent rounded-full text-sm text-foreground placeholder-muted focus:ring-2 focus:ring-primary/20 focus:border-primary focus:bg-white outline-none transition-all"
-                />
-                <button
-                  onClick={sendMessage}
-                  disabled={isSending || !messageInput.trim()}
-                  className="w-10 h-10 bg-primary text-white rounded-full font-medium hover:bg-primary-dark disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center transition-colors"
-                >
-                  {isSending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-                </button>
+              <div className="flex-shrink-0 px-6 py-4 bg-white border-t border-gray-200">
+                <div className="flex items-center gap-4">
+                  <input
+                    type="text"
+                    value={messageInput}
+                    onChange={e => setMessageInput(e.target.value)}
+                    onKeyPress={e => e.key === 'Enter' && !e.shiftKey && sendMessage()}
+                    placeholder="Digite sua mensagem..."
+                    className="flex-1 px-5 py-3 bg-gray-50 border border-gray-200 rounded-full text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-primary/20 focus:border-primary focus:bg-white outline-none transition-all"
+                  />
+                  <button
+                    onClick={sendMessage}
+                    disabled={isSending || !messageInput.trim()}
+                    className="p-3 bg-primary text-white rounded-full hover:bg-primary-dark disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    {isSending ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
+                  </button>
+                </div>
               </div>
             </>
+          ) : (
+            <div className="flex-1 flex flex-col items-center justify-center text-gray-400">
+              <MessageCircle className="w-20 h-20 mb-6 opacity-20" />
+              <p className="text-xl font-medium text-gray-500">Selecione uma conversa</p>
+              <p className="text-sm mt-2">Clique em uma conversa à esquerda para visualizar</p>
+            </div>
           )}
         </div>
       </div>
