@@ -23,7 +23,7 @@ export function Modal({ open, onClose, title, children, size = 'md' }) {
             className="fixed inset-0 bg-black/40 z-[9998]"
             onClick={onClose}
           />
-          <div className="fixed inset-0 z-[9999] flex items-center justify-center pl-[240px]">
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center">
             <motion.div
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
