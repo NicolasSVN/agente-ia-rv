@@ -229,16 +229,26 @@ function App() {
   const [isSending, setIsSending] = useState(false);
   const [showNewModal, setShowNewModal] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
+  const [page, setPage] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
+  const [totalCount, setTotalCount] = useState(0);
   const messagesEndRef = useRef(null);
+  const messagesContainerRef = useRef(null);
   const eventSourceRef = useRef(null);
+  const shouldScrollRef = useRef(true);
+  const PAGE_SIZE = 20;
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
+  const scrollToBottom = useCallback((behavior = 'smooth') => {
+    if (messagesEndRef.current && shouldScrollRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior });
+    }
+  }, []);
 
-  const fetchConversations = useCallback(async () => {
+  const fetchConversations = useCallback(async (pageNum = 0, append = false) => {
+    setIsLoading(true);
     try {
-      let url = `${API_BASE}/conversations/?limit=100`;
+      const offset = pageNum * PAGE_SIZE;
+      let url = `${API_BASE}/conversations/?limit=${PAGE_SIZE}&offset=${offset}`;
       if (searchQuery) url += `&search=${encodeURIComponent(searchQuery)}`;
       if (statusFilter) url += `&status=${statusFilter}`;
       const res = await fetch(url, { credentials: 'include' });
@@ -247,7 +257,15 @@ function App() {
         return;
       }
       const data = await res.json();
-      setConversations(data);
+      const items = data.items || [];
+      const total = data.total || 0;
+      
+      setConversations(prev => {
+        const newList = append ? [...prev, ...items] : items;
+        setHasMore(newList.length < total);
+        return newList;
+      });
+      setTotalCount(total);
     } catch (err) {
       console.error('Erro ao carregar conversas:', err);
     } finally {
@@ -255,7 +273,7 @@ function App() {
     }
   }, [searchQuery, statusFilter]);
 
-  const fetchMessages = async (conversationId) => {
+  const fetchMessages = async (conversationId, isInitialLoad = false) => {
     try {
       await fetch(`${API_BASE}/conversations/${conversationId}/sync-messages`, {
         method: 'POST',
@@ -264,7 +282,12 @@ function App() {
       const res = await fetch(`${API_BASE}/conversations/${conversationId}/messages`, { credentials: 'include' });
       const data = await res.json();
       setMessages(data);
-      setTimeout(scrollToBottom, 100);
+      if (isInitialLoad) {
+        shouldScrollRef.current = true;
+        setTimeout(() => scrollToBottom('auto'), 50);
+      } else if (shouldScrollRef.current) {
+        setTimeout(() => scrollToBottom('smooth'), 50);
+      }
     } catch (err) {
       console.error('Erro ao carregar mensagens:', err);
     }
@@ -273,12 +296,21 @@ function App() {
   const selectConversation = async (conv) => {
     setCurrentConversation(conv);
     setMessages([]);
-    await fetchMessages(conv.id);
+    await fetchMessages(conv.id, true);
+  };
+
+  const loadMoreConversations = () => {
+    if (hasMore && !isLoading) {
+      const nextPage = page + 1;
+      setPage(nextPage);
+      fetchConversations(nextPage, true);
+    }
   };
 
   const sendMessage = async () => {
     if (!messageInput.trim() || !currentConversation) return;
     setIsSending(true);
+    shouldScrollRef.current = true;
     try {
       const res = await fetch(`${API_BASE}/conversations/${currentConversation.id}/send`, {
         method: 'POST',
@@ -288,8 +320,8 @@ function App() {
       });
       if (!res.ok) throw new Error('Erro ao enviar');
       setMessageInput('');
-      await fetchMessages(currentConversation.id);
-      await fetchConversations();
+      await fetchMessages(currentConversation.id, false);
+      await fetchConversations(0, false);
     } catch (err) {
       alert('Erro ao enviar mensagem');
     } finally {
@@ -309,7 +341,7 @@ function App() {
       });
       const result = await res.json();
       setCurrentConversation(prev => ({ ...prev, status: result.status }));
-      await fetchConversations();
+      await fetchConversations(0, false);
     } catch (err) {
       alert('Erro ao alterar status');
     }
@@ -327,9 +359,17 @@ function App() {
       const result = await res.json();
       if (!res.ok) throw new Error(result.detail || 'Erro');
       setShowNewModal(false);
-      await fetchConversations();
+      
+      const listRes = await fetch(`${API_BASE}/conversations/?limit=${PAGE_SIZE}&offset=0`, { credentials: 'include' });
+      const listData = await listRes.json();
+      const items = listData.items || [];
+      setConversations(items);
+      setTotalCount(listData.total || 0);
+      setHasMore(items.length < (listData.total || 0));
+      setPage(0);
+      
       if (result.conversation_id) {
-        const conv = conversations.find(c => c.id === result.conversation_id);
+        const conv = items.find(c => c.id === result.conversation_id);
         if (conv) selectConversation(conv);
       }
     } catch (err) {
@@ -344,15 +384,30 @@ function App() {
       try {
         await fetch(`${API_BASE}/conversations/sync`, { method: 'POST', credentials: 'include' });
       } catch {}
-      fetchConversations();
+      fetchConversations(0, false);
     };
     syncAndLoad();
   }, []);
 
   useEffect(() => {
-    const timer = setTimeout(() => fetchConversations(), 300);
+    setPage(0);
+    const timer = setTimeout(() => fetchConversations(0, false), 300);
     return () => clearTimeout(timer);
-  }, [searchQuery, statusFilter, fetchConversations]);
+  }, [searchQuery, statusFilter]);
+
+  useEffect(() => {
+    if (messages.length > 0 && shouldScrollRef.current) {
+      scrollToBottom('auto');
+    }
+  }, [messages.length, scrollToBottom]);
+
+  const handleMessagesScroll = useCallback(() => {
+    const container = messagesContainerRef.current;
+    if (!container) return;
+    const threshold = 100;
+    const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < threshold;
+    shouldScrollRef.current = isNearBottom;
+  }, []);
 
   useEffect(() => {
     const connectSSE = () => {
@@ -362,9 +417,9 @@ function App() {
         try {
           const data = JSON.parse(event.data);
           if (data.type === 'new_message' || data.type === 'conversation_updated') {
-            await fetchConversations();
+            await fetchConversations(0, false);
             if (currentConversation && data.data?.conversation_id === currentConversation.id) {
-              await fetchMessages(currentConversation.id);
+              await fetchMessages(currentConversation.id, false);
             }
           }
         } catch {}
@@ -377,13 +432,13 @@ function App() {
     };
     connectSSE();
     return () => eventSourceRef.current?.close();
-  }, [currentConversation]);
+  }, [currentConversation, fetchConversations]);
 
   const contactName = currentConversation?.assessor_name || currentConversation?.contact_name || 'Contato';
 
   return (
-    <div className="h-full flex flex-col">
-      <div className="flex justify-between items-center mb-4">
+    <div className="h-full flex flex-col overflow-hidden">
+      <div className="flex-shrink-0 flex justify-between items-center mb-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Conversas</h1>
           <p className="text-gray-500 text-sm">Visualize e gerencie todas as conversas do agente</p>
@@ -397,7 +452,7 @@ function App() {
         </button>
       </div>
 
-      <div className="flex-1 grid grid-cols-[360px_1fr] gap-4 min-h-0">
+      <div className="flex-1 grid grid-cols-[360px_1fr] gap-4 min-h-0 overflow-hidden">
         <div className="bg-white rounded-xl border border-gray-200 flex flex-col overflow-hidden shadow-sm">
           <div className="p-3 border-b border-gray-100 bg-gray-50">
             <div className="relative mb-2.5">
@@ -427,8 +482,8 @@ function App() {
             </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto divide-y divide-gray-100">
-            {isLoading ? (
+          <div className="flex-1 overflow-y-auto divide-y divide-gray-100 min-h-0">
+            {isLoading && conversations.length === 0 ? (
               <div className="flex justify-center items-center h-32">
                 <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
               </div>
@@ -438,16 +493,36 @@ function App() {
                 <span className="text-sm">Nenhuma conversa</span>
               </div>
             ) : (
-              conversations.map(conv => (
-                <ConversationItem
-                  key={conv.id}
-                  conversation={conv}
-                  isActive={currentConversation?.id === conv.id}
-                  onClick={() => selectConversation(conv)}
-                />
-              ))
+              <>
+                {conversations.map(conv => (
+                  <ConversationItem
+                    key={conv.id}
+                    conversation={conv}
+                    isActive={currentConversation?.id === conv.id}
+                    onClick={() => selectConversation(conv)}
+                  />
+                ))}
+                {hasMore && (
+                  <button
+                    onClick={loadMoreConversations}
+                    disabled={isLoading}
+                    className="w-full py-3 text-sm text-blue-600 hover:bg-blue-50 font-medium flex items-center justify-center gap-2 transition-colors"
+                  >
+                    {isLoading ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      'Carregar mais conversas'
+                    )}
+                  </button>
+                )}
+              </>
             )}
           </div>
+          {conversations.length > 0 && (
+            <div className="flex-shrink-0 px-3 py-2 border-t border-gray-100 bg-gray-50 text-xs text-gray-500 text-center">
+              Exibindo {conversations.length} {totalCount > 0 ? `de ${totalCount}` : ''} conversas
+            </div>
+          )}
         </div>
 
         <div className="bg-white rounded-xl border border-gray-200 flex flex-col overflow-hidden shadow-sm">
@@ -495,7 +570,11 @@ function App() {
                 </button>
               </div>
 
-              <div className="flex-1 overflow-y-auto p-4 bg-gray-50">
+              <div 
+                ref={messagesContainerRef}
+                onScroll={handleMessagesScroll}
+                className="flex-1 overflow-y-auto p-4 bg-gray-50 min-h-0"
+              >
                 {messages.length === 0 ? (
                   <div className="flex items-center justify-center h-full text-gray-400 text-sm">
                     Nenhuma mensagem ainda

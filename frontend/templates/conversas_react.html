@@ -6,9 +6,34 @@
     <title>Conversas - Agente IA - RV</title>
     <script src="/static/notifications.js?v={{ now().timestamp() if now else 1706371200 }}"></script>
     <style>
+        html, body {
+            height: 100%;
+            overflow: hidden;
+        }
+        .app-layout {
+            height: 100vh;
+            display: flex;
+            overflow: hidden;
+        }
+        .main-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            overflow: hidden;
+        }
+        .page-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
         #react-conversations-root {
             width: 100%;
-            min-height: calc(100vh - 40px);
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
         }
     </style>
 </head>

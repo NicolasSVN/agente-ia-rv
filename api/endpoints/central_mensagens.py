@@ -84,15 +84,16 @@ def normalize_phone(phone: str) -> str:
     return ''.join(c for c in phone if c.isdigit())
 
 
-@router.get("/conversations", response_model=List[ConversationListItem])
+@router.get("/conversations")
 async def list_conversations(
     search: Optional[str] = Query(None),
     status: Optional[str] = Query(None),
     limit: int = Query(50, ge=1, le=100),
+    offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Lista todas as conversas para a Central de Mensagens."""
+    """Lista todas as conversas para a Central de Mensagens com paginação."""
     query = db.query(Conversation)
     
     if search:
@@ -109,15 +110,16 @@ async def list_conversations(
     if status:
         query = query.filter(Conversation.status == status)
     
-    conversations = query.order_by(desc(Conversation.last_message_at)).limit(limit).all()
+    total = query.count()
+    conversations = query.order_by(desc(Conversation.last_message_at)).offset(offset).limit(limit).all()
     
-    result = []
+    items = []
     for conv in conversations:
         last_msg = db.query(WhatsAppMessage).filter(
             WhatsAppMessage.conversation_id == conv.id
         ).order_by(desc(WhatsAppMessage.created_at)).first()
         
-        result.append(ConversationListItem(
+        items.append(ConversationListItem(
             id=conv.id,
             phone=conv.phone,
             contact_name=conv.contact_name or conv.phone,
@@ -129,7 +131,7 @@ async def list_conversations(
             from_me=last_msg.from_me if last_msg else False
         ))
     
-    return result
+    return {"items": items, "total": total, "offset": offset, "limit": limit}
 
 
 @router.get("/conversations/{conversation_id}/messages", response_model=List[MessageItem])
