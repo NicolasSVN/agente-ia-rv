@@ -33,6 +33,7 @@ class ConversationListItem(BaseModel):
     contact_name: Optional[str] = None
     photo: Optional[str] = None
     last_message: Optional[str] = None
+    last_message_type: Optional[str] = None
     last_message_time: Optional[datetime] = None
     unread_count: int = 0
     status: str
@@ -127,6 +128,7 @@ async def list_conversations(
             contact_name=conv.contact_name or conv.phone,
             photo=None,
             last_message=conv.last_message_preview,
+            last_message_type=last_msg.message_type if last_msg else None,
             last_message_time=conv.last_message_at,
             unread_count=conv.unread_count or 0,
             status=conv.status,
