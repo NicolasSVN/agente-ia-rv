@@ -137,7 +137,7 @@
           </a>
 
           <!-- Upload Inteligente -->
-          <a href="/upload-inteligente" class="sidebar-item sidebar-indented flex items-center gap-3 px-4 py-2.5 ml-4 mr-2 rounded-lg transition-colors {% if request.path == '/upload-inteligente' %}bg-amber-50 text-amber-700{% else %}text-gray-500 hover:bg-gray-50 hover:text-gray-900{% endif %}">
+          <a href="/base-conhecimento/upload" class="sidebar-item sidebar-indented flex items-center gap-3 px-4 py-2.5 ml-4 mr-2 rounded-lg transition-colors {% if request.path.startswith('/base-conhecimento/upload') %}bg-amber-50 text-amber-700{% else %}text-gray-500 hover:bg-gray-50 hover:text-gray-900{% endif %}">
             <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
             </svg>
@@ -208,7 +208,7 @@
   let isSettingsOpen = false;
   let isKnowledgeOpen = false;
 
-  const knowledgeRoutes = ['/base-conhecimento', '/upload-inteligente', '/fila-revisao', '/documentos'];
+  const knowledgeRoutes = ['/base-conhecimento', '/fila-revisao', '/documentos'];
   const configRoutes = ['/assessores', '/admin', '/agent-brain', '/integrations'].concat(knowledgeRoutes);
   const currentPath = window.location.pathname;
 

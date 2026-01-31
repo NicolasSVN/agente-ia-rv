@@ -431,25 +431,9 @@ async def agent_brain_page(request: Request):
 
 
 @app.get("/upload-inteligente", response_class=HTMLResponse)
-async def upload_inteligente_page(request: Request):
-    """
-    Página de Upload Inteligente - upload de documentos com extração via GPT-4 Vision.
-    Requer autenticação como admin ou gestao_rv.
-    """
-    token = request.cookies.get("access_token")
-    
-    if not token:
-        return RedirectResponse(url="/login")
-    
-    payload = decode_token(token)
-    if not payload:
-        return RedirectResponse(url="/login")
-    
-    user_role = payload.get("role")
-    if user_role not in ["admin", "gestao_rv"]:
-        return RedirectResponse(url="/login?error=permission")
-    
-    return templates.TemplateResponse("upload_inteligente.html", {"request": request, "user_role": user_role})
+async def upload_inteligente_redirect():
+    """Redireciona para versão React do Upload Inteligente."""
+    return RedirectResponse(url="/base-conhecimento/upload", status_code=302)
 
 
 @app.get("/fila-revisao", response_class=HTMLResponse)
