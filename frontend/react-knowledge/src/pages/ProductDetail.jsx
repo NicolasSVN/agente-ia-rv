@@ -15,12 +15,28 @@ import { Modal } from '../components/Modal';
 import { LoadingSpinner } from '../components/LoadingSpinner';
 import { useToast } from '../components/Toast';
 
+function getMaterialStatus(material) {
+  const now = new Date();
+  
+  if (material.valid_until) {
+    const validUntil = new Date(material.valid_until);
+    if (validUntil < now) return 'expirado';
+    
+    const daysUntil = (validUntil - now) / (1000 * 60 * 60 * 24);
+    if (daysUntil <= 30) return 'expirando';
+  }
+  
+  return material.publication_status || 'draft';
+}
+
 function MaterialSection({ material, productId, onRefresh }) {
   const [expanded, setExpanded] = useState(false);
   const [showVersions, setShowVersions] = useState(null);
   const [versions, setVersions] = useState([]);
   const [loadingVersions, setLoadingVersions] = useState(false);
   const { addToast } = useToast();
+  
+  const materialStatus = getMaterialStatus(material);
 
   const loadVersions = async (blockId) => {
     setLoadingVersions(true);
@@ -101,7 +117,12 @@ function MaterialSection({ material, productId, onRefresh }) {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <StatusBadge status={material.publication_status || 'draft'} />
+          <StatusBadge status={materialStatus} />
+          {material.valid_until && (
+            <span className="text-xs text-muted">
+              até {new Date(material.valid_until).toLocaleDateString('pt-BR')}
+            </span>
+          )}
         </div>
       </button>
 

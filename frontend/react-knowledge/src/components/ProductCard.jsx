@@ -6,7 +6,18 @@ function getProductStatus(product) {
   if (product.status === 'archived') return 'archived';
   
   const now = new Date();
-  const expiring = product.materials?.some(m => {
+  
+  const allExpired = product.materials?.length > 0 && product.materials.every(m => {
+    if (m.valid_until) {
+      const validUntil = new Date(m.valid_until);
+      return validUntil < now;
+    }
+    return false;
+  });
+  
+  if (allExpired) return 'expirado';
+  
+  const someExpiring = product.materials?.some(m => {
     if (m.valid_until) {
       const validUntil = new Date(m.valid_until);
       const daysUntil = (validUntil - now) / (1000 * 60 * 60 * 24);
@@ -15,7 +26,7 @@ function getProductStatus(product) {
     return false;
   });
   
-  if (expiring) return 'expirando';
+  if (someExpiring) return 'expirando';
   return 'ativo';
 }
 
