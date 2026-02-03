@@ -194,17 +194,110 @@
     </div>
 
     <script>
+        let allDocuments = [];
         const searchInput = document.getElementById('searchInput');
         const categoryFilter = document.getElementById('categoryFilter');
 
         searchInput.addEventListener('input', filterDocuments);
         categoryFilter.addEventListener('change', filterDocuments);
 
+        async function loadDocuments() {
+            try {
+                const response = await fetch('/api/products/materials/all', {
+                    credentials: 'include'
+                });
+                if (!response.ok) throw new Error('Erro ao carregar documentos');
+                const data = await response.json();
+                allDocuments = data.materials || [];
+                updateCounters();
+                renderDocuments();
+            } catch (error) {
+                console.error('Erro:', error);
+            }
+        }
+
+        function updateCounters() {
+            const total = allDocuments.length;
+            const indexed = allDocuments.filter(d => d.indexed).length;
+            const pending = allDocuments.filter(d => !d.indexed).length;
+            const thisMonth = allDocuments.filter(d => {
+                if (!d.created_at) return false;
+                const created = new Date(d.created_at);
+                const now = new Date();
+                return created.getMonth() === now.getMonth() && created.getFullYear() === now.getFullYear();
+            }).length;
+
+            const cards = document.querySelectorAll('.card .text-3xl');
+            if (cards[0]) cards[0].textContent = total;
+            if (cards[1]) cards[1].textContent = indexed;
+            if (cards[2]) cards[2].textContent = pending;
+            if (cards[3]) cards[3].textContent = thisMonth;
+        }
+
         function filterDocuments() {
+            renderDocuments();
+        }
+
+        function getDocIcon(type) {
+            return 'pdf';
+        }
+
+        function formatDate(dateStr) {
+            if (!dateStr) return '-';
+            return new Date(dateStr).toLocaleDateString('pt-BR');
+        }
+
+        function renderDocuments() {
+            const container = document.getElementById('docGrid');
             const searchTerm = searchInput.value.toLowerCase();
             const category = categoryFilter.value;
-            console.log('Filtering:', searchTerm, category);
+
+            let filtered = allDocuments;
+
+            if (searchTerm) {
+                filtered = filtered.filter(d => 
+                    (d.name || '').toLowerCase().includes(searchTerm) ||
+                    (d.product_name || '').toLowerCase().includes(searchTerm)
+                );
+            }
+
+            if (category) {
+                filtered = filtered.filter(d => d.material_type === category);
+            }
+
+            if (filtered.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <svg class="w-16 h-16 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                        </svg>
+                        <h3 class="text-lg font-semibold text-gray-700 mb-2">Nenhum documento encontrado</h3>
+                        <p class="text-gray-500 mb-4">Faça upload de documentos para começar a construir sua base de conhecimento.</p>
+                        <a href="/base-conhecimento/upload" class="btn btn-primary">Fazer Upload</a>
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = `<div class="doc-grid">${filtered.map(doc => `
+                <div class="doc-card">
+                    <div class="doc-icon ${getDocIcon(doc.material_type)}">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                        </svg>
+                    </div>
+                    <h3 class="font-semibold text-gray-800 mb-1 truncate" title="${doc.name}">${doc.name}</h3>
+                    <p class="text-sm text-gray-500 mb-2">${doc.product_name || 'Sem produto vinculado'}</p>
+                    <div class="flex justify-between items-center text-xs text-gray-400">
+                        <span>${doc.material_type || 'Documento'}</span>
+                        <span>${formatDate(doc.created_at)}</span>
+                    </div>
+                    ${doc.indexed ? '<span class="inline-block mt-2 px-2 py-1 bg-green-100 text-green-700 text-xs rounded-full">Indexado</span>' : '<span class="inline-block mt-2 px-2 py-1 bg-amber-100 text-amber-700 text-xs rounded-full">Pendente</span>'}
+                </div>
+            `).join('')}</div>`;
         }
+
+        loadDocuments();
     </script>
 </body>
 </html>

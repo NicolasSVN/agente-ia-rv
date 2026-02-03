@@ -196,12 +196,131 @@
     </div>
 
     <script>
+        let allItems = [];
+        let currentFilter = 'all';
+
         document.querySelectorAll('.filter-tab').forEach(tab => {
             tab.addEventListener('click', () => {
                 document.querySelectorAll('.filter-tab').forEach(t => t.classList.remove('active'));
                 tab.classList.add('active');
+                currentFilter = tab.dataset.filter;
+                renderItems();
             });
         });
+
+        async function loadPendingItems() {
+            try {
+                const response = await fetch('/api/products/review/pending', {
+                    credentials: 'include'
+                });
+                if (!response.ok) throw new Error('Erro ao carregar itens');
+                const data = await response.json();
+                allItems = data.pending_items || [];
+                updateCounters();
+                renderItems();
+            } catch (error) {
+                console.error('Erro:', error);
+                showNotification('Erro ao carregar itens pendentes', 'error');
+            }
+        }
+
+        function updateCounters() {
+            const pendingCount = allItems.length;
+            const highRisk = allItems.filter(i => (i.confidence_score || 0) < 0.5).length;
+            const cards = document.querySelectorAll('.card .text-3xl');
+            if (cards[0]) cards[0].textContent = pendingCount;
+            if (cards[1]) cards[1].textContent = highRisk;
+        }
+
+        function getRiskLevel(score) {
+            if (!score || score < 0.5) return 'high';
+            if (score < 0.75) return 'medium';
+            return 'low';
+        }
+
+        function getRiskLabel(level) {
+            return { high: 'Alto Risco', medium: 'Médio Risco', low: 'Baixo Risco' }[level];
+        }
+
+        function renderItems() {
+            const container = document.getElementById('reviewList');
+            let filtered = allItems;
+            
+            if (currentFilter !== 'all') {
+                filtered = allItems.filter(item => getRiskLevel(item.confidence_score) === currentFilter);
+            }
+
+            if (filtered.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <svg class="w-16 h-16 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"></path>
+                        </svg>
+                        <h3 class="text-lg font-semibold text-gray-700 mb-2">Nenhum item para revisar</h3>
+                        <p class="text-gray-500">Quando novos conteúdos forem enviados, eles aparecerão aqui para revisão.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = filtered.map(item => {
+                const risk = getRiskLevel(item.confidence_score);
+                const content = item.extracted_content || item.original_content || 'Sem conteúdo';
+                const preview = content.length > 300 ? content.substring(0, 300) + '...' : content;
+                
+                return `
+                    <div class="review-card ${risk}-risk" data-id="${item.id}">
+                        <div class="flex justify-between items-start mb-3">
+                            <div>
+                                <h3 class="font-semibold text-gray-800">${item.block_title || 'Bloco sem título'}</h3>
+                                <p class="text-sm text-gray-500">${item.product_name || 'Produto não vinculado'} / ${item.material_name || 'Material'}</p>
+                            </div>
+                            <span class="risk-badge ${risk}">${getRiskLabel(risk)}</span>
+                        </div>
+                        ${item.risk_reason ? `<p class="text-sm text-red-600 mb-2"><strong>Motivo:</strong> ${item.risk_reason}</p>` : ''}
+                        <div class="content-preview">${preview}</div>
+                        <div class="action-buttons">
+                            <button class="btn-approve" onclick="approveItem(${item.id})">Aprovar</button>
+                            <button class="btn-reject" onclick="rejectItem(${item.id})">Rejeitar</button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        async function approveItem(id) {
+            try {
+                const response = await fetch(`/api/products/review/${id}/approve`, {
+                    method: 'POST',
+                    credentials: 'include'
+                });
+                if (!response.ok) throw new Error('Erro ao aprovar');
+                showNotification('Item aprovado com sucesso', 'success');
+                allItems = allItems.filter(i => i.id !== id);
+                updateCounters();
+                renderItems();
+            } catch (error) {
+                showNotification('Erro ao aprovar item', 'error');
+            }
+        }
+
+        async function rejectItem(id) {
+            try {
+                const response = await fetch(`/api/products/review/${id}/reject`, {
+                    method: 'POST',
+                    credentials: 'include'
+                });
+                if (!response.ok) throw new Error('Erro ao rejeitar');
+                showNotification('Item rejeitado', 'warning');
+                allItems = allItems.filter(i => i.id !== id);
+                updateCounters();
+                renderItems();
+            } catch (error) {
+                showNotification('Erro ao rejeitar item', 'error');
+            }
+        }
+
+        loadPendingItems();
     </script>
 </body>
 </html>

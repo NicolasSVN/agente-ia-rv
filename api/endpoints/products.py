@@ -1019,6 +1019,39 @@ async def process_pdf_background(
         db.close()
 
 
+@router.get("/materials/all")
+async def list_all_materials(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Lista todos os materiais do sistema."""
+    if current_user.role not in ["admin", "gestao_rv", "broker"]:
+        raise HTTPException(status_code=403, detail="Acesso negado")
+    
+    materials = db.query(Material).options(
+        joinedload(Material.product)
+    ).order_by(Material.created_at.desc()).all()
+    
+    result = []
+    for m in materials:
+        blocks_count = db.query(ContentBlock).filter(ContentBlock.material_id == m.id).count()
+        result.append({
+            "id": m.id,
+            "name": m.name,
+            "material_type": m.material_type,
+            "product_id": m.product_id,
+            "product_name": m.product.name if m.product else None,
+            "product_ticker": m.product.ticker if m.product else None,
+            "created_at": m.created_at.isoformat() if m.created_at else None,
+            "valid_from": m.valid_from.isoformat() if m.valid_from else None,
+            "valid_until": m.valid_until.isoformat() if m.valid_until else None,
+            "indexed": blocks_count > 0,
+            "blocks_count": blocks_count
+        })
+    
+    return {"materials": result, "total": len(result)}
+
+
 @router.post("/{product_id}/materials/{material_id}/upload")
 async def upload_pdf_to_material(
     product_id: int,
