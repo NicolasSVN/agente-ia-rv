@@ -834,11 +834,14 @@ async def list_pending_reviews(
     
     items = []
     for p in pending:
+        material = p.block.material if p.block else None
         items.append({
             "id": p.id,
             "block_id": p.block_id,
-            "product_name": p.block.material.product.name if p.block and p.block.material and p.block.material.product else None,
-            "material_name": p.block.material.name if p.block and p.block.material else None,
+            "product_name": material.product.name if material and material.product else None,
+            "material_name": material.name if material else None,
+            "material_id": material.id if material else None,
+            "source_page": p.block.source_page if p.block else None,
             "block_title": p.block.title if p.block else None,
             "block_type": p.block.block_type if p.block else None,
             "original_content": p.original_content,
@@ -1018,6 +1021,35 @@ async def process_pdf_background(
         print(f"[PDF_UPLOAD] Erro no processamento: {e}")
     finally:
         db.close()
+
+
+@router.get("/materials/{material_id}/pdf")
+async def get_material_pdf(
+    material_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Retorna o arquivo PDF de um material."""
+    if current_user.role not in ["admin", "gestao_rv", "broker"]:
+        raise HTTPException(status_code=403, detail="Acesso negado")
+    
+    material = db.query(Material).filter(Material.id == material_id).first()
+    if not material:
+        raise HTTPException(status_code=404, detail="Material não encontrado")
+    
+    if not material.source_file_path:
+        raise HTTPException(status_code=404, detail="PDF não disponível")
+    
+    import os
+    if not os.path.exists(material.source_file_path):
+        raise HTTPException(status_code=404, detail="Arquivo não encontrado")
+    
+    from fastapi.responses import FileResponse
+    return FileResponse(
+        material.source_file_path,
+        media_type="application/pdf",
+        filename=material.name + ".pdf"
+    )
 
 
 @router.get("/materials/all")
