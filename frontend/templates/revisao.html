@@ -502,7 +502,14 @@
         }
 
         async function rejectItem(itemId) {
-            if (!confirm('Tem certeza que deseja rejeitar este item?')) return;
+            const confirmed = await AppNotifications.confirm({
+                title: 'Rejeitar Item',
+                message: 'Tem certeza que deseja rejeitar este item?',
+                confirmText: 'Rejeitar',
+                cancelText: 'Cancelar',
+                type: 'danger'
+            });
+            if (!confirmed) return;
             
             try {
                 const response = await fetch(`/api/products/review/${itemId}/reject`, {
@@ -549,7 +556,15 @@
 
         async function rejectSelected() {
             if (selectedItems.size === 0) return;
-            if (!confirm(`Tem certeza que deseja rejeitar ${selectedItems.size} itens?`)) return;
+            
+            const confirmed = await AppNotifications.confirm({
+                title: 'Rejeitar Itens',
+                message: `Tem certeza que deseja rejeitar ${selectedItems.size} itens?`,
+                confirmText: 'Rejeitar Todos',
+                cancelText: 'Cancelar',
+                type: 'danger'
+            });
+            if (!confirmed) return;
             
             const ids = Array.from(selectedItems);
             let rejected = 0;

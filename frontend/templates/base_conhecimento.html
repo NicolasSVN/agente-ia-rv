@@ -1389,7 +1389,15 @@
 
         async function deleteProduct() {
             if (!currentProduct) return;
-            if (!confirm('Tem certeza que deseja excluir este produto e todos seus materiais?')) return;
+            
+            const confirmed = await toast.confirm({
+                title: 'Excluir Produto',
+                message: 'Tem certeza que deseja excluir este produto e todos seus materiais?',
+                confirmText: 'Excluir',
+                cancelText: 'Cancelar',
+                type: 'danger'
+            });
+            if (!confirmed) return;
 
             try {
                 const response = await fetch('/api/products/' + currentProduct.id, {
@@ -1449,7 +1457,15 @@
 
         async function deleteMaterial(materialId) {
             if (!currentProduct) return;
-            if (!confirm('Tem certeza que deseja excluir este material?')) return;
+            
+            const confirmed = await toast.confirm({
+                title: 'Excluir Material',
+                message: 'Tem certeza que deseja excluir este material?',
+                confirmText: 'Excluir',
+                cancelText: 'Cancelar',
+                type: 'danger'
+            });
+            if (!confirmed) return;
 
             try {
                 const response = await fetch('/api/products/' + currentProduct.id + '/materials/' + materialId, {
@@ -1553,7 +1569,15 @@
 
         async function deleteScript(scriptId) {
             if (!currentProduct) return;
-            if (!confirm('Tem certeza que deseja excluir este script?')) return;
+            
+            const confirmed = await toast.confirm({
+                title: 'Excluir Script',
+                message: 'Tem certeza que deseja excluir este script?',
+                confirmText: 'Excluir',
+                cancelText: 'Cancelar',
+                type: 'danger'
+            });
+            if (!confirmed) return;
 
             try {
                 const response = await fetch('/api/products/' + currentProduct.id + '/scripts/' + scriptId, {

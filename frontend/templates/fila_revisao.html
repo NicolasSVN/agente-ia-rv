@@ -408,12 +408,18 @@
             const item = allItems.find(i => i.id === id);
             if (!item) return;
             
-            if (!confirm(`Deseja reprocessar a extração da ${item.block_title}?\n\nIsso vai re-analisar a imagem do PDF para capturar todos os dados da tabela.`)) {
-                return;
-            }
+            const confirmed = await AppNotifications.confirm({
+                title: 'Reprocessar Extração',
+                message: `Deseja reprocessar a extração da ${item.block_title}? Isso vai re-analisar a imagem do PDF para capturar todos os dados da tabela.`,
+                confirmText: 'Reprocessar',
+                cancelText: 'Cancelar',
+                type: 'warning'
+            });
+            
+            if (!confirmed) return;
             
             try {
-                AppNotifications.show('Reprocessando página...', 'info');
+                AppNotifications.info('Reprocessando página...');
                 
                 const response = await fetch(`/api/products/review/${id}/reprocess`, {
                     method: 'POST',
@@ -425,10 +431,10 @@
                     throw new Error(data.detail || 'Erro ao reprocessar');
                 }
                 
-                AppNotifications.show('Reprocessamento iniciado! Atualize a página em alguns segundos para ver os novos dados.', 'success');
+                AppNotifications.success('Reprocessamento iniciado! Atualize a página em alguns segundos para ver os novos dados.');
                 
             } catch (error) {
-                AppNotifications.show(error.message || 'Erro ao reprocessar item', 'error');
+                AppNotifications.error(error.message || 'Erro ao reprocessar item');
             }
         }
 
