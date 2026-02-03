@@ -415,6 +415,225 @@ class ProductIngestor:
         
         return {"success": True, "stats": stats}
     
+    def process_pdf_with_product_detection_streaming(
+        self,
+        pdf_path: str,
+        material_id: int,
+        document_title: str,
+        db: Session,
+        user_id: Optional[int] = None,
+        progress_callback: Optional[callable] = None,
+        log_callback: Optional[callable] = None
+    ) -> Dict[str, Any]:
+        """
+        Processa PDF com detecção automática de produtos, enviando logs em tempo real.
+        """
+        from database.models import Product, Material
+        
+        def log(msg, log_type="info"):
+            if log_callback:
+                log_callback(msg, log_type)
+            print(f"[SMART_UPLOAD] {msg}")
+        
+        log("Convertendo PDF em imagens...")
+        
+        processed = self.doc_processor.process_pdf(
+            pdf_path=pdf_path,
+            document_title=document_title,
+            progress_callback=progress_callback
+        )
+        
+        if processed.get("error"):
+            log(f"Erro: {processed['error']}", "error")
+            return {"success": False, "error": processed["error"]}
+        
+        total_pages = processed.get("total_pages", 0)
+        log(f"Documento com {total_pages} páginas detectado", "success")
+        
+        all_products = db.query(Product).filter(
+            Product.ticker != "__SYSTEM_UNASSIGNED__",
+            Product.status == "ativo"
+        ).all()
+        
+        product_lookup = {}
+        for p in all_products:
+            if p.ticker:
+                product_lookup[p.ticker.upper()] = p
+            product_lookup[p.name.upper()] = p
+        
+        log(f"Base de produtos carregada: {len(all_products)} produtos ativos")
+        
+        stats = {
+            "total_pages": total_pages,
+            "blocks_created": 0,
+            "products_matched": set(),
+            "auto_approved": 0,
+            "pending_review": 0
+        }
+        
+        block_order = 0
+        
+        for page in processed.get("pages", []):
+            page_num = page.get("page_number", 0)
+            content_type = page.get("content_type", "text")
+            summary = page.get("summary", "")
+            facts = page.get("facts", [])
+            raw_data = page.get("raw_data", {})
+            products_in_page = page.get("products", [])
+            
+            matched_product = None
+            for prod_name in products_in_page:
+                prod_upper = prod_name.upper().strip()
+                if prod_upper in product_lookup:
+                    matched_product = product_lookup[prod_upper]
+                    stats["products_matched"].add(matched_product.ticker or matched_product.name)
+                    break
+            
+            if not matched_product:
+                page_text = summary + " " + " ".join(facts)
+                import re
+                ticker_pattern = r'\b([A-Z]{4}\d{1,2})\b'
+                tickers_found = re.findall(ticker_pattern, page_text.upper())
+                for ticker in tickers_found:
+                    if ticker in product_lookup:
+                        matched_product = product_lookup[ticker]
+                        stats["products_matched"].add(ticker)
+                        break
+            
+            target_material_id = material_id
+            
+            if matched_product:
+                log(f"Página {page_num}: Produto identificado - {matched_product.ticker or matched_product.name}", "success")
+                existing_material = db.query(Material).filter(
+                    Material.product_id == matched_product.id,
+                    Material.name == document_title
+                ).first()
+                
+                if existing_material:
+                    target_material_id = existing_material.id
+                else:
+                    new_material = Material(
+                        product_id=matched_product.id,
+                        material_type="smart_upload",
+                        name=document_title,
+                        description=f"Importado automaticamente de {os.path.basename(pdf_path)}",
+                        publish_status="rascunho"
+                    )
+                    db.add(new_material)
+                    db.commit()
+                    db.refresh(new_material)
+                    target_material_id = new_material.id
+            else:
+                log(f"Página {page_num}: Nenhum produto identificado - enviando para revisão", "warning")
+            
+            blocks_created_page = 0
+            
+            if content_type == "table" or raw_data.get("tables"):
+                tables = raw_data.get("tables", [])
+                for i, table in enumerate(tables):
+                    table_json = json.dumps(table, ensure_ascii=False)
+                    block = self._create_block(
+                        material_id=target_material_id,
+                        block_type=ContentBlockType.TABLE.value,
+                        title=f"Tabela - Página {page_num}" + (f" ({i+1})" if len(tables) > 1 else ""),
+                        content=table_json,
+                        source_page=page_num,
+                        order=block_order,
+                        db=db,
+                        user_id=user_id
+                    )
+                    block_order += 1
+                    stats["blocks_created"] += 1
+                    blocks_created_page += 1
+                    if block.status == ContentBlockStatus.AUTO_APPROVED.value:
+                        stats["auto_approved"] += 1
+                    else:
+                        stats["pending_review"] += 1
+            
+            if content_type == "infographic":
+                block = self._create_block(
+                    material_id=target_material_id,
+                    block_type=ContentBlockType.CHART.value,
+                    title=f"Gráfico - Página {page_num}",
+                    content=summary + ("\n\n" + "\n".join(facts) if facts else ""),
+                    source_page=page_num,
+                    order=block_order,
+                    db=db,
+                    user_id=user_id
+                )
+                block_order += 1
+                stats["blocks_created"] += 1
+                blocks_created_page += 1
+                stats["pending_review"] += 1
+            
+            if facts and content_type not in ["table", "infographic"]:
+                text_content = "\n\n".join(facts)
+                if summary:
+                    text_content = f"{summary}\n\n{text_content}"
+                
+                block = self._create_block(
+                    material_id=target_material_id,
+                    block_type=ContentBlockType.TEXT.value,
+                    title=f"Conteúdo - Página {page_num}",
+                    content=text_content,
+                    source_page=page_num,
+                    order=block_order,
+                    db=db,
+                    user_id=user_id
+                )
+                block_order += 1
+                stats["blocks_created"] += 1
+                blocks_created_page += 1
+                if block.status == ContentBlockStatus.AUTO_APPROVED.value:
+                    stats["auto_approved"] += 1
+                else:
+                    stats["pending_review"] += 1
+            
+            if blocks_created_page > 0:
+                log(f"Página {page_num}: {blocks_created_page} bloco(s) criado(s)")
+        
+        original_material = db.query(Material).filter(Material.id == material_id).first()
+        if original_material:
+            original_material.source_file_path = pdf_path
+            original_material.source_filename = os.path.basename(pdf_path)
+            db.commit()
+            
+            from database.models import ContentBlock as CB
+            blocks_in_original = db.query(CB).filter(CB.material_id == material_id).count()
+            
+            if blocks_in_original == 0 and stats["products_matched"]:
+                db.delete(original_material)
+                db.commit()
+                log("Material placeholder removido - blocos redistribuídos para produtos identificados")
+        
+        stats["products_matched"] = list(stats["products_matched"])
+        
+        log(f"Processamento finalizado: {stats['blocks_created']} blocos, {len(stats['products_matched'])} produtos identificados", "success")
+        
+        ingestion_log = IngestionLog(
+            material_id=material_id,
+            document_name=os.path.basename(pdf_path),
+            document_type="pdf",
+            total_pages=total_pages,
+            blocks_created=stats["blocks_created"],
+            blocks_auto_approved=stats["auto_approved"],
+            blocks_pending_review=stats["pending_review"],
+            blocks_rejected=0,
+            tables_detected=sum(1 for p in processed.get("pages", []) if p.get("raw_data", {}).get("tables")),
+            charts_detected=sum(1 for p in processed.get("pages", []) if p.get("content_type") == "infographic"),
+            status="success",
+            details_json=json.dumps({
+                "products_matched": stats["products_matched"],
+                "smart_upload": True,
+                "streaming": True
+            }),
+            user_id=user_id
+        )
+        db.add(ingestion_log)
+        db.commit()
+        
+        return {"success": True, "stats": stats}
+    
     def _create_block(
         self,
         material_id: int,

@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Upload, FileText, CheckCircle, ArrowRight, Sparkles, Info } from 'lucide-react';
+import { Upload, FileText, CheckCircle, ArrowRight, Sparkles, Info, AlertCircle } from 'lucide-react';
 import { materialsAPI } from '../services/api';
 import { FileUpload } from '../components/FileUpload';
 import { Button } from '../components/Button';
@@ -20,6 +20,7 @@ const MATERIAL_TYPES = [
 export function SmartUpload() {
   const navigate = useNavigate();
   const { addToast } = useToast();
+  const logRef = useRef(null);
   
   const [step, setStep] = useState(1);
   const [file, setFile] = useState(null);
@@ -31,16 +32,29 @@ export function SmartUpload() {
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadComplete, setUploadComplete] = useState(false);
-  const [createdMaterialId, setCreatedMaterialId] = useState(null);
+  const [currentPage, setCurrentPage] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
+  const [logs, setLogs] = useState([]);
+  const [stats, setStats] = useState(null);
+  const [hasError, setHasError] = useState(false);
 
-  const handleUpload = async () => {
-    if (!file || !materialType) {
-      addToast('Selecione um arquivo e tipo de material', 'warning');
-      return;
+  useEffect(() => {
+    if (logRef.current) {
+      logRef.current.scrollTop = logRef.current.scrollHeight;
     }
+  }, [logs]);
 
+  const addLog = (message, type = 'info') => {
+    const time = new Date().toLocaleTimeString('pt-BR');
+    setLogs(prev => [...prev, { time, message, type }]);
+  };
+
+  const handleUploadWithProduct = async () => {
     setUploading(true);
     setStep(3);
+    setLogs([]);
+    setHasError(false);
+    setStats(null);
 
     try {
       const materialData = {
@@ -51,39 +65,138 @@ export function SmartUpload() {
         valid_until: validUntil || null,
       };
 
+      addLog('Iniciando upload para produto selecionado...', 'info');
+      
       let progress = 0;
       const progressInterval = setInterval(() => {
         progress += Math.random() * 15;
         if (progress > 90) progress = 90;
         setUploadProgress(Math.round(progress));
-      }, 500);
+        addLog(`Processando... ${Math.round(progress)}%`, 'info');
+      }, 1500);
 
-      let material;
-      let productId;
-
-      if (selectedProduct) {
-        productId = selectedProduct.id;
-        material = await materialsAPI.create(productId, materialData);
-        await materialsAPI.uploadPDF(productId, material.id, file);
-      } else {
-        const response = await materialsAPI.uploadWithoutProduct(file, materialData);
-        material = response.material;
-        productId = response.product_id;
-      }
-
-      setCreatedMaterialId(material?.id);
-
+      const material = await materialsAPI.create(selectedProduct.id, materialData);
+      addLog('Material criado, enviando PDF...', 'info');
+      
+      await materialsAPI.uploadPDF(selectedProduct.id, material.id, file);
+      
       clearInterval(progressInterval);
       setUploadProgress(100);
       setUploadComplete(true);
       setUploading(false);
-      addToast('Documento processado com sucesso! A IA identificará automaticamente os produtos.', 'success');
-
+      setStats({ blocks_created: 0, auto_approved: 0, pending_review: 0, products_matched: [selectedProduct.ticker || selectedProduct.name] });
+      addLog('Documento processado com sucesso!', 'success');
+      addToast('Documento processado com sucesso!', 'success');
     } catch (err) {
+      addLog(`Erro: ${err.message}`, 'error');
       addToast(`Erro: ${err.message}`, 'error');
-      setStep(2);
+      setHasError(true);
       setUploading(false);
-      setUploadProgress(0);
+    }
+  };
+
+  const handleUploadStreaming = async () => {
+    setUploading(true);
+    setStep(3);
+    setLogs([]);
+    setHasError(false);
+    setStats(null);
+
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('material_type', materialType);
+      formData.append('name', file.name.replace('.pdf', ''));
+      if (tags) formData.append('description', `Tags: ${tags}`);
+      if (validFrom) formData.append('valid_from', validFrom);
+      if (validUntil) formData.append('valid_until', validUntil);
+
+      addLog('Iniciando upload do arquivo...', 'info');
+
+      const response = await fetch('/api/products/smart-upload-stream', {
+        method: 'POST',
+        body: formData,
+        credentials: 'include'
+      });
+
+      if (!response.ok) {
+        throw new Error(`Erro ${response.status}: ${response.statusText}`);
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        
+        const events = buffer.split('\n\n');
+        buffer = events.pop() || '';
+
+        for (const eventBlock of events) {
+          const lines = eventBlock.split('\n');
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              try {
+                const event = JSON.parse(line.slice(6));
+                
+                if (event.type === 'start') {
+                  addLog(event.message, 'info');
+                } else if (event.type === 'progress') {
+                  setCurrentPage(event.current);
+                  setTotalPages(event.total);
+                  setUploadProgress(event.percent);
+                } else if (event.type === 'log') {
+                  addLog(event.message, event.log_type || 'info');
+                } else if (event.type === 'complete') {
+                  setUploadProgress(100);
+                  setUploadComplete(true);
+                  setUploading(false);
+                  setStats(event.stats);
+                  addLog(event.message, 'success');
+                  addToast('Documento processado com sucesso!', 'success');
+                } else if (event.type === 'error') {
+                  setHasError(true);
+                  setUploading(false);
+                  addLog(event.message, 'error');
+                  addToast(event.message, 'error');
+                }
+              } catch (e) {
+              }
+            }
+          }
+        }
+      }
+    } catch (err) {
+      addLog(`Erro: ${err.message}`, 'error');
+      addToast(`Erro: ${err.message}`, 'error');
+      setHasError(true);
+      setUploading(false);
+    }
+  };
+
+  const handleUpload = async () => {
+    if (!file || !materialType) {
+      addToast('Selecione um arquivo e tipo de material', 'warning');
+      return;
+    }
+
+    if (selectedProduct) {
+      await handleUploadWithProduct();
+    } else {
+      await handleUploadStreaming();
+    }
+  };
+
+  const getLogColor = (type) => {
+    switch (type) {
+      case 'success': return 'text-green-400';
+      case 'warning': return 'text-yellow-400';
+      case 'error': return 'text-red-400';
+      default: return 'text-slate-400';
     }
   };
 
@@ -245,47 +358,119 @@ export function SmartUpload() {
     <motion.div
       initial={{ opacity: 0, scale: 0.95 }}
       animate={{ opacity: 1, scale: 1 }}
-      className="text-center py-8"
+      className="space-y-6"
     >
       {!uploadComplete ? (
         <>
-          <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-6">
-            <Sparkles className="w-10 h-10 text-primary animate-pulse" />
-          </div>
-          <h2 className="text-xl font-semibold text-foreground mb-2">
-            Processando documento...
-          </h2>
-          <p className="text-muted mb-6">
-            A IA está extraindo tabelas, gráficos e textos do seu documento
-          </p>
-          <div className="max-w-md mx-auto">
-            <div className="h-3 bg-border rounded-full overflow-hidden">
+          <div className="bg-card border border-border rounded-xl p-6">
+            <div className="flex justify-between items-center mb-4">
+              <h4 className="font-semibold text-foreground flex items-center gap-2">
+                {hasError ? (
+                  <AlertCircle className="w-5 h-5 text-red-500" />
+                ) : (
+                  <Sparkles className="w-5 h-5 text-primary animate-pulse" />
+                )}
+                {hasError ? 'Erro no processamento' : 'Processando documento...'}
+              </h4>
+              <span className="text-2xl font-bold text-primary">{uploadProgress}%</span>
+            </div>
+            
+            <div className="h-3 bg-border rounded-full overflow-hidden mb-4">
               <motion.div
                 initial={{ width: 0 }}
                 animate={{ width: `${uploadProgress}%` }}
-                className="h-full bg-primary rounded-full"
+                className={`h-full rounded-full transition-all ${hasError ? 'bg-red-500' : 'bg-gradient-to-r from-primary to-indigo-400'}`}
               />
             </div>
-            <p className="text-sm text-muted mt-2">{uploadProgress}%</p>
+            
+            <div className="flex justify-between text-sm text-muted mb-4">
+              <span>{currentPage} de {totalPages} páginas</span>
+              <span>
+                {stats ? (
+                  <>Blocos: <span className="text-green-600 font-semibold">{stats.blocks_created}</span></>
+                ) : 'Aguardando...'}
+              </span>
+            </div>
+
+            <div 
+              ref={logRef}
+              className="bg-slate-800 text-slate-300 rounded-lg p-4 font-mono text-xs max-h-48 overflow-y-auto"
+              style={{ display: logs.length > 0 ? 'block' : 'none' }}
+            >
+              {logs.map((log, i) => (
+                <div key={i} className={`mb-1 ${getLogColor(log.type)}`}>
+                  [{log.time}] {log.message}
+                </div>
+              ))}
+            </div>
           </div>
+
+          {hasError && (
+            <div className="flex gap-3 justify-center">
+              <Button variant="secondary" onClick={() => {
+                setStep(2);
+                setUploading(false);
+                setUploadProgress(0);
+                setLogs([]);
+                setHasError(false);
+              }}>
+                Tentar Novamente
+              </Button>
+            </div>
+          )}
         </>
       ) : (
         <>
-          <motion.div
-            initial={{ scale: 0 }}
-            animate={{ scale: 1 }}
-            className="w-20 h-20 rounded-full bg-success/10 flex items-center justify-center mx-auto mb-6"
+          <div className="text-center py-4">
+            <motion.div
+              initial={{ scale: 0 }}
+              animate={{ scale: 1 }}
+              className="w-20 h-20 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-6"
+            >
+              <CheckCircle className="w-10 h-10 text-green-600" />
+            </motion.div>
+            <h2 className="text-xl font-semibold text-foreground mb-2">
+              Documento processado!
+            </h2>
+            <p className="text-muted mb-4">
+              {selectedProduct 
+                ? 'Os blocos foram extraídos e estão prontos para revisão'
+                : 'Os blocos foram extraídos e vinculados automaticamente aos produtos identificados'}
+            </p>
+          </div>
+
+          {stats && (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-center">
+                <div className="text-2xl font-bold text-blue-600">{stats.blocks_created}</div>
+                <div className="text-xs text-blue-700">Blocos Criados</div>
+              </div>
+              <div className="bg-green-50 border border-green-200 rounded-lg p-3 text-center">
+                <div className="text-2xl font-bold text-green-600">{stats.auto_approved}</div>
+                <div className="text-xs text-green-700">Auto-Aprovados</div>
+              </div>
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-center">
+                <div className="text-2xl font-bold text-yellow-600">{stats.pending_review}</div>
+                <div className="text-xs text-yellow-700">Para Revisão</div>
+              </div>
+              <div className="bg-purple-50 border border-purple-200 rounded-lg p-3 text-center">
+                <div className="text-2xl font-bold text-purple-600">{stats.products_matched?.length || 0}</div>
+                <div className="text-xs text-purple-700">Produtos</div>
+              </div>
+            </div>
+          )}
+
+          <div 
+            ref={logRef}
+            className="bg-slate-800 text-slate-300 rounded-lg p-4 font-mono text-xs max-h-36 overflow-y-auto mb-6"
           >
-            <CheckCircle className="w-10 h-10 text-success" />
-          </motion.div>
-          <h2 className="text-xl font-semibold text-foreground mb-2">
-            Documento processado!
-          </h2>
-          <p className="text-muted mb-6">
-            {selectedProduct 
-              ? 'Os blocos foram extraídos e estão prontos para revisão'
-              : 'Os blocos foram extraídos e vinculados automaticamente aos produtos identificados'}
-          </p>
+            {logs.map((log, i) => (
+              <div key={i} className={`mb-1 ${getLogColor(log.type)}`}>
+                [{log.time}] {log.message}
+              </div>
+            ))}
+          </div>
+
           <div className="flex gap-3 justify-center">
             <Button variant="secondary" onClick={() => {
               setStep(1);
@@ -294,7 +479,10 @@ export function SmartUpload() {
               setSelectedProduct(null);
               setUploadComplete(false);
               setUploadProgress(0);
-              setCreatedMaterialId(null);
+              setLogs([]);
+              setStats(null);
+              setCurrentPage(0);
+              setTotalPages(0);
             }}>
               Novo Upload
             </Button>

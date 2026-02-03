@@ -9,8 +9,12 @@ import uuid
 from typing import List, Optional
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, BackgroundTasks, Request
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session, joinedload
+import asyncio
+import queue
+import threading
 from sqlalchemy import or_
 from pydantic import BaseModel
 
@@ -1160,6 +1164,161 @@ async def smart_upload_without_product(
         },
         "product_id": placeholder_product.id
     }
+
+
+@router.post("/smart-upload-stream")
+async def smart_upload_stream(
+    request: Request,
+    file: UploadFile = File(...),
+    material_type: str = Form(...),
+    name: str = Form(...),
+    description: str = Form(None),
+    valid_from: str = Form(None),
+    valid_until: str = Form(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Upload inteligente com SSE para acompanhamento em tempo real.
+    Retorna um stream de eventos com o progresso do processamento.
+    """
+    if current_user.role not in ["admin", "gestao_rv", "broker"]:
+        raise HTTPException(status_code=403, detail="Acesso negado")
+    
+    if not file.filename.lower().endswith('.pdf'):
+        raise HTTPException(status_code=400, detail="Apenas arquivos PDF são suportados")
+    
+    if not name or not name.strip():
+        raise HTTPException(status_code=400, detail="Nome do material é obrigatório")
+    
+    placeholder_product = db.query(Product).filter(Product.ticker == "__SYSTEM_UNASSIGNED__").first()
+    if not placeholder_product:
+        raise HTTPException(status_code=500, detail="Produto de sistema não encontrado")
+    
+    from datetime import datetime as dt
+    
+    parsed_valid_from = None
+    parsed_valid_until = None
+    
+    if valid_from:
+        try:
+            parsed_valid_from = dt.fromisoformat(valid_from.replace('Z', '+00:00'))
+        except ValueError:
+            pass
+    
+    if valid_until:
+        try:
+            parsed_valid_until = dt.fromisoformat(valid_until.replace('Z', '+00:00'))
+        except ValueError:
+            pass
+    
+    material = Material(
+        product_id=placeholder_product.id,
+        material_type=material_type,
+        name=name,
+        description=description,
+        valid_from=parsed_valid_from,
+        valid_until=parsed_valid_until,
+        publish_status="rascunho"
+    )
+    db.add(material)
+    db.commit()
+    db.refresh(material)
+    
+    unique_filename = f"{uuid.uuid4()}.pdf"
+    file_path = os.path.join(UPLOAD_DIR, unique_filename)
+    
+    content = await file.read()
+    with open(file_path, "wb") as f:
+        f.write(content)
+    
+    upload_id = str(uuid.uuid4())
+    progress_queue = queue.Queue()
+    upload_progress_queues[upload_id] = progress_queue
+    
+    def process_with_progress():
+        from database.database import SessionLocal
+        from services.product_ingestor import get_product_ingestor
+        
+        db_local = SessionLocal()
+        try:
+            ingestor = get_product_ingestor()
+            
+            def progress_callback(current, total):
+                progress_queue.put({
+                    "type": "progress",
+                    "current": current,
+                    "total": total,
+                    "percent": int((current / total) * 100) if total > 0 else 0,
+                    "message": f"Processando página {current}/{total}"
+                })
+            
+            progress_queue.put({
+                "type": "start",
+                "message": "Iniciando processamento do documento...",
+                "material_id": material.id
+            })
+            
+            result = ingestor.process_pdf_with_product_detection_streaming(
+                pdf_path=file_path,
+                material_id=material.id,
+                document_title=name or file.filename.replace('.pdf', ''),
+                db=db_local,
+                user_id=current_user.id,
+                progress_callback=progress_callback,
+                log_callback=lambda msg, t: progress_queue.put({"type": "log", "message": msg, "log_type": t})
+            )
+            
+            progress_queue.put({
+                "type": "complete",
+                "success": True,
+                "message": "Processamento concluído com sucesso!",
+                "stats": {
+                    "blocks_created": result.get("stats", {}).get("blocks_created", 0),
+                    "products_matched": list(result.get("stats", {}).get("products_matched", [])),
+                    "auto_approved": result.get("stats", {}).get("auto_approved", 0),
+                    "pending_review": result.get("stats", {}).get("pending_review", 0)
+                }
+            })
+            
+        except Exception as e:
+            progress_queue.put({
+                "type": "error",
+                "message": f"Erro no processamento: {str(e)}"
+            })
+        finally:
+            db_local.close()
+            progress_queue.put(None)
+    
+    thread = threading.Thread(target=process_with_progress)
+    thread.start()
+    
+    async def event_generator():
+        try:
+            while True:
+                try:
+                    event = progress_queue.get(timeout=0.5)
+                    if event is None:
+                        break
+                    yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+                except queue.Empty:
+                    yield f"data: {json.dumps({'type': 'ping'})}\n\n"
+                    
+                if await request.is_disconnected():
+                    break
+        finally:
+            if upload_id in upload_progress_queues:
+                del upload_progress_queues[upload_id]
+    
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"
+        }
+    )
 
 
 @router.post("/materials/{material_id}/publish")
