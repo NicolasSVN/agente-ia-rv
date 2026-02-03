@@ -469,13 +469,17 @@
             pdfDoc = null;
         }
 
+        let isSaving = false;
+
         async function saveEdit() {
-            if (!editingItemId) return;
+            if (!editingItemId || isSaving) return;
+            isSaving = true;
             
             const newContent = document.getElementById('editContent').value;
+            const itemId = editingItemId;
             
             try {
-                const response = await fetch(`/api/products/review/${editingItemId}/edit`, {
+                const response = await fetch(`/api/products/review/${itemId}/edit`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     credentials: 'include',
@@ -483,42 +487,61 @@
                 });
                 if (!response.ok) throw new Error('Erro ao salvar');
                 
-                const item = allItems.find(i => i.id === editingItemId);
+                const item = allItems.find(i => i.id === itemId);
                 if (item) item.extracted_content = newContent;
                 
-                AppNotifications.show('Conteúdo atualizado', 'success');
+                if (typeof AppNotifications !== 'undefined') {
+                    AppNotifications.show('Conteúdo atualizado', 'success');
+                }
                 closeEditModal();
                 renderItems();
             } catch (error) {
-                AppNotifications.show('Erro ao salvar edição', 'error');
+                console.error('Erro saveEdit:', error);
+                if (typeof AppNotifications !== 'undefined') {
+                    AppNotifications.show('Erro ao salvar edição', 'error');
+                }
+            } finally {
+                isSaving = false;
             }
         }
 
         async function saveAndApprove() {
-            if (!editingItemId) return;
+            if (!editingItemId || isSaving) return;
+            isSaving = true;
             
             const newContent = document.getElementById('editContent').value;
+            const itemId = editingItemId;
             
             try {
-                await fetch(`/api/products/review/${editingItemId}/edit`, {
+                const editResponse = await fetch(`/api/products/review/${itemId}/edit`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     credentials: 'include',
                     body: JSON.stringify({ content: newContent })
                 });
+                if (!editResponse.ok) throw new Error('Erro ao editar');
                 
-                await fetch(`/api/products/review/${editingItemId}/approve`, {
+                const approveResponse = await fetch(`/api/products/review/${itemId}/approve`, {
                     method: 'POST',
                     credentials: 'include'
                 });
+                if (!approveResponse.ok) throw new Error('Erro ao aprovar');
                 
-                AppNotifications.show('Conteúdo editado e aprovado', 'success');
-                allItems = allItems.filter(i => i.id !== editingItemId);
+                allItems = allItems.filter(i => i.id !== itemId);
                 closeEditModal();
                 updateCounters();
                 renderItems();
+                
+                if (typeof AppNotifications !== 'undefined') {
+                    AppNotifications.show('Conteúdo editado e aprovado', 'success');
+                }
             } catch (error) {
-                AppNotifications.show('Erro ao salvar e aprovar', 'error');
+                console.error('Erro saveAndApprove:', error);
+                if (typeof AppNotifications !== 'undefined') {
+                    AppNotifications.show('Erro ao salvar e aprovar', 'error');
+                }
+            } finally {
+                isSaving = false;
             }
         }
 
