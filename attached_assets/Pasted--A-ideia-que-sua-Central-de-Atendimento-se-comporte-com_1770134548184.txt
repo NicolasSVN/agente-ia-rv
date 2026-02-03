@@ -1,0 +1,260 @@
+ A ideia é que sua Central de Atendimento se comporte como um **Zendesk-like nativo para WhatsApp + IA**, sem perder simplicidade.
+
+Segue a versão atualizada, conceitual e incremental da aba conversas
+
+---
+
+# Upgrade da aba de Conversas 
+
+## Objetivo
+
+Transformar a aba de Conversas em uma central de atendimento no padrão Zendesk, com:
+
+* Modelo de tickets
+* Fila de atendimento
+* Atribuição clara de responsáveis
+* Status operacionais
+* Escalonamento bot → humano
+* Base para SLAs, métricas e gestão
+
+Tudo como já está, integrado ao WhatsApp e ao agente IA, sem quebrar o fluxo atual.
+
+---
+
+## Princípios Inspirados no Zendesk 
+
+* Toda conversa é tratada como um ticket
+* Tickets têm:
+
+  * Status
+  * Responsável
+  * Prioridade
+  * Histórico
+* Bot atua como Tier 0 (autoatendimento)
+* Humanos atuam como Tier 1+
+* Fila clara de tickets aguardando atendimento
+* Gestão visual da operação
+* Busque refrências visuais na internet para Zendesk ou similares
+---
+
+## Modelo Conceitual de Ticket
+
+Cada conversa deve se comportar como um ticket com:
+
+* Assessor
+* Status
+* Responsável
+* Histórico de conversa (já existe)
+* SLA - tempo para a primeira resposta assim que o bot escalar
+
+---
+
+## Status inspirados no Zendesk
+
+Adotar status similares:
+
+* New (Novo)
+
+  * Mensagem nova, ainda não processada
+* Open (Aberto)
+
+  * Bot tentando resolver (BOT)
+
+  * Bot não conseguiu resolver > Humano
+* In Progress (Operacional)
+
+  * Humano ou bot conseguiram resolver
+* Solved (Resolvido)
+
+---
+
+## Upgrade da Lista de Conversas (Fila de Tickets)
+
+### 1. Fila no Estilo Zendesk
+
+Lista de conversas deve se comportar como:
+
+* Fila de tickets
+* Ordenada por:
+
+  * Status
+  * Atualização mais recente
+  * Prioridade implícita
+
+---
+
+### 2. Destaque Visual por Status
+
+
+### 3. Assignee no Card (Zendesk-like)
+
+Cada ticket deve mostrar:
+
+* Nome do responsável
+* Exemplo:
+
+  * “Atribuído a: Nicolas”
+
+Se não houver responsável:
+
+* “Não atribuído” / "BOT"
+
+---
+
+## Upgrade da Área da Conversa (Detalhe do Ticket)
+
+### 4. Header de Ticket (Estilo Zendesk)
+
+No topo da conversa, mostrar:
+
+* Status atual
+* Responsável
+* Última atualização
+
+Exemplo:
+
+* Status: In Progress
+* Responsável: Nicolas Oliveira
+
+---
+
+## Escalonamento Bot → Humano (Tiering)
+
+### Modelo Zendesk-like
+
+* Bot = Tier 0
+* Humanos = Tier 1
+
+Fluxo:
+
+1. Mensagem chega
+2. Ticket criado como New
+3. Bot atua → Open
+4. Se bot não resolve:
+
+   * Status muda para On-hold
+   * Ticket entra na fila humana
+5. Humano assume:
+
+   * Status muda para Operacional
+   * Responsável atribuído
+
+---
+
+## Atribuição (Assigning)
+
+Inspirado no Zendesk:
+
+* Bot não atribui responsável
+* Humanos clicam em “Assumir”
+* Ao assumir:
+
+  * Ticket é atribuído
+  * Status muda para Operacional
+  * Nome aparece em todos os lugares
+
+---
+
+## Resolução (Solve / Close)
+
+Adicionar ações conceituais:
+
+* Marcar como resolvido (Solved)
+* Reabrir ticket (se cliente responder)
+
+Comportamento:
+
+* Se cliente responder após Solved:
+
+  * Ticket volta para Open
+
+---
+
+## Filtros Operacionais (Visões Zendesk)
+
+Preparar para visões como:
+
+* Todos os tickets
+* Tickets escalados
+* Meus tickets
+* Tickets abertos
+* Tickets resolvidos hoje
+* Tickets pendentes
+
+Mesmo que não apareçam agora, estruturar modelo para isso.
+
+---
+
+## Notificações Operacionais (Zendesk-like)
+
+Quando status mudar para Operacional (escalado pelo bot):
+
+* Ticket sobe na fila
+* Destaque persistente
+* Preparar para:
+
+  * Contador de pendências
+  * Badge global
+
+---
+
+## Integração com aba Insights (Gestão)
+
+Preparar para métricas estilo Zendesk:
+
+* Tickets por usuário
+* Tickets resolvidos por usuário
+* Tempo médio até assumir
+* Tempo médio até resolver
+* Taxa de escalonamento bot → humano
+* % resolvido pelo bot (já existe)
+
+---
+
+## Integração com Conhecimento (Zendesk Guide-like)
+
+Quando humano resolve:
+
+* Marcar resolução como:
+
+  * Base para novo artigo
+  * Base para treinar IA
+* Preparar para:
+
+  * Sugestão de criação de conteúdo
+  * Modal com "olha usuário ví que você tratou {x} assunto com o assessor, devo salvar o conceito nas base de conhecimento" > se sim indexar de um jeito que o agente consiga recuperar esse tema para futuras interaçãoes e aumentar a taxa de resolução do bot
+
+---
+
+## UX Inspirado no Zendesk *Sem mudar cores e estilo e mecânica atual*
+
+* Visual de fila clara
+* Estados visíveis sem abrir ticket
+* Responsável sempre visível
+* Escaladas impossíveis de ignorar
+* Header de ticket informativo
+
+---
+
+## Requisitos Técnicos Conceituais
+
+* Conversa = Ticket
+* Status como campo persistente
+* Responsável como campo persistente
+* Histórico de eventos
+* Compatível com WhatsApp, e webhooks já esxitentes com a z-api
+* Não quebrar bot
+* Incremental
+
+---
+
+## Resultado Final Esperado
+
+A tela de Conversas passa a funcionar como:
+
+* Zendesk-like para WhatsApp
+* Central de atendimento real na aba Conversas
+* Painel operacional
+* Base para escalar equipe
+* Base para métricas, SLAs e gestão
+
