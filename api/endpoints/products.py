@@ -27,6 +27,7 @@ from database.models import (
 )
 from api.endpoints.auth import get_current_user
 from services.vector_store import VectorStore
+from services.semantic_transformer import transform_content_for_display, transform_semantic_to_indexable, parse_table_to_semantic
 
 router = APIRouter(prefix="/api/products", tags=["products"])
 
@@ -44,12 +45,13 @@ def reindex_block(block: ContentBlock, db: Session):
         content_for_indexing = block.content
         if block.block_type == ContentBlockType.TABLE.value:
             try:
-                import json
                 table_data = json.loads(block.content)
-                if isinstance(table_data, list):
-                    text_repr = "\n".join([", ".join(str(v) for v in row.values()) for row in table_data if isinstance(row, dict)])
-                    content_for_indexing = f"Tabela: {block.title}\n{text_repr}"
-            except:
+                semantic_model = parse_table_to_semantic(table_data)
+                content_for_indexing = transform_semantic_to_indexable(
+                    semantic_model, 
+                    block.title or ""
+                )
+            except Exception:
                 pass
         
         metadata = {
@@ -880,6 +882,19 @@ async def list_pending_reviews(
     items = []
     for p in pending:
         material = p.block.material if p.block else None
+        block_type = p.block.block_type if p.block else None
+        
+        display_content = p.extracted_content
+        semantic_model = None
+        
+        if block_type == ContentBlockType.TABLE.value and p.extracted_content:
+            try:
+                display_content, semantic_model = transform_content_for_display(
+                    p.extracted_content, block_type
+                )
+            except Exception:
+                pass
+        
         items.append({
             "id": p.id,
             "block_id": p.block_id,
@@ -888,9 +903,11 @@ async def list_pending_reviews(
             "material_id": material.id if material else None,
             "source_page": p.block.source_page if p.block else None,
             "block_title": p.block.title if p.block else None,
-            "block_type": p.block.block_type if p.block else None,
+            "block_type": block_type,
             "original_content": p.original_content,
             "extracted_content": p.extracted_content,
+            "display_content": display_content,
+            "semantic_model": semantic_model,
             "confidence_score": p.confidence_score,
             "risk_reason": p.risk_reason,
             "created_at": p.created_at.isoformat() if p.created_at else None

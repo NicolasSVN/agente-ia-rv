@@ -333,7 +333,7 @@
 
             container.innerHTML = filtered.map(item => {
                 const risk = getRiskLevel(item.confidence_score);
-                const content = item.extracted_content || item.original_content || 'Sem conteúdo';
+                const content = item.display_content || item.extracted_content || item.original_content || 'Sem conteúdo';
                 const preview = content.length > 300 ? content.substring(0, 300) + '...' : content;
                 
                 return `
@@ -408,7 +408,7 @@
             editingItemId = id;
             zoomScale = 1.0;
             document.getElementById('zoomLevel').textContent = '100%';
-            document.getElementById('editContent').value = item.extracted_content || item.original_content || '';
+            document.getElementById('editContent').value = item.display_content || item.extracted_content || item.original_content || '';
             document.getElementById('editModalSubtitle').textContent = `${item.material_name || 'Material'} - ${item.block_title || 'Bloco'}`;
             document.getElementById('editModal').classList.remove('hidden');
             
