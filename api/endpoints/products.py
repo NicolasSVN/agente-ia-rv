@@ -1041,12 +1041,19 @@ async def get_material_pdf(
         raise HTTPException(status_code=404, detail="PDF não disponível")
     
     import os
-    if not os.path.exists(material.source_file_path):
+    
+    ALLOWED_UPLOAD_DIR = os.path.abspath("uploads/materials")
+    file_path = os.path.abspath(material.source_file_path)
+    
+    if not file_path.startswith(ALLOWED_UPLOAD_DIR):
+        raise HTTPException(status_code=403, detail="Acesso ao arquivo negado")
+    
+    if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail="Arquivo não encontrado")
     
     from fastapi.responses import FileResponse
     return FileResponse(
-        material.source_file_path,
+        file_path,
         media_type="application/pdf",
         filename=material.name + ".pdf"
     )
