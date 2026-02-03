@@ -906,16 +906,48 @@ Agente: "Oi {PrimeiroNome}! O que precisa?"
         
         last_intent = None
         pending_fii_ticker = None
+        recent_external_search_ticker = None
         if conversation_history:
             for hist in reversed(conversation_history[-6:]):
                 metadata = hist.get('metadata', {})
-                if metadata.get('intent') == 'fii_external_search_offer':
+                intent = metadata.get('intent')
+                if intent == 'fii_external_search_offer':
                     last_intent = 'fii_external_search_offer'
                     pending_fii_ticker = metadata.get('ticker')
                     break
-                elif metadata.get('intent') == 'create_ticket_offer':
+                elif intent == 'create_ticket_offer':
                     last_intent = 'create_ticket_offer'
                     break
+                elif intent in ('fii_external_result', 'fii_not_found'):
+                    recent_external_search_ticker = metadata.get('ticker')
+                    last_intent = intent
+                    break
+        
+        if recent_external_search_ticker:
+            ticker_match = re.search(r'\b([A-Z]{4,5}11)\b', user_message.upper())
+            if ticker_match:
+                new_ticker = ticker_match.group(1)
+                if new_ticker != recent_external_search_ticker:
+                    print(f"[OpenAI] Detectada correção de ticker: {recent_external_search_ticker} -> {new_ticker} - executando busca direta")
+                    fii_service = get_fii_lookup_service()
+                    fii_result = fii_service.lookup(new_ticker)
+                    if fii_result and fii_result.get('data'):
+                        fii_info = fii_service.format_complete_response(fii_result['data'])
+                        return (
+                            f"Encontrei informações públicas sobre {new_ticker}. Lembre-se que este fundo NÃO está na nossa base oficial de recomendações.\n\n{fii_info}",
+                            False,
+                            {
+                                "intent": "fii_external_result",
+                                "ticker": new_ticker,
+                                "source": "fundsexplorer"
+                            }
+                        )
+                    else:
+                        return (
+                            f"Infelizmente não consegui encontrar informações sobre {new_ticker} nas fontes públicas. Este fundo pode não existir ou o código estar incorreto.",
+                            False,
+                            {"intent": "fii_not_found", "ticker": new_ticker}
+                        )
         
         if is_affirmative and last_intent == 'fii_external_search_offer' and pending_fii_ticker:
             print(f"[OpenAI] Usuário confirmou busca externa para FII {pending_fii_ticker} (via intent)")
