@@ -26,8 +26,53 @@ from database.models import (
     ContentBlockStatus, ContentSourceType
 )
 from api.endpoints.auth import get_current_user
+from services.vector_store import VectorStore
 
 router = APIRouter(prefix="/api/products", tags=["products"])
+
+def reindex_block(block: ContentBlock, db: Session):
+    """Reindexa um bloco de conteúdo no vetor de busca."""
+    try:
+        vector_store = VectorStore()
+        chunk_id = f"product_block_{block.id}"
+        
+        vector_store.delete_document(chunk_id)
+        
+        material = block.material
+        product = material.product if material else None
+        
+        content_for_indexing = block.content
+        if block.block_type == ContentBlockType.TABLE.value:
+            try:
+                import json
+                table_data = json.loads(block.content)
+                if isinstance(table_data, list):
+                    text_repr = "\n".join([", ".join(str(v) for v in row.values()) for row in table_data if isinstance(row, dict)])
+                    content_for_indexing = f"Tabela: {block.title}\n{text_repr}"
+            except:
+                pass
+        
+        metadata = {
+            "block_id": str(block.id),
+            "material_id": str(material.id) if material else None,
+            "product_id": str(product.id) if product else None,
+            "product_name": product.name if product else None,
+            "product_ticker": product.ticker if product else None,
+            "block_type": block.block_type,
+            "title": block.title,
+            "source": "product_cms"
+        }
+        
+        vector_store.add_document(
+            doc_id=chunk_id,
+            text=content_for_indexing,
+            metadata=metadata
+        )
+        print(f"[REINDEX] Bloco {block.id} reindexado com sucesso")
+        return True
+    except Exception as e:
+        print(f"[REINDEX] Erro ao reindexar bloco {block.id}: {e}")
+        return False
 
 UPLOAD_DIR = "uploads/materials"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
@@ -857,14 +902,17 @@ async def list_pending_reviews(
 @router.post("/review/{item_id}/approve")
 async def approve_review_item(
     item_id: int,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Aprova um item pendente de revisão."""
+    """Aprova um item pendente de revisão e reindexa no vetor de busca."""
     if current_user.role not in ["admin", "gestao_rv"]:
         raise HTTPException(status_code=403, detail="Acesso negado")
     
-    item = db.query(PendingReviewItem).filter(PendingReviewItem.id == item_id).first()
+    item = db.query(PendingReviewItem).options(
+        joinedload(PendingReviewItem.block).joinedload(ContentBlock.material).joinedload(Material.product)
+    ).filter(PendingReviewItem.id == item_id).first()
     if not item:
         raise HTTPException(status_code=404, detail="Item não encontrado")
     
@@ -872,11 +920,14 @@ async def approve_review_item(
     item.reviewed_at = datetime.utcnow()
     item.review_action = "approved"
     
-    block = db.query(ContentBlock).filter(ContentBlock.id == item.block_id).first()
+    block = item.block
     if block:
         block.status = ContentBlockStatus.APPROVED.value
+        db.commit()
+        reindex_block(block, db)
+    else:
+        db.commit()
     
-    db.commit()
     return {"success": True}
 
 
