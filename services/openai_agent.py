@@ -241,6 +241,98 @@ Se NEGA_TODOS ou NOVA_PERGUNTA, ticker deve ser null."""
         
         return None
     
+    async def analyze_escalation(
+        self,
+        conversation_history: List[Dict[str, str]],
+        last_user_message: str
+    ) -> Dict[str, Any]:
+        """
+        Analisa a conversa antes de escalar para humano.
+        Retorna categoria, motivo detalhado, resumo e tópico.
+        """
+        if not self.client:
+            return {
+                "category": "other",
+                "reason_detail": "Análise não disponível",
+                "summary": last_user_message[:200],
+                "topic": "Não categorizado"
+            }
+        
+        history_text = ""
+        for msg in conversation_history[-10:]:
+            role = "Assessor" if msg.get("role") == "user" else "Bot"
+            history_text += f"{role}: {msg.get('content', '')}\n"
+        
+        prompt = f"""Analise esta conversa de WhatsApp entre um assessor financeiro e o bot Stevan (assistente de Renda Variável).
+O bot não conseguiu resolver sozinho e vai transferir para atendimento humano.
+
+CONVERSA:
+{history_text}
+
+ÚLTIMA MENSAGEM DO ASSESSOR:
+{last_user_message}
+
+Classifique o motivo da escalação e gere um resumo para a equipe de atendimento.
+
+CATEGORIAS DE ESCALAÇÃO (escolha uma):
+- out_of_scope: Assunto fora do escopo do bot (IRPF, previdência, outros)
+- info_not_found: Produto/fundo não está na base de conhecimento
+- technical_complexity: Pergunta muito técnica que requer análise humana
+- outdated_data: Cliente menciona que informação está desatualizada
+- commercial_request: Quer falar sobre operação, alocação, captação
+- declared_urgency: Cliente expressa urgência ou insatisfação
+- explicit_human_request: Pediu para falar com alguém
+- complaint: Reclamação, tom negativo, problema a resolver
+- operation_confirmation: Precisa validar antes de executar operação
+- multiple_failed_attempts: Bot não entendeu após várias tentativas
+- other: Outros motivos
+
+TÓPICOS DA CONVERSA (escolha um):
+- Dúvida sobre Produto
+- Análise de Mercado
+- Pedido de Material
+- Suporte Operacional
+- Estratégia de Investimento
+- Informação de Taxas
+- Rentabilidade e Performance
+- Alocação de Carteira
+- Dúvida Técnica
+- Feedback ou Sugestão
+- Outro
+
+Responda em JSON:
+{{"category": "categoria_escolhida", "reason_detail": "explicação breve do motivo", "summary": "resumo objetivo em 2-3 frases para a equipe", "topic": "tópico da conversa"}}"""
+
+        try:
+            response = self.client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.3,
+                max_tokens=500
+            )
+            
+            content = response.choices[0].message.content.strip()
+            if content.startswith("```"):
+                content = content.split("```")[1]
+                if content.startswith("json"):
+                    content = content[4:]
+            
+            result = json.loads(content)
+            return {
+                "category": result.get("category", "other"),
+                "reason_detail": result.get("reason_detail", ""),
+                "summary": result.get("summary", last_user_message[:200]),
+                "topic": result.get("topic", "Outro")
+            }
+        except Exception as e:
+            print(f"[OpenAI] Erro ao analisar escalação: {e}")
+            return {
+                "category": "other",
+                "reason_detail": str(e),
+                "summary": last_user_message[:200],
+                "topic": "Outro"
+            }
+    
     def _build_assessor_context(self, assessor: Dict[str, Any]) -> str:
         """Constrói contexto com dados do assessor identificado."""
         context = f"""

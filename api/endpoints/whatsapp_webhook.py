@@ -270,7 +270,7 @@ async def process_text_message(phone: str, message: str, db: Session, message_re
     from services.conversation_flow import (
         normalize_message, extract_first_name, identify_contact,
         get_transfer_message, should_transfer_to_human, update_conversation_state,
-        increment_stalled_counter, reset_stalled_counter
+        increment_stalled_counter, reset_stalled_counter, escalate_to_human_with_analysis
     )
     from database.models import ConversationState, TransferReason
     
@@ -339,11 +339,27 @@ async def process_text_message(phone: str, message: str, db: Session, message_re
         
         if should_transfer:
             response = get_transfer_message(transfer_reason)
-            update_conversation_state(
-                db, conversation, ConversationState.HUMAN_TAKEOVER.value,
-                transfer_reason=transfer_reason,
-                transfer_notes=f"Última mensagem: {normalized_message[:200]}"
-            )
+            
+            try:
+                await escalate_to_human_with_analysis(
+                    db, conversation, normalized_message, transfer_reason
+                )
+                print(f"[WEBHOOK] Escalação V2.1 completa - categoria: {conversation.escalation_category}")
+            except Exception as e:
+                print(f"[WEBHOOK] Erro na análise de escalação, usando fallback: {e}")
+                from database.models import EscalationLevel, TicketStatusV2
+                from datetime import datetime
+                conversation.escalation_category = "other"
+                conversation.escalation_reason_detail = str(transfer_reason) if transfer_reason else "Transferência automática"
+                conversation.ticket_summary = normalized_message[:200] if normalized_message else "Solicitação de atendimento"
+                conversation.conversation_topic = "Geral"
+                conversation.ticket_status = TicketStatusV2.NEW.value
+                conversation.escalation_level = EscalationLevel.T1_HUMAN.value
+                conversation.status = ConversationState.HUMAN_TAKEOVER.value
+                conversation.conversation_state = ConversationState.HUMAN_TAKEOVER.value
+                conversation.transfer_reason = transfer_reason
+                conversation.transferred_at = datetime.utcnow()
+                db.commit()
             
             if message_record:
                 message_record.ai_response = response

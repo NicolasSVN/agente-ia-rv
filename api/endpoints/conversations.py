@@ -5,7 +5,7 @@ Permite visualizar histórico, buscar por número e intervir humanamente.
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
-from sqlalchemy import desc, or_
+from sqlalchemy import desc, or_, and_
 from typing import List, Optional
 from pydantic import BaseModel
 from datetime import datetime
@@ -33,7 +33,10 @@ class ConversationResponse(BaseModel):
     contact_name: Optional[str] = None
     assessor_name: Optional[str] = None
     assessor_email: Optional[str] = None
+    assessor_unidade: Optional[str] = None
+    assessor_broker: Optional[str] = None
     status: str
+    assigned_to_id: Optional[int] = None
     assigned_to_name: Optional[str] = None
     last_message_at: Optional[datetime] = None
     last_message_preview: Optional[str] = None
@@ -42,7 +45,11 @@ class ConversationResponse(BaseModel):
     # V2 Zendesk-like fields
     ticket_status: Optional[str] = None
     escalation_level: Optional[str] = None
+    escalation_category: Optional[str] = None
+    ticket_summary: Optional[str] = None
+    conversation_topic: Optional[str] = None
     first_response_at: Optional[datetime] = None
+    first_human_response_at: Optional[datetime] = None
     solved_at: Optional[datetime] = None
     sla_due_at: Optional[datetime] = None
     reopened_count: int = 0
@@ -132,6 +139,7 @@ async def list_conversations(
     ticket_status: Optional[str] = Query(None, description="Filtrar por ticket_status V2 (new, open, in_progress, solved)"),
     escalation_level: Optional[str] = Query(None, description="Filtrar por nível de escalonamento (t0, t1)"),
     assigned_to_me: Optional[bool] = Query(None, description="Filtrar meus tickets"),
+    needs_attention: Optional[bool] = Query(None, description="Filtrar conversas que precisam de atenção (escaladas/novas, não resolvidas)"),
     skip: int = Query(0, ge=0),
     offset: int = Query(None, ge=0, description="Alias for skip"),
     limit: int = Query(50, ge=1, le=100),
@@ -157,7 +165,14 @@ async def list_conversations(
         query = query.filter(Conversation.status == status)
     
     # V2 Zendesk-like filters
-    if ticket_status:
+    if needs_attention:
+        query = query.filter(
+            and_(
+                Conversation.escalation_level == EscalationLevel.T1_HUMAN.value,
+                Conversation.ticket_status.notin_([TicketStatusV2.SOLVED.value])
+            )
+        )
+    elif ticket_status:
         query = query.filter(Conversation.ticket_status == ticket_status)
     
     if escalation_level:
@@ -179,7 +194,10 @@ async def list_conversations(
             contact_name=conv.contact_name,
             assessor_name=assessor.nome if assessor else None,
             assessor_email=assessor.email if assessor else None,
+            assessor_unidade=assessor.unidade if assessor else None,
+            assessor_broker=assessor.broker_responsavel if assessor else None,
             status=conv.status,
+            assigned_to_id=conv.assigned_to,
             assigned_to_name=assigned_user.username if assigned_user else None,
             last_message_at=conv.last_message_at,
             last_message_preview=conv.last_message_preview,
@@ -188,7 +206,11 @@ async def list_conversations(
             # V2 fields
             ticket_status=conv.ticket_status,
             escalation_level=conv.escalation_level,
+            escalation_category=conv.escalation_category,
+            ticket_summary=conv.ticket_summary,
+            conversation_topic=conv.conversation_topic,
             first_response_at=conv.first_response_at,
+            first_human_response_at=conv.first_human_response_at,
             solved_at=conv.solved_at,
             sla_due_at=conv.sla_due_at,
             reopened_count=conv.reopened_count or 0
@@ -812,13 +834,29 @@ async def get_filter_counts(
     )
 
 
+def get_takeover_greeting(user_name: str) -> str:
+    """Retorna variações de mensagem de boas-vindas ao assumir."""
+    import random
+    greetings = [
+        f"Olha, o {user_name} vai te ajudar agora! Pode seguir com ele.",
+        f"Pronto! O {user_name} assumiu o atendimento. Pode falar com ele.",
+        f"Assessor, o {user_name} está aqui pra te ajudar agora.",
+        f"Beleza! Passei o bastão pro {user_name}. Ele vai cuidar de você.",
+        f"Opa! O {user_name} entrou na conversa pra te dar suporte.",
+        f"Tudo certo! O {user_name} assumiu. Pode continuar com ele.",
+    ]
+    return random.choice(greetings)
+
+
 @router.post("/{conversation_id}/take")
 async def take_ticket(
     conversation_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Assume um ticket (Zendesk-like 'Assumir')."""
+    """Assume um ticket (Zendesk-like 'Assumir'). Envia mensagem automática ao contato."""
+    from services.zapi_service import get_zapi_service
+    
     conv = db.query(Conversation).filter(Conversation.id == conversation_id).first()
     if not conv:
         raise HTTPException(status_code=404, detail="Conversa não encontrada")
@@ -837,6 +875,9 @@ async def take_ticket(
     if not conv.first_response_at:
         conv.first_response_at = datetime.utcnow()
     
+    if not conv.first_human_response_at:
+        conv.first_human_response_at = datetime.utcnow()
+    
     db.commit()
     
     record_ticket_history(
@@ -851,12 +892,27 @@ async def take_ticket(
         notes=f"Ticket assumido por {current_user.username}"
     )
     
+    greeting_sent = False
+    try:
+        zapi = get_zapi_service()
+        if zapi and conv.phone:
+            first_name = current_user.username.split()[0] if current_user.username else "um especialista"
+            greeting = get_takeover_greeting(first_name)
+            await zapi.send_text(conv.phone, greeting)
+            greeting_sent = True
+    except Exception as e:
+        print(f"[Take] Erro ao enviar saudação: {e}")
+    
+    assigned_user = db.query(User).filter(User.id == current_user.id).first()
+    
     return {
         "success": True,
         "message": f"Ticket assumido por {current_user.username}",
         "ticket_status": conv.ticket_status,
         "escalation_level": conv.escalation_level,
-        "assigned_to": current_user.username
+        "assigned_to_id": current_user.id,
+        "assigned_to_name": current_user.username,
+        "greeting_sent": greeting_sent
     }
 
 

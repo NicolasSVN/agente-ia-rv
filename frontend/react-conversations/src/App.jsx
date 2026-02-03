@@ -316,7 +316,7 @@ function App() {
   const [messageInput, setMessageInput] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
-  const [ticketFilter, setTicketFilter] = useState('');
+  const [ticketFilter, setTicketFilter] = useState('needs_attention');
   const [filterCounts, setFilterCounts] = useState({ all: 0, escalated: 0, my_tickets: 0, open: 0, solved_today: 0, new: 0 });
   const [isLoading, setIsLoading] = useState(true);
   const [isSending, setIsSending] = useState(false);
@@ -357,7 +357,8 @@ function App() {
       let url = `${API_BASE}/conversations/?limit=${PAGE_SIZE}&offset=${offset}`;
       if (searchQuery) url += `&search=${encodeURIComponent(searchQuery)}`;
       if (statusFilter) url += `&status=${statusFilter}`;
-      if (ticketFilter === 'escalated') url += `&escalation_level=t1`;
+      if (ticketFilter === 'needs_attention') url += `&needs_attention=true`;
+      else if (ticketFilter === 'escalated') url += `&escalation_level=t1`;
       else if (ticketFilter === 'my_tickets') url += `&assigned_to_me=true`;
       else if (ticketFilter === 'open') url += `&ticket_status=open`;
       else if (ticketFilter === 'new') url += `&ticket_status=new`;
@@ -750,8 +751,8 @@ function App() {
             </div>
             <div className="flex flex-wrap gap-2 mb-3">
               {[
+                { value: 'needs_attention', label: 'Atenção', count: filterCounts.needs_attention || (filterCounts.escalated + filterCounts.new), highlight: true },
                 { value: '', label: 'Todos', count: filterCounts.all },
-                { value: 'escalated', label: 'Escalados', count: filterCounts.escalated, highlight: true },
                 { value: 'my_tickets', label: 'Meus', count: filterCounts.my_tickets },
                 { value: 'new', label: 'Novos', count: filterCounts.new },
                 { value: 'open', label: 'Abertos', count: filterCounts.open },
@@ -853,10 +854,18 @@ function App() {
                       </div>
                       <div className="flex items-center gap-2 text-sm text-gray-500">
                         <span>{formatPhone(currentConversation.phone)}</span>
-                        {currentConversation.assigned_to_name && (
-                          <span className="text-primary font-medium">• {currentConversation.assigned_to_name}</span>
+                        {currentConversation.assessor_unidade && (
+                          <span className="text-gray-400">• {currentConversation.assessor_unidade}</span>
+                        )}
+                        {currentConversation.assessor_broker && (
+                          <span className="text-primary font-medium">• {currentConversation.assessor_broker}</span>
                         )}
                       </div>
+                      {currentConversation.assigned_to_name && (
+                        <div className="text-xs text-amber-600 mt-1">
+                          Responsável: {currentConversation.assigned_to_name}
+                        </div>
+                      )}
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
@@ -869,12 +878,20 @@ function App() {
                         Assumir Ticket
                       </button>
                     ) : (
-                      <button
-                        onClick={releaseTicket}
-                        className="flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-sm transition-colors bg-gray-100 text-gray-600 hover:bg-gray-200"
-                      >
-                        Liberar
-                      </button>
+                      <>
+                        <button
+                          onClick={() => updateTicketStatus('solved')}
+                          className="flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-sm transition-colors bg-green-100 text-green-700 hover:bg-green-200"
+                        >
+                          Resolvido
+                        </button>
+                        <button
+                          onClick={releaseTicket}
+                          className="flex items-center gap-2 px-3 py-2 rounded-lg font-medium text-sm transition-colors bg-gray-100 text-gray-600 hover:bg-gray-200"
+                        >
+                          Liberar
+                        </button>
+                      </>
                     )}
                     <select
                       value={currentConversation.ticket_status || 'new'}
@@ -888,7 +905,7 @@ function App() {
                     </select>
                     <button
                       onClick={toggleTakeover}
-                      className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-sm transition-colors ${
+                      className={`flex items-center gap-2 px-3 py-2 rounded-lg font-medium text-sm transition-colors ${
                         currentConversation.status === 'human_takeover'
                           ? 'bg-amber-100 text-amber-700 hover:bg-amber-200'
                           : 'bg-primary/10 text-primary hover:bg-primary/20'
@@ -915,6 +932,29 @@ function App() {
                 onScroll={handleMessagesScroll}
                 className="flex-1 overflow-y-auto p-6 min-h-0"
               >
+                {currentConversation.ticket_summary && currentConversation.escalation_level === 't1' && (
+                  <div className="flex justify-center mb-6">
+                    <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 max-w-md shadow-sm">
+                      <div className="flex items-center gap-2 text-amber-700 text-xs font-medium mb-2">
+                        <span className="w-2 h-2 rounded-full bg-amber-400"></span>
+                        RESUMO DO CHAMADO
+                        {currentConversation.conversation_topic && (
+                          <span className="ml-auto bg-amber-100 px-2 py-0.5 rounded text-amber-600">
+                            {currentConversation.conversation_topic}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-sm text-gray-700 leading-relaxed">
+                        {currentConversation.ticket_summary}
+                      </p>
+                      {currentConversation.escalation_category && (
+                        <div className="mt-2 text-xs text-amber-600">
+                          Motivo: {currentConversation.escalation_category.replace(/_/g, ' ')}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
                 {messages.length === 0 ? (
                   <div className="flex flex-col items-center justify-center h-full text-gray-400">
                     <MessageCircle className="w-16 h-16 mb-4 opacity-30" />
@@ -935,25 +975,34 @@ function App() {
                 )}
               </div>
 
-              <div className="flex-shrink-0 px-6 py-4 bg-white border-t border-gray-200">
-                <div className="flex items-center gap-4">
-                  <input
-                    type="text"
-                    value={messageInput}
-                    onChange={e => setMessageInput(e.target.value)}
-                    onKeyPress={e => e.key === 'Enter' && !e.shiftKey && sendMessage()}
-                    placeholder="Digite sua mensagem..."
-                    className="flex-1 px-5 py-3 bg-gray-50 border border-gray-200 rounded-full text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-primary/20 focus:border-primary focus:bg-white outline-none transition-all"
-                  />
-                  <button
-                    onClick={sendMessage}
-                    disabled={isSending || !messageInput.trim()}
-                    className="p-3 bg-primary text-white rounded-full hover:bg-primary-dark disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                  >
-                    {isSending ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
-                  </button>
+              {currentConversation.assigned_to_id ? (
+                <div className="flex-shrink-0 px-6 py-4 bg-white border-t border-gray-200">
+                  <div className="flex items-center gap-4">
+                    <input
+                      type="text"
+                      value={messageInput}
+                      onChange={e => setMessageInput(e.target.value)}
+                      onKeyPress={e => e.key === 'Enter' && !e.shiftKey && sendMessage()}
+                      placeholder="Digite sua mensagem..."
+                      className="flex-1 px-5 py-3 bg-gray-50 border border-gray-200 rounded-full text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-primary/20 focus:border-primary focus:bg-white outline-none transition-all"
+                    />
+                    <button
+                      onClick={sendMessage}
+                      disabled={isSending || !messageInput.trim()}
+                      className="p-3 bg-primary text-white rounded-full hover:bg-primary-dark disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                      {isSending ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
+                    </button>
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <div className="flex-shrink-0 px-6 py-4 bg-gray-50 border-t border-gray-200">
+                  <div className="flex items-center justify-center gap-3 text-gray-500">
+                    <UserCheck className="w-5 h-5" />
+                    <span className="text-sm">Clique em "Assumir Ticket" para responder</span>
+                  </div>
+                </div>
+              )}
             </>
           ) : (
             <div className="flex-1 flex flex-col items-center justify-center text-gray-400">

@@ -412,6 +412,21 @@ class TransferReason(str, enum.Enum):
     OTHER = "other"
 
 
+class EscalationCategory(str, enum.Enum):
+    """Categoria do motivo de escalação para humano."""
+    OUT_OF_SCOPE = "out_of_scope"
+    INFO_NOT_FOUND = "info_not_found"
+    TECHNICAL_COMPLEXITY = "technical_complexity"
+    OUTDATED_DATA = "outdated_data"
+    COMMERCIAL_REQUEST = "commercial_request"
+    DECLARED_URGENCY = "declared_urgency"
+    EXPLICIT_HUMAN_REQUEST = "explicit_human_request"
+    COMPLAINT = "complaint"
+    OPERATION_CONFIRMATION = "operation_confirmation"
+    MULTIPLE_FAILED_ATTEMPTS = "multiple_failed_attempts"
+    OTHER = "other"
+
+
 class SenderType(str, enum.Enum):
     """Tipo de remetente da mensagem."""
     BOT = "bot"
@@ -478,6 +493,13 @@ class Conversation(Base):
     sla_due_at = Column(DateTime(timezone=True), nullable=True)
     reopened_count = Column(Integer, default=0)
     last_assigned_at = Column(DateTime(timezone=True), nullable=True)
+    
+    # V2.1 Escalation intelligence fields
+    escalation_category = Column(String(50), nullable=True, index=True)
+    escalation_reason_detail = Column(Text, nullable=True)
+    ticket_summary = Column(Text, nullable=True)
+    conversation_topic = Column(String(100), nullable=True)
+    first_human_response_at = Column(DateTime(timezone=True), nullable=True)
     
     assessor = relationship("Assessor", foreign_keys=[assessor_id])
     assigned_user = relationship("User", foreign_keys=[assigned_to])

@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from database.models import (
     Conversation, Assessor, ConversationState, ConversationStatus, 
-    TransferReason
+    TransferReason, TicketStatusV2, EscalationLevel, WhatsAppMessage
 )
 
 
@@ -333,6 +333,51 @@ def update_conversation_state(
         conversation.status = ConversationStatus.HUMAN_TAKEOVER.value
     
     db.commit()
+
+
+async def escalate_to_human_with_analysis(
+    db: Session,
+    conversation: Conversation,
+    last_message: str,
+    transfer_reason: str = None
+) -> Dict[str, Any]:
+    """
+    Escala conversa para humano com análise inteligente via GPT.
+    Gera resumo, categoriza motivo e atualiza campos V2.1.
+    """
+    from services.openai_agent import OpenAIAgent
+    
+    messages = db.query(WhatsAppMessage).filter(
+        WhatsAppMessage.conversation_id == conversation.id
+    ).order_by(WhatsAppMessage.created_at.desc()).limit(15).all()
+    
+    history = []
+    for msg in reversed(messages):
+        role = "user" if msg.direction == "inbound" else "assistant"
+        history.append({"role": role, "content": msg.content or ""})
+    
+    agent = OpenAIAgent()
+    analysis = await agent.analyze_escalation(history, last_message)
+    
+    conversation.escalation_category = analysis.get("category", "other")
+    conversation.escalation_reason_detail = analysis.get("reason_detail", "")
+    conversation.ticket_summary = analysis.get("summary", last_message[:200])
+    conversation.conversation_topic = analysis.get("topic", "Outro")
+    conversation.ticket_status = TicketStatusV2.NEW.value
+    conversation.escalation_level = EscalationLevel.T1_HUMAN.value
+    conversation.status = ConversationStatus.HUMAN_TAKEOVER.value
+    conversation.conversation_state = ConversationState.HUMAN_TAKEOVER.value
+    conversation.transfer_reason = transfer_reason
+    conversation.transferred_at = datetime.utcnow()
+    
+    db.commit()
+    
+    return {
+        "success": True,
+        "category": analysis.get("category"),
+        "summary": analysis.get("summary"),
+        "topic": analysis.get("topic")
+    }
 
 
 def increment_stalled_counter(db: Session, conversation: Conversation) -> int:

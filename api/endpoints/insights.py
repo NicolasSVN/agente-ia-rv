@@ -12,7 +12,7 @@ import json
 from database.database import get_db
 from database.models import (
     ConversationInsight, Assessor, Campaign, CampaignDispatch,
-    Ticket, User, UserRole
+    Ticket, User, UserRole, Conversation, TicketStatusV2, EscalationLevel
 )
 from api.endpoints.auth import get_current_user
 
@@ -543,4 +543,148 @@ async def get_filter_options(
         "unidades": [u[0] for u in unidades if u[0]],
         "brokers": [b[0] for b in brokers if b[0]],
         "equipes": [e[0] for e in equipes if e[0]]
+    }
+
+
+@router.get("/tickets")
+async def get_ticket_metrics(
+    period: str = Query("30d", description="Período: 7d, 30d, 90d, 365d"),
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    unidade: Optional[str] = None,
+    broker: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_gestao_or_admin)
+):
+    """
+    Métricas de chamados/tickets para o dashboard de Insights.
+    Inclui volume por status, unidade, broker, tempo de atendimento.
+    """
+    date_start, date_end = parse_date_filter(period, start_date, end_date)
+    
+    base_filters = [
+        Conversation.escalation_level == EscalationLevel.T1_HUMAN.value,
+        Conversation.created_at >= date_start,
+        Conversation.created_at <= date_end
+    ]
+    
+    assessor_join_needed = unidade or broker
+    assessor_filters = []
+    if unidade:
+        assessor_filters.append(Assessor.unidade == unidade)
+    if broker:
+        assessor_filters.append(Assessor.broker_responsavel == broker)
+    
+    if assessor_join_needed:
+        total_tickets = db.query(func.count(Conversation.id)).join(
+            Assessor, Conversation.assessor_id == Assessor.id
+        ).filter(*base_filters, *assessor_filters).scalar() or 0
+        
+        status_counts = db.query(
+            Conversation.ticket_status,
+            func.count(Conversation.id)
+        ).join(
+            Assessor, Conversation.assessor_id == Assessor.id
+        ).filter(*base_filters, *assessor_filters).group_by(Conversation.ticket_status).all()
+    else:
+        total_tickets = db.query(func.count(Conversation.id)).filter(*base_filters).scalar() or 0
+        
+        status_counts = db.query(
+            Conversation.ticket_status,
+            func.count(Conversation.id)
+        ).filter(*base_filters).group_by(Conversation.ticket_status).all()
+    
+    status_dict = {s[0]: s[1] for s in status_counts}
+    
+    by_unidade_query = db.query(
+        Assessor.unidade,
+        func.count(Conversation.id)
+    ).join(
+        Conversation, Conversation.assessor_id == Assessor.id
+    ).filter(*base_filters, Assessor.unidade.isnot(None))
+    if broker:
+        by_unidade_query = by_unidade_query.filter(Assessor.broker_responsavel == broker)
+    by_unidade = by_unidade_query.group_by(Assessor.unidade).order_by(func.count(Conversation.id).desc()).limit(10).all()
+    
+    by_broker_query = db.query(
+        Assessor.broker_responsavel,
+        func.count(Conversation.id)
+    ).join(
+        Conversation, Conversation.assessor_id == Assessor.id
+    ).filter(*base_filters, Assessor.broker_responsavel.isnot(None))
+    if unidade:
+        by_broker_query = by_broker_query.filter(Assessor.unidade == unidade)
+    by_broker = by_broker_query.group_by(Assessor.broker_responsavel).order_by(func.count(Conversation.id).desc()).limit(10).all()
+    
+    by_category_query = db.query(
+        Conversation.escalation_category,
+        func.count(Conversation.id)
+    ).filter(*base_filters, Conversation.escalation_category.isnot(None))
+    if assessor_join_needed:
+        by_category_query = by_category_query.join(
+            Assessor, Conversation.assessor_id == Assessor.id
+        ).filter(*assessor_filters)
+    by_category = by_category_query.group_by(Conversation.escalation_category).order_by(func.count(Conversation.id).desc()).all()
+    
+    resolved_filters = base_filters + [
+        Conversation.ticket_status == TicketStatusV2.SOLVED.value,
+        Conversation.solved_at.isnot(None),
+        Conversation.first_human_response_at.isnot(None)
+    ]
+    if assessor_join_needed:
+        resolved_tickets = db.query(Conversation).join(
+            Assessor, Conversation.assessor_id == Assessor.id
+        ).filter(*resolved_filters, *assessor_filters).all()
+    else:
+        resolved_tickets = db.query(Conversation).filter(*resolved_filters).all()
+    
+    avg_response_time = 0
+    avg_resolution_time = 0
+    if resolved_tickets:
+        response_times = []
+        resolution_times = []
+        for t in resolved_tickets:
+            if t.transferred_at and t.first_human_response_at:
+                diff = (t.first_human_response_at - t.transferred_at).total_seconds()
+                if diff > 0:
+                    response_times.append(diff)
+            if t.transferred_at and t.solved_at:
+                diff = (t.solved_at - t.transferred_at).total_seconds()
+                if diff > 0:
+                    resolution_times.append(diff)
+        
+        if response_times:
+            avg_response_time = sum(response_times) / len(response_times) / 60
+        if resolution_times:
+            avg_resolution_time = sum(resolution_times) / len(resolution_times) / 60
+    
+    solved_count = status_dict.get(TicketStatusV2.SOLVED.value, 0)
+    resolution_rate = (solved_count / total_tickets * 100) if total_tickets > 0 else 0
+    
+    daily_volume_query = db.query(
+        func.date(Conversation.created_at).label('date'),
+        func.count(Conversation.id)
+    ).filter(*base_filters)
+    if assessor_join_needed:
+        daily_volume_query = daily_volume_query.join(
+            Assessor, Conversation.assessor_id == Assessor.id
+        ).filter(*assessor_filters)
+    daily_volume = daily_volume_query.group_by(func.date(Conversation.created_at)).order_by(func.date(Conversation.created_at)).all()
+    
+    return {
+        "summary": {
+            "total_tickets": total_tickets,
+            "new": status_dict.get(TicketStatusV2.NEW.value, 0),
+            "open": status_dict.get(TicketStatusV2.OPEN.value, 0),
+            "in_progress": status_dict.get(TicketStatusV2.IN_PROGRESS.value, 0),
+            "solved": solved_count,
+            "resolution_rate": round(resolution_rate, 1),
+            "avg_response_time_minutes": round(avg_response_time, 1),
+            "avg_resolution_time_minutes": round(avg_resolution_time, 1)
+        },
+        "by_status": [{"status": s[0], "count": s[1]} for s in status_counts],
+        "by_unidade": [{"unidade": u[0], "count": u[1]} for u in by_unidade],
+        "by_broker": [{"broker": b[0], "count": b[1]} for b in by_broker],
+        "by_category": [{"category": c[0], "count": c[1]} for c in by_category],
+        "daily_volume": [{"date": str(d[0]), "count": d[1]} for d in daily_volume]
     }
