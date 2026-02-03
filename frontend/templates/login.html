@@ -81,7 +81,7 @@
             Usuário ou senha incorretos. Tente novamente.
         </div>
         
-        <div id="microsoft-login-container" style="display: none; margin-bottom: 24px;">
+        <div id="microsoft-login-container" style="margin-bottom: 24px;">
             <a href="/api/auth/microsoft/login" class="btn-microsoft" style="display: flex; align-items: center; justify-content: center; gap: 12px; width: 100%; padding: 14px; font-size: 1rem; background: #fff; border: 1px solid #8c8c8c; border-radius: 8px; color: #5e5e5e; text-decoration: none; font-weight: 500; transition: all 0.2s ease;">
                 <svg xmlns="http://www.w3.org/2000/svg" width="21" height="21" viewBox="0 0 21 21">
                     <rect x="1" y="1" width="9" height="9" fill="#f25022"/>
@@ -133,14 +133,6 @@
             errorEl.classList.add('show');
         }
         
-        fetch('/api/auth/microsoft/enabled')
-            .then(r => r.json())
-            .then(data => {
-                if (data.enabled) {
-                    document.getElementById('microsoft-login-container').style.display = 'block';
-                }
-            })
-            .catch(() => {});
     </script>
 </body>
 </html>
