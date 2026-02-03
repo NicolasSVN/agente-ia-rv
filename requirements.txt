@@ -39,3 +39,5 @@ pdf2image
 Pillow
 beautifulsoup4
 lxml
+httpx
+msal
