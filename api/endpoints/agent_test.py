@@ -71,7 +71,14 @@ async def test_agent_message(
     history = test_conversations[user_id]
     session = test_session_data[user_id]
     
-    history_for_ai = [{"role": msg["role"], "content": msg["content"]} for msg in history[-10:]]
+    history_for_ai = [
+        {
+            "role": msg["role"], 
+            "content": msg["content"],
+            "metadata": msg.get("metadata", {})
+        } 
+        for msg in history[-10:]
+    ]
     
     try:
         response, should_create_ticket, context = await openai_agent.generate_response(
@@ -105,7 +112,7 @@ async def test_agent_message(
         "content": response,
         "timestamp": datetime.now().isoformat(),
         "knowledge_used": knowledge_documents,
-        "intent": context.get("intent") if context else None
+        "metadata": context if context else {}
     })
     
     test_conversations[user_id] = history[-20:]
