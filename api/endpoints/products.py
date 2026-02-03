@@ -1015,6 +1015,137 @@ async def reject_review_item(
     return {"success": True}
 
 
+@router.post("/review/{item_id}/reprocess")
+async def reprocess_review_item(
+    item_id: int,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Reprocessa a extração de uma página específica.
+    Útil quando a extração original não capturou todos os dados da tabela.
+    """
+    if current_user.role not in ["admin", "gestao_rv"]:
+        raise HTTPException(status_code=403, detail="Acesso negado")
+    
+    item = db.query(PendingReviewItem).filter(PendingReviewItem.id == item_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Item não encontrado")
+    
+    block = db.query(ContentBlock).options(
+        joinedload(ContentBlock.material)
+    ).filter(ContentBlock.id == item.block_id).first()
+    
+    if not block or not block.material:
+        raise HTTPException(status_code=404, detail="Bloco ou material não encontrado")
+    
+    material = block.material
+    if not material.file_path:
+        raise HTTPException(status_code=400, detail="Material não possui arquivo PDF associado")
+    
+    page_num = int(block.source_page) if block.source_page else 1
+    
+    background_tasks.add_task(
+        reprocess_single_page,
+        material_id=material.id,
+        page_num=page_num,
+        block_id=block.id,
+        pending_item_id=item.id,
+        file_path=material.file_path,
+        user_id=current_user.id
+    )
+    
+    return {
+        "success": True,
+        "message": f"Reprocessamento da página {page_num} iniciado em background"
+    }
+
+
+async def reprocess_single_page(
+    material_id: int,
+    page_num: int,
+    block_id: int,
+    pending_item_id: int,
+    file_path: str,
+    user_id: int
+):
+    """Reprocessa uma única página do PDF com o prompt melhorado."""
+    from database.database import SessionLocal
+    from services.document_processor import DocumentProcessor
+    from pdf2image import convert_from_path
+    import json
+    
+    db = SessionLocal()
+    try:
+        processor = DocumentProcessor()
+        
+        images = convert_from_path(file_path, dpi=150, first_page=page_num, last_page=page_num)
+        if not images:
+            print(f"[REPROCESS] Erro: não foi possível converter página {page_num}")
+            return
+        
+        image = images[0]
+        
+        result = processor.analyze_page(image, f"Reprocessamento - Página {page_num}")
+        
+        tables = result.get("raw_data", {}).get("tables", [])
+        if not tables:
+            print(f"[REPROCESS] Nenhuma tabela encontrada na página {page_num}")
+            return
+        
+        all_rows = []
+        headers = tables[0].get("headers", [])
+        for table in tables:
+            table_headers = table.get("headers", [])
+            if table_headers == headers:
+                all_rows.extend(table.get("rows", []))
+            else:
+                all_rows.extend(table.get("rows", []))
+        
+        merged_table = {
+            "headers": headers,
+            "rows": all_rows
+        }
+        table_json = json.dumps(merged_table, ensure_ascii=False)
+        
+        block = db.query(ContentBlock).filter(ContentBlock.id == block_id).first()
+        if block:
+            old_rows = 0
+            try:
+                old_data = json.loads(block.content)
+                old_rows = len(old_data.get("rows", []))
+            except:
+                pass
+            
+            new_rows = len(all_rows)
+            
+            block.content = table_json
+            
+            pending_item = db.query(PendingReviewItem).filter(PendingReviewItem.id == pending_item_id).first()
+            if pending_item:
+                pending_item.extracted_content = table_json
+                pending_item.original_content = table_json
+                pending_item.risk_reason = f"Reprocessado: {old_rows} → {new_rows} linhas"
+            
+            db.commit()
+            
+            try:
+                reindex_block(block, db)
+                print(f"[REPROCESS] Bloco reindexado no vetor de busca")
+            except Exception as idx_err:
+                print(f"[REPROCESS] Erro ao reindexar: {idx_err}")
+            
+            print(f"[REPROCESS] Página {page_num} reprocessada: {old_rows} → {new_rows} linhas")
+        
+    except Exception as e:
+        print(f"[REPROCESS] Erro: {e}")
+        import traceback
+        traceback.print_exc()
+    finally:
+        db.close()
+
+
 # ==================== PDF Upload Endpoints ====================
 
 async def process_pdf_with_auto_product_detection(

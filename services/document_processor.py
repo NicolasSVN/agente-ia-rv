@@ -69,8 +69,13 @@ INSTRUÇÕES:
    - "mixed": Se combina vários tipos
    - "image_only": Se é apenas uma imagem sem texto significativo
 
-2. Para TABELAS:
-   - Identifique os cabeçalhos das colunas
+2. Para TABELAS (MUITO IMPORTANTE - EXTRAIA TODAS AS LINHAS):
+   - Identifique os cabeçalhos das colunas EXATAMENTE como estão escritos
+   - EXTRAIA ABSOLUTAMENTE TODAS AS LINHAS da tabela, sem pular nenhuma
+   - NÃO resuma, NÃO omita, NÃO agrupe linhas - cada linha da tabela deve virar uma linha no JSON
+   - Se a tabela tem 10 linhas, o array "rows" DEVE ter 10 elementos
+   - Se a tabela tem 50 linhas, o array "rows" DEVE ter 50 elementos
+   - Isso é dados financeiros sensíveis - omitir linhas causa prejuízo ao usuário
    - Para cada linha, crie um "fato" completo que associe o item principal com todos os seus atributos
    - Exemplo: Se a tabela tem colunas "Produto | Preço | Categoria" e uma linha "iPhone | R$ 5.000 | Eletrônicos"
    - O fato seria: "iPhone: Preço é R$ 5.000, Categoria é Eletrônicos"
@@ -130,7 +135,7 @@ Responda APENAS com o JSON, sem markdown ou explicações."""
                         ]
                     }
                 ],
-                max_tokens=4096,
+                max_tokens=8192,
                 temperature=0.1
             )
             

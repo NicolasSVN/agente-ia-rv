@@ -91,6 +91,19 @@
             background: #fecaca;
         }
         
+        .btn-reprocess {
+            background: #fef3c7;
+            color: #92400e;
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+        
+        .btn-reprocess:hover {
+            background: #fde68a;
+        }
+        
         .btn-edit {
             background: #f3f4f6;
             color: #374151;
@@ -351,6 +364,7 @@
                         <div class="action-buttons">
                             <button class="btn-approve" onclick="approveItem(${item.id})">Aprovar</button>
                             <button class="btn-edit" onclick="editItem(${item.id})">Editar</button>
+                            <button class="btn-reprocess" onclick="reprocessItem(${item.id})" title="Re-extrair da imagem do PDF">Reprocessar</button>
                             <button class="btn-reject" onclick="rejectItem(${item.id})">Rejeitar</button>
                         </div>
                     </div>
@@ -387,6 +401,34 @@
                 renderItems();
             } catch (error) {
                 AppNotifications.show('Erro ao rejeitar item', 'error');
+            }
+        }
+
+        async function reprocessItem(id) {
+            const item = allItems.find(i => i.id === id);
+            if (!item) return;
+            
+            if (!confirm(`Deseja reprocessar a extração da ${item.block_title}?\n\nIsso vai re-analisar a imagem do PDF para capturar todos os dados da tabela.`)) {
+                return;
+            }
+            
+            try {
+                AppNotifications.show('Reprocessando página...', 'info');
+                
+                const response = await fetch(`/api/products/review/${id}/reprocess`, {
+                    method: 'POST',
+                    credentials: 'include'
+                });
+                
+                if (!response.ok) {
+                    const data = await response.json();
+                    throw new Error(data.detail || 'Erro ao reprocessar');
+                }
+                
+                AppNotifications.show('Reprocessamento iniciado! Atualize a página em alguns segundos para ver os novos dados.', 'success');
+                
+            } catch (error) {
+                AppNotifications.show(error.message || 'Erro ao reprocessar item', 'error');
             }
         }
 
