@@ -6,7 +6,7 @@
     <title>Fila de Revisão - Agente IA - RV</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="/static/tailwind.config.js"></script>
-    <link rel="stylesheet" href="/static/global.css">
+    <link rel="stylesheet" href="/static/global.css?v={{ now().timestamp() if now else 1706371200 }}">
     <script src="/static/notifications.js?v={{ now().timestamp() if now else 1706371200 }}"></script>
     <style>
         .review-card {
