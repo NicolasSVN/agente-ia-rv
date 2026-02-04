@@ -445,11 +445,13 @@
             pendingAction = null;
         }
 
-        function confirmAction() {
-            if (pendingAction) {
-                pendingAction();
+        async function confirmAction() {
+            const action = pendingAction;
+            document.getElementById('confirmModal').classList.remove('active');
+            pendingAction = null;
+            if (action) {
+                await action();
             }
-            closeConfirmModal();
         }
 
         function processDocument(materialId, productId) {
