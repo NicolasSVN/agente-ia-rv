@@ -11,6 +11,7 @@ Ensure code is well-documented and readable.
 Focus on security best practices.
 I prefer a clean and minimalist UI design.
 Ensure all user-facing texts are in grammatically correct Portuguese with proper accentuation.
+**CRITICAL: NEVER lose existing functionality when making changes.** Always verify that previously implemented features remain intact. Before modifying any component, review what features exist and ensure they are preserved. Call architect to validate UX changes.
 
 ## System Architecture
 The application is built using FastAPI with a modular architecture.
