@@ -430,7 +430,7 @@ function App() {
     } finally {
       setIsLoading(false);
     }
-  }, [searchQuery, advancedFilters]);
+  }, [searchQuery, ticketFilter, advancedFilters]);
 
   const fetchMessages = async (conversationId, isInitialLoad = false) => {
     try {
