@@ -1039,16 +1039,6 @@ function App() {
                         </button>
                       </>
                     )}
-                    <select
-                      value={currentConversation.ticket_status || 'new'}
-                      onChange={e => updateTicketStatus(e.target.value)}
-                      className="px-3 py-2 rounded-lg text-sm border border-gray-200 bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
-                    >
-                      <option value="new">Novo</option>
-                      <option value="open">Aberto</option>
-                      <option value="in_progress">Em Andamento</option>
-                      <option value="solved">Concluído</option>
-                    </select>
                     <button
                       onClick={toggleTakeover}
                       className={`flex items-center gap-2 px-3 py-2 rounded-lg font-medium text-sm transition-colors ${
