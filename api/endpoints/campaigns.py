@@ -1471,7 +1471,37 @@ async def dispatch_campaign(
 ):
     """
     Dispara a campanha enviando mensagens via WhatsApp.
+    Valida conexão Z-API antes de iniciar o envio.
     """
+    from services.whatsapp_client import ZAPIClient
+    
+    zapi = ZAPIClient()
+    if not zapi.is_configured():
+        missing = []
+        if not zapi.instance_id:
+            missing.append("ZAPI_INSTANCE_ID")
+        if not zapi.token:
+            missing.append("ZAPI_TOKEN")
+        if not zapi.client_token:
+            missing.append("ZAPI_CLIENT_TOKEN")
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Z-API não configurada corretamente. Faltam: {', '.join(missing)}. Configure em Integrações."
+        )
+    
+    connection_check = await zapi.check_connection()
+    if not connection_check.get("success"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Erro ao conectar com Z-API: {connection_check.get('error', 'Erro desconhecido')}. Verifique as credenciais em Integrações."
+        )
+    
+    if not connection_check.get("connected", False):
+        raise HTTPException(
+            status_code=400,
+            detail="WhatsApp desconectado. Acesse Integrações e escaneie o QR Code para reconectar antes de enviar a campanha."
+        )
+    
     campaign = db.query(Campaign).filter(Campaign.id == campaign_id).first()
     if not campaign:
         raise HTTPException(status_code=404, detail="Campanha não encontrada")
@@ -1586,7 +1616,32 @@ async def dispatch_campaign_stream(
     """
     Dispara a campanha com streaming de progresso via SSE.
     Envia mensagens uma a uma com delay para evitar sobrecarga.
+    Valida conexão Z-API antes de iniciar o envio.
     """
+    from services.whatsapp_client import ZAPIClient
+    
+    zapi = ZAPIClient()
+    if not zapi.is_configured():
+        missing = []
+        if not zapi.instance_id:
+            missing.append("ZAPI_INSTANCE_ID")
+        if not zapi.token:
+            missing.append("ZAPI_TOKEN")
+        if not zapi.client_token:
+            missing.append("ZAPI_CLIENT_TOKEN")
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Z-API não configurada. Faltam: {', '.join(missing)}. Configure em Integrações."
+        )
+    
+    connection_check = await zapi.check_connection()
+    if not connection_check.get("success") or not connection_check.get("connected", False):
+        error_msg = connection_check.get("error", "WhatsApp desconectado")
+        raise HTTPException(
+            status_code=400,
+            detail=f"Conexão Z-API indisponível: {error_msg}. Verifique em Integrações antes de enviar."
+        )
+    
     campaign = db.query(Campaign).filter(Campaign.id == campaign_id).first()
     if not campaign:
         raise HTTPException(status_code=404, detail="Campanha não encontrada")
