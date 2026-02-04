@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Search, Plus, User, Bot, Send, UserCheck, Loader2, MessageCircle, CheckCheck, MoreVertical, Copy, Reply, Trash2, Forward, X, Phone, AlertCircle, Clock, CheckCircle2, ArrowUpCircle, Filter } from 'lucide-react';
+import { Search, Plus, User, Bot, Send, UserCheck, Loader2, MessageCircle, CheckCheck, MoreVertical, Copy, Reply, Trash2, Forward, X, Phone, AlertCircle, Clock, CheckCircle2, ArrowUpCircle, Filter, SlidersHorizontal, Calendar, Building2, Users, Tag } from 'lucide-react';
 
 const API_BASE = '/api';
 
@@ -329,12 +329,20 @@ function App() {
   const [messages, setMessages] = useState([]);
   const [messageInput, setMessageInput] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
-  const [ticketFilter, setTicketFilter] = useState('all');
-  const [filterCounts, setFilterCounts] = useState({ all: 0, escalated: 0, my_tickets: 0, open: 0, solved_today: 0, new: 0 });
+  const [ticketFilter, setTicketFilter] = useState('');
+  const [filterCounts, setFilterCounts] = useState({ all: 0, escalated: 0, my_tickets: 0, open: 0, solved_today: 0, new: 0, in_progress: 0, needs_attention: 0 });
   const [isLoading, setIsLoading] = useState(true);
   const [isSending, setIsSending] = useState(false);
   const [showNewModal, setShowNewModal] = useState(false);
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+  const [advancedFilters, setAdvancedFilters] = useState({
+    conversationType: '',
+    dateRange: '',
+    unit: '',
+    broker: '',
+    category: ''
+  });
+  const [filterOptions, setFilterOptions] = useState({ units: [], brokers: [], categories: [] });
   const [isCreating, setIsCreating] = useState(false);
   const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(true);
@@ -370,13 +378,18 @@ function App() {
       const offset = pageNum * PAGE_SIZE;
       let url = `${API_BASE}/conversations/?limit=${PAGE_SIZE}&offset=${offset}`;
       if (searchQuery) url += `&search=${encodeURIComponent(searchQuery)}`;
-      if (statusFilter) url += `&status=${statusFilter}`;
       if (ticketFilter === 'needs_attention') url += `&needs_attention=true`;
       else if (ticketFilter === 'escalated') url += `&escalation_level=t1`;
       else if (ticketFilter === 'my_tickets') url += `&assigned_to_me=true`;
       else if (ticketFilter === 'open') url += `&ticket_status=open`;
       else if (ticketFilter === 'new') url += `&ticket_status=new`;
+      else if (ticketFilter === 'in_progress') url += `&ticket_status=in_progress`;
       else if (ticketFilter === 'solved') url += `&ticket_status=solved`;
+      if (advancedFilters.conversationType) url += `&status=${advancedFilters.conversationType}`;
+      if (advancedFilters.unit) url += `&unidade=${encodeURIComponent(advancedFilters.unit)}`;
+      if (advancedFilters.broker) url += `&broker=${encodeURIComponent(advancedFilters.broker)}`;
+      if (advancedFilters.category) url += `&escalation_category=${advancedFilters.category}`;
+      if (advancedFilters.dateRange) url += `&date_range=${advancedFilters.dateRange}`;
       const res = await fetch(url, { credentials: 'include' });
       if (res.status === 401) {
         window.location.href = '/login';
@@ -403,7 +416,7 @@ function App() {
     } finally {
       setIsLoading(false);
     }
-  }, [searchQuery, statusFilter]);
+  }, [searchQuery, advancedFilters]);
 
   const fetchMessages = async (conversationId, isInitialLoad = false) => {
     try {
@@ -621,13 +634,28 @@ function App() {
   }, []);
 
   useEffect(() => {
+    const fetchFilterOptions = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/conversations/filter-options`, { credentials: 'include' });
+        if (res.ok) {
+          const data = await res.json();
+          setFilterOptions(data);
+        }
+      } catch (err) {
+        console.error('Erro ao carregar opções de filtro:', err);
+      }
+    };
+    fetchFilterOptions();
+  }, []);
+
+  useEffect(() => {
     setPage(0);
     const timer = setTimeout(() => {
       fetchConversations(0, false);
       fetchFilterCounts();
     }, 300);
     return () => clearTimeout(timer);
-  }, [searchQuery, statusFilter, ticketFilter]);
+  }, [searchQuery, ticketFilter, advancedFilters]);
 
   useEffect(() => {
     if (messages.length > 0 && shouldScrollRef.current) {
@@ -753,62 +781,131 @@ function App() {
       <div className="flex-1 flex min-h-0 overflow-hidden">
         <div className="w-[380px] flex-shrink-0 bg-white border-r border-gray-200 flex flex-col">
           <div className="p-4 border-b border-gray-200">
-            <div className="relative mb-3">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={e => setSearchQuery(e.target.value)}
-                placeholder="Buscar por número ou nome..."
-                className="w-full pl-12 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-primary/20 focus:border-primary focus:bg-white outline-none transition-all"
-              />
+            <div className="relative mb-3 flex gap-2">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                  placeholder="Buscar..."
+                  className="w-full pl-9 pr-3 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-primary/20 focus:border-primary focus:bg-white outline-none transition-all"
+                />
+              </div>
+              <button
+                onClick={() => setShowAdvancedFilters(true)}
+                className={`flex items-center gap-1.5 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors border ${
+                  Object.values(advancedFilters).some(v => v) 
+                    ? 'bg-primary/10 text-primary border-primary/30' 
+                    : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'
+                }`}
+              >
+                <SlidersHorizontal className="w-4 h-4" />
+                {Object.values(advancedFilters).filter(v => v).length > 0 && (
+                  <span className="w-5 h-5 rounded-full bg-primary text-white text-xs flex items-center justify-center">
+                    {Object.values(advancedFilters).filter(v => v).length}
+                  </span>
+                )}
+              </button>
             </div>
-            <div className="flex flex-wrap gap-2 mb-3">
-              {[
-                { value: 'needs_attention', label: 'Atenção', count: filterCounts.needs_attention || (filterCounts.escalated + filterCounts.new), highlight: true },
-                { value: '', label: 'Todos', count: filterCounts.all },
-                { value: 'my_tickets', label: 'Meus', count: filterCounts.my_tickets },
-                { value: 'new', label: 'Novos', count: filterCounts.new },
-                { value: 'open', label: 'Abertos', count: filterCounts.open },
-                { value: 'solved', label: 'Resolvidos', count: filterCounts.solved_today },
-              ].map(f => (
-                <button
-                  key={f.value}
-                  onClick={() => setTicketFilter(f.value)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5 ${
-                    ticketFilter === f.value
-                      ? 'bg-primary text-white'
-                      : f.highlight && f.count > 0
-                        ? 'bg-red-100 text-red-700 hover:bg-red-200 border border-red-200'
-                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                  }`}
-                >
-                  {f.label}
-                  {f.count > 0 && (
-                    <span className={`px-1.5 py-0.5 rounded-full text-xs ${
-                      ticketFilter === f.value ? 'bg-white/20' : 'bg-gray-200'
-                    }`}>
-                      {f.count}
-                    </span>
-                  )}
-                </button>
-              ))}
+            
+            <div className="mb-3">
+              <p className="text-xs text-gray-500 mb-2 font-medium uppercase tracking-wide">Fila de Tickets</p>
+              <div className="flex flex-wrap gap-1.5">
+                {[
+                  { value: 'new', label: 'Novos', count: filterCounts.new, color: 'blue', icon: AlertCircle },
+                  { value: 'in_progress', label: 'Em Andamento', count: filterCounts.in_progress || filterCounts.open, color: 'amber', icon: Clock },
+                  { value: 'solved', label: 'Resolvidos', count: filterCounts.solved_today, color: 'green', icon: CheckCircle2 },
+                  { value: 'my_tickets', label: 'Meus', count: filterCounts.my_tickets, color: 'purple', icon: User },
+                  { value: 'needs_attention', label: 'Atenção', count: filterCounts.needs_attention || (filterCounts.escalated + filterCounts.new), color: 'red', icon: AlertCircle },
+                ].map(f => {
+                  const Icon = f.icon;
+                  const isActive = ticketFilter === f.value;
+                  const colorClasses = {
+                    blue: isActive ? 'bg-blue-600 text-white' : 'bg-blue-50 text-blue-700 hover:bg-blue-100 border-blue-200',
+                    amber: isActive ? 'bg-amber-500 text-white' : 'bg-amber-50 text-amber-700 hover:bg-amber-100 border-amber-200',
+                    green: isActive ? 'bg-green-600 text-white' : 'bg-green-50 text-green-700 hover:bg-green-100 border-green-200',
+                    purple: isActive ? 'bg-purple-600 text-white' : 'bg-purple-50 text-purple-700 hover:bg-purple-100 border-purple-200',
+                    red: isActive ? 'bg-red-600 text-white' : 'bg-red-50 text-red-700 hover:bg-red-100 border-red-200',
+                  };
+                  return (
+                    <button
+                      key={f.value}
+                      onClick={() => setTicketFilter(f.value)}
+                      className={`px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5 border ${colorClasses[f.color]}`}
+                    >
+                      <Icon className="w-3.5 h-3.5" />
+                      {f.label}
+                      {f.count > 0 && (
+                        <span className={`min-w-[18px] h-[18px] rounded-full text-xs flex items-center justify-center ${
+                          isActive ? 'bg-white/25' : 'bg-white'
+                        }`}>
+                          {f.count}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
-            <div className="flex gap-2">
-              {[{ value: '', label: 'Todas' }, { value: 'bot_active', label: 'Bot' }, { value: 'human_takeover', label: 'Humano' }].map(f => (
-                <button
-                  key={f.value}
-                  onClick={() => setStatusFilter(f.value)}
-                  className={`flex-1 px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
-                    statusFilter === f.value
-                      ? 'bg-primary/10 text-primary border border-primary/20'
-                      : 'bg-gray-50 text-gray-500 hover:bg-gray-100 border border-transparent'
-                  }`}
-                >
-                  {f.label}
-                </button>
-              ))}
+            
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => { setTicketFilter(''); setAdvancedFilters({ conversationType: '', dateRange: '', unit: '', broker: '', category: '' }); }}
+                className={`flex-1 px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
+                  ticketFilter === '' && !Object.values(advancedFilters).some(v => v)
+                    ? 'bg-gray-800 text-white'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+              >
+                Ver Todas
+              </button>
             </div>
+            
+            {Object.values(advancedFilters).some(v => v) && (
+              <div className="mt-3 flex flex-wrap gap-1.5">
+                {advancedFilters.conversationType && (
+                  <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs bg-gray-100 text-gray-700">
+                    {advancedFilters.conversationType === 'bot_active' ? 'Bot' : 'Humano'}
+                    <button onClick={() => setAdvancedFilters(prev => ({ ...prev, conversationType: '' }))} className="hover:text-gray-900">
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                )}
+                {advancedFilters.dateRange && (
+                  <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs bg-gray-100 text-gray-700">
+                    {advancedFilters.dateRange === 'today' ? 'Hoje' : advancedFilters.dateRange === '7d' ? '7 dias' : '30 dias'}
+                    <button onClick={() => setAdvancedFilters(prev => ({ ...prev, dateRange: '' }))} className="hover:text-gray-900">
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                )}
+                {advancedFilters.unit && (
+                  <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs bg-gray-100 text-gray-700">
+                    {advancedFilters.unit}
+                    <button onClick={() => setAdvancedFilters(prev => ({ ...prev, unit: '' }))} className="hover:text-gray-900">
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                )}
+                {advancedFilters.broker && (
+                  <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs bg-gray-100 text-gray-700">
+                    {advancedFilters.broker}
+                    <button onClick={() => setAdvancedFilters(prev => ({ ...prev, broker: '' }))} className="hover:text-gray-900">
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                )}
+                {advancedFilters.category && (
+                  <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs bg-gray-100 text-gray-700">
+                    {advancedFilters.category.replace(/_/g, ' ')}
+                    <button onClick={() => setAdvancedFilters(prev => ({ ...prev, category: '' }))} className="hover:text-gray-900">
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                )}
+              </div>
+            )}
           </div>
 
           <div className="flex-1 overflow-y-auto min-h-0">
@@ -1034,6 +1131,150 @@ function App() {
         onSubmit={startNewConversation}
         isLoading={isCreating}
       />
+
+      {showAdvancedFilters && (
+        <div className="fixed inset-0 bg-black/50 flex items-start justify-end z-50">
+          <div className="w-[400px] h-full bg-white shadow-xl flex flex-col animate-slide-in-right">
+            <div className="flex items-center justify-between p-4 border-b border-gray-200">
+              <h2 className="text-lg font-semibold text-gray-900">Filtros Avançados</h2>
+              <button
+                onClick={() => setShowAdvancedFilters(false)}
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5 text-gray-500" />
+              </button>
+            </div>
+            
+            <div className="flex-1 overflow-y-auto p-4 space-y-6">
+              <div>
+                <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
+                  <Bot className="w-4 h-4" />
+                  Tipo de Conversa
+                </label>
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { value: '', label: 'Todas' },
+                    { value: 'bot_active', label: 'Bot' },
+                    { value: 'human_takeover', label: 'Humano' }
+                  ].map(opt => (
+                    <button
+                      key={opt.value}
+                      onClick={() => setAdvancedFilters(prev => ({ ...prev, conversationType: opt.value }))}
+                      className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                        advancedFilters.conversationType === opt.value
+                          ? 'bg-primary text-white'
+                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
+                  <Calendar className="w-4 h-4" />
+                  Período
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { value: '', label: 'Todo o período' },
+                    { value: 'today', label: 'Hoje' },
+                    { value: '7d', label: 'Últimos 7 dias' },
+                    { value: '30d', label: 'Últimos 30 dias' }
+                  ].map(opt => (
+                    <button
+                      key={opt.value}
+                      onClick={() => setAdvancedFilters(prev => ({ ...prev, dateRange: opt.value }))}
+                      className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                        advancedFilters.dateRange === opt.value
+                          ? 'bg-primary text-white'
+                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
+                  <Building2 className="w-4 h-4" />
+                  Unidade
+                </label>
+                <select
+                  value={advancedFilters.unit}
+                  onChange={e => setAdvancedFilters(prev => ({ ...prev, unit: e.target.value }))}
+                  className="w-full px-3 py-2.5 rounded-lg border border-gray-200 text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+                >
+                  <option value="">Todas as unidades</option>
+                  {filterOptions.units.map(u => (
+                    <option key={u} value={u}>{u}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
+                  <Users className="w-4 h-4" />
+                  Broker
+                </label>
+                <select
+                  value={advancedFilters.broker}
+                  onChange={e => setAdvancedFilters(prev => ({ ...prev, broker: e.target.value }))}
+                  className="w-full px-3 py-2.5 rounded-lg border border-gray-200 text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+                >
+                  <option value="">Todos os brokers</option>
+                  {filterOptions.brokers.map(b => (
+                    <option key={b} value={b}>{b}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
+                  <Tag className="w-4 h-4" />
+                  Categoria de Escalação
+                </label>
+                <select
+                  value={advancedFilters.category}
+                  onChange={e => setAdvancedFilters(prev => ({ ...prev, category: e.target.value }))}
+                  className="w-full px-3 py-2.5 rounded-lg border border-gray-200 text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+                >
+                  <option value="">Todas as categorias</option>
+                  {[
+                    'out_of_scope', 'info_not_found', 'technical_complexity', 
+                    'commercial_request', 'explicit_human_request', 'emotional_friction',
+                    'stalled_conversation', 'recurring_issue', 'sensitive_topic', 
+                    'investment_decision', 'other'
+                  ].map(cat => (
+                    <option key={cat} value={cat}>{cat.replace(/_/g, ' ')}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="p-4 border-t border-gray-200 flex gap-3">
+              <button
+                onClick={() => {
+                  setAdvancedFilters({ conversationType: '', dateRange: '', unit: '', broker: '', category: '' });
+                }}
+                className="flex-1 px-4 py-2.5 rounded-lg text-sm font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors"
+              >
+                Limpar
+              </button>
+              <button
+                onClick={() => setShowAdvancedFilters(false)}
+                className="flex-1 px-4 py-2.5 rounded-lg text-sm font-medium bg-primary text-white hover:bg-primary-dark transition-colors"
+              >
+                Aplicar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {contextMenu && (
         <MessageContextMenu

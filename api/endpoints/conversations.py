@@ -69,6 +69,14 @@ class FilterCountsResponse(BaseModel):
     open: int = 0
     solved_today: int = 0
     new: int = 0
+    in_progress: int = 0
+    needs_attention: int = 0
+
+
+class FilterOptionsResponse(BaseModel):
+    units: list = []
+    brokers: list = []
+    categories: list = []
 
 
 class TicketMetricsResponse(BaseModel):
@@ -140,6 +148,10 @@ async def list_conversations(
     escalation_level: Optional[str] = Query(None, description="Filtrar por nível de escalonamento (t0, t1)"),
     assigned_to_me: Optional[bool] = Query(None, description="Filtrar meus tickets"),
     needs_attention: Optional[bool] = Query(None, description="Filtrar conversas que precisam de atenção (escaladas/novas, não resolvidas)"),
+    unidade: Optional[str] = Query(None, description="Filtrar por unidade do assessor"),
+    broker: Optional[str] = Query(None, description="Filtrar por broker do assessor"),
+    escalation_category: Optional[str] = Query(None, description="Filtrar por categoria de escalação"),
+    date_range: Optional[str] = Query(None, description="Filtrar por período (today, 7d, 30d)"),
     skip: int = Query(0, ge=0),
     offset: int = Query(None, ge=0, description="Alias for skip"),
     limit: int = Query(50, ge=1, le=100),
@@ -147,6 +159,8 @@ async def list_conversations(
     current_user: User = Depends(get_current_user)
 ):
     """Lista todas as conversas com filtros e busca. Suporta filtros V2 Zendesk-like."""
+    from datetime import date, timedelta
+    
     actual_offset = offset if offset is not None else skip
     query = db.query(Conversation)
     
@@ -169,7 +183,8 @@ async def list_conversations(
         query = query.filter(
             and_(
                 Conversation.escalation_level == EscalationLevel.T1_HUMAN.value,
-                Conversation.ticket_status.notin_([TicketStatusV2.SOLVED.value])
+                Conversation.ticket_status.in_([TicketStatusV2.NEW.value, TicketStatusV2.OPEN.value]),
+                Conversation.assigned_to.is_(None)
             )
         )
     elif ticket_status:
@@ -180,6 +195,31 @@ async def list_conversations(
     
     if assigned_to_me:
         query = query.filter(Conversation.assigned_to == current_user.id)
+    
+    # Filtros avançados
+    if unidade or broker:
+        query = query.outerjoin(Assessor, Conversation.assessor_id == Assessor.id)
+        if unidade:
+            query = query.filter(Assessor.unidade == unidade)
+        if broker:
+            query = query.filter(Assessor.broker_responsavel == broker)
+    
+    if escalation_category:
+        query = query.filter(Conversation.escalation_category == escalation_category)
+    
+    if date_range:
+        today = date.today()
+        if date_range == 'today':
+            start_date = datetime.combine(today, datetime.min.time())
+        elif date_range == '7d':
+            start_date = datetime.combine(today - timedelta(days=7), datetime.min.time())
+        elif date_range == '30d':
+            start_date = datetime.combine(today - timedelta(days=30), datetime.min.time())
+        else:
+            start_date = None
+        
+        if start_date:
+            query = query.filter(Conversation.last_message_at >= start_date)
     
     conversations = query.order_by(desc(Conversation.last_message_at)).offset(actual_offset).limit(limit).all()
     
@@ -886,6 +926,36 @@ def record_ticket_history(
 
 # ==================== V2 ZENDESK-LIKE ENDPOINTS ====================
 
+@router.get("/filter-options", response_model=FilterOptionsResponse)
+async def get_filter_options(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Retorna opções disponíveis para os filtros avançados."""
+    from sqlalchemy import func, distinct
+    
+    units = db.query(distinct(Assessor.unidade)).filter(
+        Assessor.unidade.isnot(None),
+        Assessor.unidade != ''
+    ).all()
+    
+    brokers = db.query(distinct(Assessor.broker_responsavel)).filter(
+        Assessor.broker_responsavel.isnot(None),
+        Assessor.broker_responsavel != ''
+    ).all()
+    
+    categories = db.query(distinct(Conversation.escalation_category)).filter(
+        Conversation.escalation_category.isnot(None),
+        Conversation.escalation_category != ''
+    ).all()
+    
+    return FilterOptionsResponse(
+        units=sorted([u[0] for u in units if u[0]]),
+        brokers=sorted([b[0] for b in brokers if b[0]]),
+        categories=sorted([c[0] for c in categories if c[0]])
+    )
+
+
 @router.get("/filters", response_model=FilterCountsResponse)
 async def get_filter_counts(
     db: Session = Depends(get_db),
@@ -914,6 +984,14 @@ async def get_filter_counts(
     new_count = db.query(func.count(Conversation.id)).filter(
         Conversation.ticket_status == TicketStatusV2.NEW.value
     ).scalar() or 0
+    in_progress_count = db.query(func.count(Conversation.id)).filter(
+        Conversation.ticket_status == TicketStatusV2.IN_PROGRESS.value
+    ).scalar() or 0
+    needs_attention = db.query(func.count(Conversation.id)).filter(
+        Conversation.escalation_level == EscalationLevel.T1_HUMAN.value,
+        Conversation.ticket_status.in_([TicketStatusV2.NEW.value, TicketStatusV2.OPEN.value]),
+        Conversation.assigned_to.is_(None)
+    ).scalar() or 0
     
     return FilterCountsResponse(
         all=all_count,
@@ -921,7 +999,9 @@ async def get_filter_counts(
         my_tickets=my_tickets,
         open=open_count,
         solved_today=solved_today,
-        new=new_count
+        new=new_count,
+        in_progress=in_progress_count,
+        needs_attention=needs_attention
     )
 
 
