@@ -323,13 +323,27 @@ function NewConversationModal({ isOpen, onClose, onSubmit, isLoading }) {
   );
 }
 
+const CATEGORY_LABELS = {
+  'out_of_scope': 'Fora do Escopo',
+  'info_not_found': 'Informação Não Encontrada',
+  'technical_complexity': 'Complexidade Técnica',
+  'commercial_request': 'Solicitação Comercial',
+  'explicit_human_request': 'Solicitação Explícita de Humano',
+  'emotional_friction': 'Fricção Emocional',
+  'stalled_conversation': 'Conversa Travada',
+  'recurring_issue': 'Problema Recorrente',
+  'sensitive_topic': 'Tema Sensível',
+  'investment_decision': 'Decisão de Investimento',
+  'other': 'Outros'
+};
+
 function App() {
   const [conversations, setConversations] = useState([]);
   const [currentConversation, setCurrentConversation] = useState(null);
   const [messages, setMessages] = useState([]);
   const [messageInput, setMessageInput] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
-  const [ticketFilter, setTicketFilter] = useState('');
+  const [ticketFilter, setTicketFilter] = useState('new');
   const [filterCounts, setFilterCounts] = useState({ all: 0, escalated: 0, my_tickets: 0, open: 0, solved_today: 0, new: 0, in_progress: 0, needs_attention: 0 });
   const [isLoading, setIsLoading] = useState(true);
   const [isSending, setIsSending] = useState(false);
@@ -851,14 +865,21 @@ function App() {
             
             <div className="flex items-center gap-2">
               <button
-                onClick={() => { setTicketFilter(''); setAdvancedFilters({ conversationType: '', dateRange: '', unit: '', broker: '', category: '' }); }}
+                onClick={() => {
+                  if (ticketFilter === '') {
+                    setTicketFilter('new');
+                  } else {
+                    setTicketFilter('');
+                    setAdvancedFilters({ conversationType: '', dateRange: '', unit: '', broker: '', category: '' });
+                  }
+                }}
                 className={`flex-1 px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
-                  ticketFilter === '' && !Object.values(advancedFilters).some(v => v)
+                  ticketFilter === ''
                     ? 'bg-gray-800 text-white'
                     : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                 }`}
               >
-                Ver Todas
+                {ticketFilter === '' ? 'Voltar para Novos' : 'Ver Todas'}
               </button>
             </div>
             
@@ -898,7 +919,7 @@ function App() {
                 )}
                 {advancedFilters.category && (
                   <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs bg-gray-100 text-gray-700">
-                    {advancedFilters.category.replace(/_/g, ' ')}
+                    {CATEGORY_LABELS[advancedFilters.category] || advancedFilters.category}
                     <button onClick={() => setAdvancedFilters(prev => ({ ...prev, category: '' }))} className="hover:text-gray-900">
                       <X className="w-3 h-3" />
                     </button>
@@ -1060,7 +1081,7 @@ function App() {
                       </p>
                       {currentConversation.escalation_category && (
                         <div className="mt-2 text-xs text-amber-600">
-                          Motivo: {currentConversation.escalation_category.replace(/_/g, ' ')}
+                          Motivo: {CATEGORY_LABELS[currentConversation.escalation_category] || currentConversation.escalation_category}
                         </div>
                       )}
                     </div>
@@ -1244,13 +1265,8 @@ function App() {
                   className="w-full px-3 py-2.5 rounded-lg border border-gray-200 text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
                 >
                   <option value="">Todas as categorias</option>
-                  {[
-                    'out_of_scope', 'info_not_found', 'technical_complexity', 
-                    'commercial_request', 'explicit_human_request', 'emotional_friction',
-                    'stalled_conversation', 'recurring_issue', 'sensitive_topic', 
-                    'investment_decision', 'other'
-                  ].map(cat => (
-                    <option key={cat} value={cat}>{cat.replace(/_/g, ' ')}</option>
+                  {Object.entries(CATEGORY_LABELS).map(([value, label]) => (
+                    <option key={value} value={value}>{label}</option>
                   ))}
                 </select>
               </div>
