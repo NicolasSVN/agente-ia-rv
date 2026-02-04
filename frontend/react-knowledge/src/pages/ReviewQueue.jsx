@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ClipboardCheck, Check, X, Edit, AlertTriangle, RefreshCw, Table2, Search, FileText, Maximize2 } from 'lucide-react';
-import { reviewAPI } from '../services/api';
+import { ClipboardCheck, Check, X, Edit, AlertTriangle, RefreshCw, Table2, Search, FileText, Maximize2, CheckSquare, Square } from 'lucide-react';
+import { reviewAPI, blocksAPI } from '../services/api';
 import { Button } from '../components/Button';
 import { Modal } from '../components/Modal';
 import { LoadingSpinner } from '../components/LoadingSpinner';
@@ -209,12 +209,60 @@ export function ReviewQueue() {
   const [showEditModal, setShowEditModal] = useState(false);
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [processing, setProcessing] = useState(false);
+  const [selectedBlocks, setSelectedBlocks] = useState(new Set());
+
+  const selectableItems = useMemo(() => 
+    items.filter(i => i.block_id), 
+    [items]
+  );
+
+  const toggleBlockSelection = (blockId) => {
+    if (!blockId) return;
+    setSelectedBlocks(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(blockId)) {
+        newSet.delete(blockId);
+      } else {
+        newSet.add(blockId);
+      }
+      return newSet;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    const allBlockIds = selectableItems.map(i => i.block_id);
+    if (selectedBlocks.size === allBlockIds.length && allBlockIds.length > 0) {
+      setSelectedBlocks(new Set());
+    } else {
+      setSelectedBlocks(new Set(allBlockIds));
+    }
+  };
+
+  const handleBulkApprove = async () => {
+    if (selectedBlocks.size === 0) {
+      addToast('Selecione ao menos um bloco', 'warning');
+      return;
+    }
+
+    setProcessing(true);
+    try {
+      const blockIds = Array.from(selectedBlocks);
+      const result = await blocksAPI.bulkApprove(blockIds);
+      addToast(`${result.approved_count} blocos aprovados!`, 'success');
+      setItems(prev => prev.filter(i => !selectedBlocks.has(i.block_id)));
+      setSelectedBlocks(new Set());
+    } catch (err) {
+      addToast(`Erro: ${err.message}`, 'error');
+    }
+    setProcessing(false);
+  };
 
   const loadItems = async () => {
     try {
       setLoading(true);
       const data = await reviewAPI.listPending();
       setItems(data.pending_items || data.items || data || []);
+      setSelectedBlocks(new Set());
     } catch (err) {
       addToast('Erro ao carregar itens pendentes', 'error');
     } finally {
@@ -323,9 +371,40 @@ export function ReviewQueue() {
         />
       ) : (
         <>
-          <p className="text-sm text-muted">
-            {items.length} item{items.length !== 1 ? 's' : ''} aguardando revisão
-          </p>
+          <div className="flex items-center justify-between bg-card rounded-card border border-border p-4">
+            <div className="flex items-center gap-4">
+              {selectableItems.length > 0 && (
+                <button
+                  onClick={toggleSelectAll}
+                  className="flex items-center gap-2 text-sm font-medium text-muted hover:text-foreground transition-colors"
+                >
+                  {selectedBlocks.size === selectableItems.length && selectableItems.length > 0 ? (
+                    <CheckSquare className="w-5 h-5 text-primary" />
+                  ) : (
+                    <Square className="w-5 h-5" />
+                  )}
+                  {selectedBlocks.size === selectableItems.length && selectableItems.length > 0 ? 'Desmarcar Todos' : 'Selecionar Todos'}
+                </button>
+              )}
+              <span className="text-sm text-muted">
+                {selectedBlocks.size > 0 ? (
+                  <span className="text-primary font-medium">{selectedBlocks.size} selecionado{selectedBlocks.size !== 1 ? 's' : ''}</span>
+                ) : (
+                  <>{items.length} item{items.length !== 1 ? 's' : ''} aguardando revisão</>
+                )}
+              </span>
+            </div>
+            {selectedBlocks.size > 0 && (
+              <Button
+                variant="success"
+                onClick={handleBulkApprove}
+                disabled={processing}
+              >
+                <Check className="w-4 h-4" />
+                Aprovar {selectedBlocks.size} Selecionado{selectedBlocks.size !== 1 ? 's' : ''}
+              </Button>
+            )}
+          </div>
 
           <div className="space-y-4">
             <AnimatePresence>
@@ -338,6 +417,20 @@ export function ReviewQueue() {
                   className="bg-card rounded-card border border-warning/30 p-5 shadow-card"
                 >
                   <div className="flex items-start gap-4">
+                    {item.block_id ? (
+                      <button
+                        onClick={() => toggleBlockSelection(item.block_id)}
+                        className="mt-1 flex-shrink-0"
+                      >
+                        {selectedBlocks.has(item.block_id) ? (
+                          <CheckSquare className="w-5 h-5 text-primary" />
+                        ) : (
+                          <Square className="w-5 h-5 text-muted hover:text-foreground transition-colors" />
+                        )}
+                      </button>
+                    ) : (
+                      <div className="mt-1 w-5" />
+                    )}
                     <div className="p-2 bg-warning/10 rounded-full">
                       <AlertTriangle className="w-5 h-5 text-warning" />
                     </div>

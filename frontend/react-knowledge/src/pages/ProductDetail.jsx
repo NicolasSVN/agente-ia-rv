@@ -5,7 +5,7 @@ import * as Tabs from '@radix-ui/react-tabs';
 import {
   ArrowLeft, FileText, MessageSquare, Edit, Trash2, Plus,
   Upload, ChevronDown, ChevronRight, Clock, Check, AlertTriangle,
-  RefreshCw, History, Send, Table2,
+  RefreshCw, History, Send, Table2, CheckSquare, Square,
 } from 'lucide-react';
 import { productsAPI, materialsAPI, blocksAPI, scriptsAPI } from '../services/api';
 import { Button } from '../components/Button';
@@ -104,9 +104,64 @@ function MaterialSection({ material, productId, onRefresh }) {
   const [showVersions, setShowVersions] = useState(null);
   const [versions, setVersions] = useState([]);
   const [loadingVersions, setLoadingVersions] = useState(false);
+  const [selectedBlocks, setSelectedBlocks] = useState(new Set());
+  const [bulkApproving, setBulkApproving] = useState(false);
   const { addToast } = useToast();
   
   const materialStatus = getMaterialStatus(material);
+
+  const blocks = material.blocks || [];
+  const pendingBlocks = blocks.filter(b => b.status === 'pending_review');
+  
+  const sortedBlocks = useMemo(() => {
+    return [...blocks].sort((a, b) => {
+      const aIsPending = a.status === 'pending_review' ? 0 : 1;
+      const bIsPending = b.status === 'pending_review' ? 0 : 1;
+      if (aIsPending !== bIsPending) return aIsPending - bIsPending;
+      return (a.source_page || 0) - (b.source_page || 0);
+    });
+  }, [blocks]);
+
+  useEffect(() => {
+    setSelectedBlocks(new Set());
+  }, [material.id, blocks.length]);
+
+  const toggleBlockSelection = (blockId) => {
+    setSelectedBlocks(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(blockId)) {
+        newSet.delete(blockId);
+      } else {
+        newSet.add(blockId);
+      }
+      return newSet;
+    });
+  };
+
+  const toggleSelectAllPending = () => {
+    const pendingIds = pendingBlocks.map(b => b.id);
+    if (pendingIds.every(id => selectedBlocks.has(id))) {
+      setSelectedBlocks(new Set());
+    } else {
+      setSelectedBlocks(new Set(pendingIds));
+    }
+  };
+
+  const handleBulkApprove = async () => {
+    if (selectedBlocks.size === 0) return;
+    
+    setBulkApproving(true);
+    try {
+      const blockIds = Array.from(selectedBlocks);
+      const result = await blocksAPI.bulkApprove(blockIds);
+      addToast(`${result.approved_count} blocos aprovados!`, 'success');
+      setSelectedBlocks(new Set());
+      onRefresh();
+    } catch (err) {
+      addToast(`Erro: ${err.message}`, 'error');
+    }
+    setBulkApproving(false);
+  };
 
   const loadVersions = async (blockId) => {
     setLoadingVersions(true);
@@ -162,9 +217,6 @@ function MaterialSection({ material, productId, onRefresh }) {
     }
   };
 
-  const blocks = material.blocks || [];
-  const pendingBlocks = blocks.filter(b => b.status === 'pending_review');
-
   return (
     <div className="border border-border rounded-card overflow-hidden">
       <button
@@ -214,13 +266,48 @@ function MaterialSection({ material, productId, onRefresh }) {
                 </div>
               )}
 
-              {blocks.length === 0 ? (
+              {sortedBlocks.length === 0 ? (
                 <p className="text-center text-muted py-4">
                   Nenhum bloco de conteúdo ainda
                 </p>
               ) : (
                 <div className="space-y-3">
-                  {blocks.map((block) => (
+                  {pendingBlocks.length > 0 && (
+                    <div className="flex items-center justify-between bg-warning/10 rounded-lg p-3 border border-warning/20">
+                      <div className="flex items-center gap-3">
+                        <button
+                          onClick={toggleSelectAllPending}
+                          className="flex items-center gap-2 text-sm font-medium text-warning hover:text-foreground transition-colors"
+                        >
+                          {pendingBlocks.every(b => selectedBlocks.has(b.id)) ? (
+                            <CheckSquare className="w-5 h-5 text-primary" />
+                          ) : (
+                            <Square className="w-5 h-5" />
+                          )}
+                          {pendingBlocks.every(b => selectedBlocks.has(b.id)) ? 'Desmarcar Todos' : 'Selecionar Pendentes'}
+                        </button>
+                        <span className="text-sm text-muted">
+                          {selectedBlocks.size > 0 ? (
+                            <span className="text-primary font-medium">{selectedBlocks.size} selecionado{selectedBlocks.size !== 1 ? 's' : ''}</span>
+                          ) : (
+                            <>{pendingBlocks.length} pendente{pendingBlocks.length !== 1 ? 's' : ''}</>
+                          )}
+                        </span>
+                      </div>
+                      {selectedBlocks.size > 0 && (
+                        <Button
+                          size="sm"
+                          variant="success"
+                          onClick={handleBulkApprove}
+                          disabled={bulkApproving}
+                        >
+                          <Check className="w-3 h-3" />
+                          Aprovar {selectedBlocks.size}
+                        </Button>
+                      )}
+                    </div>
+                  )}
+                  {sortedBlocks.map((block) => (
                     <div
                       key={block.id}
                       className={`p-4 rounded-card border ${
@@ -231,6 +318,18 @@ function MaterialSection({ material, productId, onRefresh }) {
                     >
                       <div className="flex items-start justify-between mb-2">
                         <div className="flex items-center gap-2">
+                          {block.status === 'pending_review' && (
+                            <button
+                              onClick={() => toggleBlockSelection(block.id)}
+                              className="flex-shrink-0"
+                            >
+                              {selectedBlocks.has(block.id) ? (
+                                <CheckSquare className="w-5 h-5 text-primary" />
+                              ) : (
+                                <Square className="w-5 h-5 text-muted hover:text-foreground transition-colors" />
+                              )}
+                            </button>
+                          )}
                           <span className="text-xs px-2 py-0.5 bg-muted/10 text-muted rounded font-medium">
                             {block.block_type}
                           </span>

@@ -786,6 +786,75 @@ async def approve_block(
     return {"success": True, "status": block.status}
 
 
+class BulkApproveRequest(BaseModel):
+    block_ids: List[int]
+
+
+@router.post("/blocks/bulk-approve")
+async def bulk_approve_blocks(
+    request: BulkApproveRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Aprova múltiplos blocos pendentes de revisão em massa."""
+    if current_user.role not in ["admin", "gestao_rv"]:
+        raise HTTPException(status_code=403, detail="Acesso negado")
+    
+    if not request.block_ids:
+        raise HTTPException(status_code=400, detail="Nenhum bloco selecionado")
+    
+    approved_count = 0
+    errors = []
+    indexed_materials = set()
+    
+    for block_id in request.block_ids:
+        block = db.query(ContentBlock).filter(ContentBlock.id == block_id).first()
+        if not block:
+            errors.append(f"Bloco {block_id} não encontrado")
+            continue
+        
+        if block.status != ContentBlockStatus.PENDING_REVIEW.value:
+            errors.append(f"Bloco {block_id} não está pendente de revisão")
+            continue
+        
+        block.status = ContentBlockStatus.APPROVED.value
+        
+        review_item = db.query(PendingReviewItem).filter(
+            PendingReviewItem.block_id == block_id,
+            PendingReviewItem.reviewed_at.is_(None)
+        ).first()
+        
+        if review_item:
+            review_item.reviewed_by = current_user.id
+            review_item.reviewed_at = datetime.utcnow()
+            review_item.review_action = "approved"
+        
+        indexed_materials.add(block.material_id)
+        approved_count += 1
+    
+    db.commit()
+    
+    for material_id in indexed_materials:
+        material = db.query(Material).filter(Material.id == material_id).first()
+        if material:
+            product = db.query(Product).filter(Product.id == material.product_id).first()
+            if product:
+                from services.product_ingestor import get_product_ingestor
+                ingestor = get_product_ingestor()
+                ingestor.index_approved_blocks(
+                    material_id=material.id,
+                    product_name=product.name,
+                    product_ticker=product.ticker,
+                    db=db
+                )
+    
+    return {
+        "success": True,
+        "approved_count": approved_count,
+        "errors": errors if errors else None
+    }
+
+
 # ==================== Scripts Endpoints ====================
 
 @router.post("/{product_id}/scripts")

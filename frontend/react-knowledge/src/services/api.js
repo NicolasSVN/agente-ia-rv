@@ -137,6 +137,12 @@ export const blocksAPI = {
     fetchAPI(`/products/blocks/${blockId}/approve`, {
       method: 'POST',
     }),
+
+  bulkApprove: (blockIds) =>
+    fetchAPI('/products/blocks/bulk-approve', {
+      method: 'POST',
+      body: JSON.stringify({ block_ids: blockIds }),
+    }),
 };
 
 export const reviewAPI = {
