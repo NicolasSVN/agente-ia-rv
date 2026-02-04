@@ -10,6 +10,7 @@ from typing import List, Optional, Tuple, Dict, Any
 from core.config import get_settings
 from services.vector_store import get_vector_store
 from services.fii_lookup import get_fii_lookup_service, FIIInfoType
+from services.semantic_search import get_enhanced_search, TokenExtractor
 
 settings = get_settings()
 
@@ -1070,6 +1071,10 @@ Agente: "Oi {PrimeiroNome}! O que precisa?"
         vs = get_vector_store()
         context_documents = []
         
+        conversation_id_for_context = None
+        if conversation_data and conversation_data.get('id'):
+            conversation_id_for_context = str(conversation_data['id'])
+        
         if categoria == "SAUDACAO":
             print(f"[OpenAI] Saudação detectada - NÃO consultando documentos")
         elif categoria == "FORA_ESCOPO":
@@ -1082,25 +1087,52 @@ Agente: "Oi {PrimeiroNome}! O que precisa?"
                     for doc in product_docs:
                         if doc not in context_documents:
                             context_documents.append(doc)
+            
+            try:
+                enhanced_search = get_enhanced_search()
+                
+                tokens = TokenExtractor.extract(user_message)
+                print(f"[OpenAI] Tokens extraídos - Tickers: {tokens.possible_tickers}, Gestoras: {tokens.possible_gestoras}")
+                
+                search_results = enhanced_search.search(
+                    query=enriched_query,
+                    n_results=8,
+                    conversation_id=conversation_id_for_context,
+                    similarity_threshold=0.85
+                )
+                
+                seen_contents = set(doc.get('content', '')[:100] for doc in context_documents)
+                for result in search_results:
+                    content_key = result.content[:100]
+                    if content_key not in seen_contents:
+                        seen_contents.add(content_key)
+                        context_documents.append({
+                            'content': result.content,
+                            'metadata': result.metadata,
+                            'distance': result.vector_distance,
+                            'composite_score': result.composite_score,
+                            'confidence_level': result.confidence_level,
+                            'source': result.source
+                        })
+                
+                high_conf = sum(1 for r in search_results if r.confidence_level == 'high')
+                print(f"[OpenAI] Busca aprimorada adicionou {len(search_results)} resultados (Alta confiança: {high_conf})")
+                
+            except Exception as e:
+                print(f"[OpenAI] Busca aprimorada falhou (usando fallback): {e}")
+            
+            if not context_documents:
+                if is_followup and history_entities:
+                    print(f"[OpenAI] Follow-up - buscando por entidades: {history_entities[:3]}")
+                    for entity in history_entities[:3]:
+                        entity_docs = vs.search_by_product(entity, n_results=10)
+                        for doc in entity_docs:
+                            if doc not in context_documents:
+                                context_documents.append(doc)
                 
                 if not context_documents:
                     context_documents = vs.search(enriched_query, n_results=5)
-                    print(f"[OpenAI] Fallback semântico retornou {len(context_documents)} docs")
-            elif is_followup and history_entities:
-                print(f"[OpenAI] Follow-up sem entidade - buscando por contexto do histórico: {history_entities[:3]}")
-                for entity in history_entities[:3]:
-                    entity_docs = vs.search_by_product(entity, n_results=10)
-                    print(f"[OpenAI] Encontrados {len(entity_docs)} docs para entidade do histórico '{entity}'")
-                    for doc in entity_docs:
-                        if doc not in context_documents:
-                            context_documents.append(doc)
-                
-                if not context_documents:
-                    context_documents = vs.search(enriched_query, n_results=5)
-                    print(f"[OpenAI] Fallback com query enriquecida retornou {len(context_documents)} docs")
-            else:
-                context_documents = vs.search(enriched_query, n_results=5)
-                print(f"[OpenAI] Busca semântica padrão retornou {len(context_documents)} docs")
+                    print(f"[OpenAI] Fallback semântico: {len(context_documents)} docs")
         
         fii_lookup_result = None
         similar_tickers_suggestion = None
