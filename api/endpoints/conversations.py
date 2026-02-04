@@ -1173,8 +1173,11 @@ async def update_ticket_status(
     if request.status not in valid_statuses:
         raise HTTPException(status_code=400, detail=f"Status inválido. Use: {valid_statuses}")
     
+    from datetime import timezone
+    
     old_status = conv.ticket_status
-    now = datetime.utcnow()
+    now_utc = datetime.now(timezone.utc)
+    now_naive = datetime.utcnow()
     
     if conv.active_ticket_id:
         active_ticket = db.query(ConversationTicket).filter(
@@ -1185,9 +1188,14 @@ async def update_ticket_status(
             active_ticket.status = request.status
             
             if request.status == TicketStatusV2.SOLVED.value:
-                active_ticket.solved_at = now
+                active_ticket.solved_at = now_naive
                 if active_ticket.transferred_at:
-                    active_ticket.resolution_time_seconds = int((now - active_ticket.transferred_at).total_seconds())
+                    transferred = active_ticket.transferred_at
+                    if transferred.tzinfo is not None:
+                        transferred_utc = transferred.astimezone(timezone.utc)
+                    else:
+                        transferred_utc = transferred.replace(tzinfo=timezone.utc)
+                    active_ticket.resolution_time_seconds = int((now_utc - transferred_utc).total_seconds())
     
     conv.ticket_status = request.status
     
