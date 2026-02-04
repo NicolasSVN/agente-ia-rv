@@ -299,15 +299,17 @@ async def get_filter_counts(
     my_tickets = db.query(func.count(Conversation.id)).filter(
         Conversation.assigned_to == current_user.id
     ).scalar() or 0
+    new_count = db.query(func.count(Conversation.id)).filter(
+        Conversation.ticket_status == TicketStatusV2.NEW.value,
+        Conversation.assigned_to.is_(None)
+    ).scalar() or 0
     open_count = db.query(func.count(Conversation.id)).filter(
-        Conversation.ticket_status.in_([TicketStatusV2.NEW.value, TicketStatusV2.OPEN.value])
+        Conversation.ticket_status == TicketStatusV2.OPEN.value,
+        Conversation.assigned_to.isnot(None)
     ).scalar() or 0
     solved_today = db.query(func.count(Conversation.id)).filter(
         Conversation.ticket_status == TicketStatusV2.SOLVED.value,
         Conversation.solved_at >= today_start
-    ).scalar() or 0
-    new_count = db.query(func.count(Conversation.id)).filter(
-        Conversation.ticket_status == TicketStatusV2.NEW.value
     ).scalar() or 0
     in_progress_count = db.query(func.count(Conversation.id)).filter(
         Conversation.ticket_status == TicketStatusV2.IN_PROGRESS.value
@@ -1029,7 +1031,7 @@ async def take_ticket(
         ).first()
         
         if active_ticket:
-            active_ticket.status = TicketStatusV2.IN_PROGRESS.value
+            active_ticket.status = TicketStatusV2.OPEN.value
             active_ticket.assigned_to = current_user.id
             if not active_ticket.first_response_at:
                 active_ticket.first_response_at = now
@@ -1038,7 +1040,7 @@ async def take_ticket(
     
     conv.assigned_to = current_user.id
     conv.last_assigned_at = now
-    conv.ticket_status = TicketStatusV2.IN_PROGRESS.value
+    conv.ticket_status = TicketStatusV2.OPEN.value
     conv.escalation_level = EscalationLevel.T1_HUMAN.value
     conv.status = ConversationStatus.HUMAN_TAKEOVER.value
     conv.conversation_state = ConversationState.HUMAN_TAKEOVER.value
@@ -1064,24 +1066,13 @@ async def take_ticket(
         notes=f"Ticket assumido por {current_user.username}"
     )
     
-    greeting_sent = False
-    try:
-        if zapi_client and conv.phone:
-            first_name = current_user.username.split()[0] if current_user.username else "um especialista"
-            greeting = get_takeover_greeting(first_name)
-            await zapi_client.send_text(conv.phone, greeting)
-            greeting_sent = True
-    except Exception as e:
-        print(f"[Take] Erro ao enviar saudação: {e}")
-    
     return {
         "success": True,
         "message": f"Ticket assumido por {current_user.username}",
         "ticket_status": conv.ticket_status,
         "escalation_level": conv.escalation_level,
         "assigned_to_id": current_user.id,
-        "assigned_to_name": current_user.username,
-        "greeting_sent": greeting_sent
+        "assigned_to_name": current_user.username
     }
 
 

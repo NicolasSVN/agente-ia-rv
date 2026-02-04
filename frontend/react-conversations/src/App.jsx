@@ -1,7 +1,35 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Search, Plus, User, Bot, Send, UserCheck, Loader2, MessageCircle, CheckCheck, MoreVertical, Copy, Reply, Trash2, Forward, X, Phone, AlertCircle, Clock, CheckCircle2, ArrowUpCircle, Filter, SlidersHorizontal, Calendar, Building2, Users, Tag } from 'lucide-react';
+import { Search, Plus, User, Bot, Send, UserCheck, Loader2, MessageCircle, CheckCheck, MoreVertical, Copy, Reply, Trash2, Forward, X, Phone, AlertCircle, Clock, CheckCircle2, ArrowUpCircle, Filter, SlidersHorizontal, Calendar, Building2, Users, Tag, Info, XCircle } from 'lucide-react';
+import { createPortal } from 'react-dom';
 
 const API_BASE = '/api';
+
+function Toast({ message, type = 'info', onClose }) {
+  const icons = { success: CheckCircle2, error: XCircle, warning: AlertCircle, info: Info };
+  const colors = {
+    success: 'bg-green-50 border-green-200 text-green-700',
+    error: 'bg-red-50 border-red-200 text-red-700',
+    warning: 'bg-amber-50 border-amber-200 text-amber-700',
+    info: 'bg-blue-50 border-blue-200 text-blue-700',
+  };
+  const Icon = icons[type] || Info;
+  
+  useEffect(() => {
+    const timer = setTimeout(onClose, 4000);
+    return () => clearTimeout(timer);
+  }, [onClose]);
+  
+  return createPortal(
+    <div className={`fixed top-4 left-1/2 -translate-x-1/2 z-[9999] flex items-center gap-3 px-4 py-3 rounded-lg border shadow-lg ${colors[type]}`}>
+      <Icon className="w-5 h-5 flex-shrink-0" />
+      <span className="text-sm font-medium">{message}</span>
+      <button onClick={onClose} className="ml-2 p-1 rounded hover:bg-black/5">
+        <X className="w-4 h-4" />
+      </button>
+    </div>,
+    document.body
+  );
+}
 
 function formatPhone(phone) {
   if (!phone) return '-';
@@ -61,8 +89,8 @@ function TicketStatusBadge({ ticketStatus, escalationLevel }) {
   
   const statusConfig = {
     new: { bg: 'bg-blue-100', text: 'text-blue-700', border: 'border-blue-200', label: 'Novo', icon: AlertCircle },
-    open: { bg: 'bg-yellow-100', text: 'text-yellow-700', border: 'border-yellow-200', label: 'Aberto', icon: Clock },
-    in_progress: { bg: 'bg-amber-100', text: 'text-amber-700', border: 'border-amber-200', label: 'Aberto', icon: ArrowUpCircle },
+    open: { bg: 'bg-amber-100', text: 'text-amber-700', border: 'border-amber-200', label: 'Aberto', icon: Clock },
+    in_progress: { bg: 'bg-amber-100', text: 'text-amber-700', border: 'border-amber-200', label: 'Em Andamento', icon: ArrowUpCircle },
     solved: { bg: 'bg-green-100', text: 'text-green-700', border: 'border-green-200', label: 'Concluído', icon: CheckCircle2 },
   };
   
@@ -251,18 +279,18 @@ function ConversationItem({ conversation, isActive, onClick }) {
   );
 }
 
-function NewConversationModal({ isOpen, onClose, onSubmit, isLoading }) {
+function NewConversationModal({ isOpen, onClose, onSubmit, isLoading, onError }) {
   const [phone, setPhone] = useState('');
   const [message, setMessage] = useState('');
 
   const handleSubmit = () => {
     const phoneClean = phone.replace(/\D/g, '');
     if (!phoneClean || phoneClean.length < 10) {
-      alert('Número de telefone inválido');
+      if (onError) onError('Número de telefone inválido');
       return;
     }
     if (!message.trim()) {
-      alert('Digite uma mensagem');
+      if (onError) onError('Digite uma mensagem');
       return;
     }
     onSubmit({ phone: phoneClean, message: message.trim() });
@@ -362,11 +390,16 @@ function App() {
   const [hasMore, setHasMore] = useState(true);
   const [totalCount, setTotalCount] = useState(0);
   const [contextMenu, setContextMenu] = useState(null);
+  const [toast, setToast] = useState(null);
   const messagesEndRef = useRef(null);
   const messagesContainerRef = useRef(null);
   const eventSourceRef = useRef(null);
   const shouldScrollRef = useRef(true);
   const PAGE_SIZE = 20;
+  
+  const showToast = useCallback((message, type = 'info') => {
+    setToast({ message, type });
+  }, []);
 
   const scrollToBottom = useCallback((behavior = 'smooth') => {
     if (messagesEndRef.current && shouldScrollRef.current) {
@@ -485,7 +518,7 @@ function App() {
       await fetchMessages(currentConversation.id, false);
       await fetchConversations(0, false);
     } catch (err) {
-      alert('Erro ao enviar mensagem');
+      showToast('Erro ao enviar mensagem', 'error');
     } finally {
       setIsSending(false);
     }
@@ -505,7 +538,7 @@ function App() {
       setCurrentConversation(prev => ({ ...prev, status: result.status }));
       await fetchConversations(0, false);
     } catch (err) {
-      alert('Erro ao alterar status');
+      showToast('Erro ao alterar status', 'error');
     }
   };
 
@@ -518,7 +551,7 @@ function App() {
       });
       if (!res.ok) {
         const err = await res.json();
-        alert(err.detail || 'Erro ao assumir ticket');
+        showToast(err.detail || 'Erro ao assumir ticket', 'error');
         return;
       }
       const result = await res.json();
@@ -530,8 +563,9 @@ function App() {
       }));
       await fetchConversations(0, false);
       fetchFilterCounts();
+      showToast('Ticket assumido com sucesso', 'success');
     } catch (err) {
-      alert('Erro ao assumir ticket');
+      showToast('Erro ao assumir ticket', 'error');
     }
   };
 
@@ -544,7 +578,7 @@ function App() {
       });
       if (!res.ok) {
         const err = await res.json();
-        alert(err.detail || 'Erro ao liberar ticket');
+        showToast(err.detail || 'Erro ao liberar ticket', 'error');
         return;
       }
       const result = await res.json();
@@ -555,8 +589,9 @@ function App() {
       }));
       await fetchConversations(0, false);
       fetchFilterCounts();
+      showToast('Ticket liberado com sucesso', 'success');
     } catch (err) {
-      alert('Erro ao liberar ticket');
+      showToast('Erro ao liberar ticket', 'error');
     }
   };
 
@@ -571,15 +606,16 @@ function App() {
       });
       if (!res.ok) {
         const err = await res.json();
-        alert(err.detail || 'Erro ao alterar status');
+        showToast(err.detail || 'Erro ao alterar status', 'error');
         return;
       }
       const result = await res.json();
       setCurrentConversation(prev => ({ ...prev, ticket_status: result.ticket_status }));
       await fetchConversations(0, false);
       fetchFilterCounts();
+      showToast('Ticket concluído com sucesso', 'success');
     } catch (err) {
-      alert('Erro ao alterar status');
+      showToast('Erro ao alterar status', 'error');
     }
   };
 
@@ -608,8 +644,9 @@ function App() {
         const conv = items.find(c => c.id === result.conversation_id);
         if (conv) selectConversation(conv);
       }
+      showToast('Conversa iniciada com sucesso', 'success');
     } catch (err) {
-      alert('Erro: ' + err.message);
+      showToast('Erro: ' + err.message, 'error');
     } finally {
       setIsCreating(false);
     }
@@ -1135,6 +1172,7 @@ function App() {
         onClose={() => setShowNewModal(false)}
         onSubmit={startNewConversation}
         isLoading={isCreating}
+        onError={(msg) => showToast(msg, 'warning')}
       />
 
       {showAdvancedFilters && (
@@ -1283,6 +1321,14 @@ function App() {
           onClose={() => setContextMenu(null)}
           onCopy={handleCopyMessage}
           onDelete={handleDeleteMessage}
+        />
+      )}
+      
+      {toast && (
+        <Toast
+          message={toast.message}
+          type={toast.type}
+          onClose={() => setToast(null)}
         />
       )}
     </div>
