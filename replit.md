@@ -13,6 +13,32 @@ I prefer a clean and minimalist UI design.
 Ensure all user-facing texts are in grammatically correct Portuguese with proper accentuation.
 **CRITICAL: NEVER lose existing functionality when making changes.** Always verify that previously implemented features remain intact. Before modifying any component, review what features exist and ensure they are preserved. Call architect to validate UX changes.
 
+## Agent Development Process (Mandatory)
+
+### Pre-Edit Checklist
+Before editing any file, the agent MUST:
+1. **Read the full context** - Read at least 50 lines around the target code to understand all variable names and dependencies
+2. **Identify all references** - When renaming or modifying a variable/function, grep for ALL usages across the file before editing
+3. **Understand scope** - Map which functions/blocks use the modified element
+
+### Post-Edit Verification (Mandatory)
+After ANY code edit:
+1. **Grep for orphaned references** - Search for the OLD variable/function name to ensure no references remain
+2. **Verify imports** - If adding new functionality (like `timezone`), verify the import exists at file level
+3. **Check related endpoints** - When fixing one endpoint, verify similar endpoints don't have the same issue
+4. **Restart and check logs** - Always check server logs for syntax/runtime errors before marking complete
+
+### Common Error Prevention
+- **Renaming variables**: ALWAYS grep for ALL occurrences before and after rename
+- **Timezone/datetime**: Use consistent pattern throughout - either all naive UTC or all aware UTC
+- **Copy-paste edits**: When applying same fix to multiple places, verify EACH location individually
+
+### Quality Gate
+No task is complete until:
+1. Server starts without errors
+2. No `NameError`, `TypeError`, or `ImportError` in logs
+3. The specific functionality has been tested (manually or via curl)
+
 ## System Architecture
 The application is built using FastAPI with a modular architecture.
 
