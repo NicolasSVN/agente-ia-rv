@@ -1,12 +1,95 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ClipboardCheck, Check, X, Edit, AlertTriangle, RefreshCw } from 'lucide-react';
+import { ClipboardCheck, Check, X, Edit, AlertTriangle, RefreshCw, Table2 } from 'lucide-react';
 import { reviewAPI } from '../services/api';
 import { Button } from '../components/Button';
 import { Modal } from '../components/Modal';
 import { LoadingSpinner } from '../components/LoadingSpinner';
 import { EmptyState } from '../components/EmptyState';
 import { useToast } from '../components/Toast';
+
+function parseTableContent(content) {
+  if (!content) return null;
+  
+  try {
+    let parsed = content;
+    if (typeof content === 'string') {
+      parsed = JSON.parse(content);
+    }
+    
+    if (parsed && parsed.headers && Array.isArray(parsed.headers) && parsed.rows && Array.isArray(parsed.rows)) {
+      return parsed;
+    }
+  } catch (e) {
+  }
+  return null;
+}
+
+function TablePreview({ data, maxRows = 3 }) {
+  const headers = data.headers || [];
+  const rows = data.rows || [];
+  const displayRows = rows.slice(0, maxRows);
+  const hasMore = rows.length > maxRows;
+  
+  return (
+    <div className="overflow-x-auto">
+      <table className="min-w-full text-xs border-collapse">
+        <thead>
+          <tr className="bg-muted/10">
+            {headers.map((h, i) => (
+              <th key={i} className="px-2 py-1.5 text-left font-medium text-foreground border border-border/50 whitespace-nowrap">
+                {h}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {displayRows.map((row, rowIdx) => (
+            <tr key={rowIdx} className={rowIdx % 2 === 0 ? 'bg-card' : 'bg-muted/5'}>
+              {row.map((cell, cellIdx) => (
+                <td key={cellIdx} className="px-2 py-1 text-muted border border-border/50 whitespace-nowrap max-w-[200px] truncate">
+                  {cell}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {hasMore && (
+        <p className="text-xs text-muted mt-1 italic">
+          + {rows.length - maxRows} linhas adicionais...
+        </p>
+      )}
+    </div>
+  );
+}
+
+function ContentPreview({ content, blockType }) {
+  const tableData = useMemo(() => {
+    if (blockType === 'tabela' || blockType === 'table') {
+      return parseTableContent(content);
+    }
+    return null;
+  }, [content, blockType]);
+
+  if (tableData) {
+    return (
+      <div className="mb-3">
+        <div className="flex items-center gap-1.5 text-xs text-muted mb-2">
+          <Table2 className="w-3.5 h-3.5" />
+          <span>{tableData.headers?.length || 0} colunas · {tableData.rows?.length || 0} linhas</span>
+        </div>
+        <TablePreview data={tableData} maxRows={3} />
+      </div>
+    );
+  }
+
+  return (
+    <p className="text-sm text-muted mb-3 whitespace-pre-wrap line-clamp-4">
+      {content}
+    </p>
+  );
+}
 
 export function ReviewQueue() {
   const { addToast } = useToast();
@@ -159,9 +242,10 @@ export function ReviewQueue() {
                         <h3 className="font-medium text-foreground mb-2">{item.block_title || item.title}</h3>
                       )}
 
-                      <p className="text-sm text-muted mb-3 whitespace-pre-wrap line-clamp-4">
-                        {item.extracted_content || item.content}
-                      </p>
+                      <ContentPreview 
+                        content={item.extracted_content || item.content} 
+                        blockType={item.block_type}
+                      />
 
                       {(item.risk_reason || item.reason) && (
                         <div className="flex items-center gap-2 text-sm text-warning mb-3">
