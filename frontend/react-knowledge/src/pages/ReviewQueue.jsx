@@ -1,6 +1,6 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ClipboardCheck, Check, X, Edit, AlertTriangle, RefreshCw, Table2, ZoomIn, ZoomOut, FileText, Maximize2 } from 'lucide-react';
+import { ClipboardCheck, Check, X, Edit, AlertTriangle, RefreshCw, Table2, Search, FileText, Maximize2 } from 'lucide-react';
 import { reviewAPI } from '../services/api';
 import { Button } from '../components/Button';
 import { Modal } from '../components/Modal';
@@ -92,10 +92,25 @@ function ContentPreview({ content, blockType }) {
 }
 
 function PDFViewer({ materialId, page = 1 }) {
-  const [zoom, setZoom] = useState(100);
+  const containerRef = useRef(null);
+  const [showMagnifier, setShowMagnifier] = useState(false);
+  const [magnifierPos, setMagnifierPos] = useState({ x: 0, y: 0 });
   const [error, setError] = useState(false);
   
   const pdfUrl = materialId ? `${API_BASE}/materials/${materialId}/pdf#page=${page}` : null;
+  const magnifierSize = 150;
+  const zoomLevel = 2.5;
+  
+  const handleMouseMove = useCallback((e) => {
+    const container = containerRef.current;
+    if (!container) return;
+    
+    const rect = container.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    
+    setMagnifierPos({ x, y });
+  }, []);
   
   if (!materialId) {
     return (
@@ -112,34 +127,29 @@ function PDFViewer({ materialId, page = 1 }) {
     <div className="flex flex-col h-full">
       <div className="flex items-center justify-between px-3 py-2 bg-muted/10 border-b border-border rounded-t-lg">
         <span className="text-xs font-medium text-muted">Documento Original</span>
-        <div className="flex items-center gap-1">
-          <button
-            onClick={() => setZoom(Math.max(50, zoom - 25))}
-            className="p-1 hover:bg-muted/20 rounded transition-colors"
-            title="Diminuir zoom"
-          >
-            <ZoomOut className="w-4 h-4 text-muted" />
-          </button>
-          <span className="text-xs text-muted px-2 min-w-[3rem] text-center">{zoom}%</span>
-          <button
-            onClick={() => setZoom(Math.min(200, zoom + 25))}
-            className="p-1 hover:bg-muted/20 rounded transition-colors"
-            title="Aumentar zoom"
-          >
-            <ZoomIn className="w-4 h-4 text-muted" />
-          </button>
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1 text-xs text-muted">
+            <Search className="w-3.5 h-3.5" />
+            <span>Lupa ativa</span>
+          </div>
           <a
             href={`${API_BASE}/materials/${materialId}/pdf`}
             target="_blank"
             rel="noopener noreferrer"
-            className="p-1 hover:bg-muted/20 rounded transition-colors ml-2"
+            className="p-1 hover:bg-muted/20 rounded transition-colors"
             title="Abrir em nova aba"
           >
             <Maximize2 className="w-4 h-4 text-muted" />
           </a>
         </div>
       </div>
-      <div className="flex-1 overflow-auto bg-muted/5 rounded-b-lg">
+      <div 
+        ref={containerRef}
+        className="flex-1 overflow-auto bg-muted/5 rounded-b-lg relative cursor-crosshair"
+        onMouseEnter={() => setShowMagnifier(true)}
+        onMouseLeave={() => setShowMagnifier(false)}
+        onMouseMove={handleMouseMove}
+      >
         {error ? (
           <div className="flex items-center justify-center h-full">
             <div className="text-center text-muted">
@@ -148,13 +158,41 @@ function PDFViewer({ materialId, page = 1 }) {
             </div>
           </div>
         ) : (
-          <iframe
-            src={pdfUrl}
-            className="w-full h-full border-0"
-            style={{ transform: `scale(${zoom / 100})`, transformOrigin: 'top left', width: `${10000 / zoom}%`, height: `${10000 / zoom}%` }}
-            onError={() => setError(true)}
-            title="PDF Preview"
-          />
+          <>
+            <iframe
+              src={pdfUrl}
+              className="w-full h-full border-0 pointer-events-none"
+              onError={() => setError(true)}
+              title="PDF Preview"
+            />
+            {showMagnifier && (
+              <div
+                className="absolute pointer-events-none border-2 border-primary rounded-full shadow-lg overflow-hidden bg-white"
+                style={{
+                  width: magnifierSize,
+                  height: magnifierSize,
+                  left: magnifierPos.x - magnifierSize / 2,
+                  top: magnifierPos.y - magnifierSize / 2,
+                  zIndex: 10
+                }}
+              >
+                <iframe
+                  src={pdfUrl}
+                  className="border-0 pointer-events-none"
+                  style={{
+                    width: containerRef.current?.clientWidth || 400,
+                    height: containerRef.current?.clientHeight || 600,
+                    transform: `scale(${zoomLevel})`,
+                    transformOrigin: `${magnifierPos.x}px ${magnifierPos.y}px`,
+                    position: 'absolute',
+                    left: -(magnifierPos.x * zoomLevel - magnifierSize / 2),
+                    top: -(magnifierPos.y * zoomLevel - magnifierSize / 2)
+                  }}
+                  title="PDF Magnifier"
+                />
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>
