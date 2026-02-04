@@ -21,7 +21,7 @@ from pydantic import BaseModel
 from database.database import get_db
 from database.models import (
     User, Product, Material, ContentBlock, BlockVersion, 
-    WhatsAppScript, PendingReviewItem,
+    WhatsAppScript, PendingReviewItem, DocumentProcessingJob,
     ProductStatus, MaterialType, ContentBlockType, 
     ContentBlockStatus, ContentSourceType
 )
@@ -1364,6 +1364,51 @@ async def list_all_materials(
         })
     
     return {"materials": result, "total": len(result)}
+
+
+@router.get("/materials/pending")
+async def list_pending_materials(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Lista materiais com processamento pendente, em andamento ou com erro."""
+    if current_user.role not in ["admin", "gestao_rv", "broker"]:
+        raise HTTPException(status_code=403, detail="Acesso negado")
+    
+    pending_materials = db.query(Material).filter(
+        Material.processing_status.in_(['processing', 'pending', 'failed'])
+    ).options(
+        joinedload(Material.product)
+    ).order_by(Material.created_at.desc()).all()
+    
+    result = []
+    for m in pending_materials:
+        blocks_count = db.query(ContentBlock).filter(ContentBlock.material_id == m.id).count()
+        
+        job = db.query(DocumentProcessingJob).filter(
+            DocumentProcessingJob.material_id == m.id
+        ).order_by(DocumentProcessingJob.created_at.desc()).first()
+        
+        result.append({
+            "id": m.id,
+            "name": m.name,
+            "source_filename": m.source_filename,
+            "product_id": m.product_id,
+            "product_name": m.product.name if m.product else None,
+            "product_ticker": m.product.ticker if m.product else None,
+            "processing_status": m.processing_status,
+            "processing_error": m.processing_error,
+            "created_at": m.created_at.isoformat() if m.created_at else None,
+            "blocks_count": blocks_count,
+            "job_info": {
+                "total_pages": job.total_pages if job else None,
+                "processed_pages": job.processed_pages if job else None,
+                "status": job.status if job else None
+            } if job else None,
+            "can_resume": m.processing_status in ['processing', 'failed'] and m.source_file_path is not None
+        })
+    
+    return {"pending_materials": result, "total": len(result)}
 
 
 @router.post("/{product_id}/materials/{material_id}/upload")

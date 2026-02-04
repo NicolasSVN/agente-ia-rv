@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Upload, FileText, CheckCircle, ArrowRight, Sparkles, Info, AlertCircle, RotateCcw } from 'lucide-react';
+import { Upload, FileText, CheckCircle, ArrowRight, Sparkles, Info, AlertCircle, RotateCcw, Clock, Trash2 } from 'lucide-react';
 import { materialsAPI, productsAPI } from '../services/api';
 import { FileUpload } from '../components/FileUpload';
 import { Button } from '../components/Button';
@@ -33,6 +33,8 @@ export function SmartUpload() {
   const [hasError, setHasError] = useState(false);
   const [resumableInfo, setResumableInfo] = useState(null);
   const [resumableMaterialId, setResumableMaterialId] = useState(null);
+  const [pendingMaterials, setPendingMaterials] = useState([]);
+  const [loadingPending, setLoadingPending] = useState(true);
 
   useEffect(() => {
     if (logRef.current) {
@@ -48,6 +50,110 @@ export function SmartUpload() {
       }).catch(() => {});
     }
   }, [searchParams]);
+
+  useEffect(() => {
+    loadPendingMaterials();
+  }, []);
+
+  const loadPendingMaterials = async () => {
+    setLoadingPending(true);
+    try {
+      const response = await fetch('/api/products/materials/pending', {
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setPendingMaterials(data.pending_materials || []);
+      }
+    } catch (err) {
+      console.error('Erro ao carregar materiais pendentes:', err);
+    } finally {
+      setLoadingPending(false);
+    }
+  };
+
+  const handleResumeFromList = async (materialId) => {
+    setResumableMaterialId(materialId);
+    setStep(3);
+    setLogs([]);
+    setHasError(false);
+    setUploadComplete(false);
+    setUploading(true);
+    setUploadProgress(0);
+    
+    addLog('Retomando processamento...', 'info');
+    
+    try {
+      const response = await fetch(`/api/products/materials/${materialId}/resume-upload`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+      });
+      
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        
+        const text = decoder.decode(value, { stream: true });
+        const lines = text.split('\n');
+        
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const event = JSON.parse(line.slice(6));
+              
+              if (event.type === 'progress') {
+                setUploadProgress(event.percent);
+                setCurrentPage(event.current || 0);
+                setTotalPages(event.total || 0);
+              } else if (event.type === 'log') {
+                addLog(event.message, event.log_type || 'info');
+              } else if (event.type === 'complete') {
+                setUploadComplete(true);
+                setUploadProgress(100);
+                setUploading(false);
+                setStats(event.stats);
+                addLog(event.message, 'success');
+                addToast('Documento processado com sucesso!', 'success');
+                loadPendingMaterials();
+              } else if (event.type === 'error') {
+                setHasError(true);
+                setUploading(false);
+                addLog(event.message, 'error');
+                addToast(event.message, 'error');
+              }
+            } catch (e) {}
+          }
+        }
+      }
+    } catch (err) {
+      addLog(`Erro: ${err.message}`, 'error');
+      addToast(`Erro: ${err.message}`, 'error');
+      setHasError(true);
+      setUploading(false);
+    }
+  };
+
+  const handleDiscardPending = async (materialId, productId) => {
+    if (!confirm('Deseja descartar este upload? O arquivo e os blocos serão removidos.')) return;
+    
+    try {
+      const response = await fetch(`/api/products/${productId}/materials/${materialId}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+      });
+      if (response.ok) {
+        addToast('Upload descartado', 'success');
+        loadPendingMaterials();
+      } else {
+        throw new Error('Falha ao descartar');
+      }
+    } catch (err) {
+      addToast('Erro ao descartar', 'error');
+    }
+  };
 
   const addLog = (message, type = 'info') => {
     const time = new Date().toLocaleTimeString('pt-BR');
@@ -278,6 +384,78 @@ export function SmartUpload() {
     }
   };
 
+  const renderPendingSection = () => {
+    if (loadingPending || pendingMaterials.length === 0) return null;
+    
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: -10 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-xl"
+      >
+        <div className="flex items-center gap-2 mb-3">
+          <Clock className="w-5 h-5 text-amber-600" />
+          <h3 className="font-semibold text-amber-800">Uploads Pendentes</h3>
+          <span className="text-xs px-2 py-0.5 bg-amber-200 text-amber-800 rounded-full">
+            {pendingMaterials.length}
+          </span>
+        </div>
+        <p className="text-sm text-amber-700 mb-3">
+          Estes arquivos tiveram o processamento interrompido. Você pode retomar de onde parou.
+        </p>
+        <div className="space-y-2">
+          {pendingMaterials.map((material) => (
+            <div 
+              key={material.id}
+              className="flex items-center justify-between p-3 bg-white rounded-lg border border-amber-100"
+            >
+              <div className="flex items-center gap-3 flex-1 min-w-0">
+                <FileText className="w-5 h-5 text-amber-600 flex-shrink-0" />
+                <div className="min-w-0">
+                  <p className="font-medium text-slate-800 truncate">{material.name}</p>
+                  <p className="text-xs text-slate-500">
+                    {material.product_name && (
+                      <span className="text-primary font-medium">{material.product_ticker || material.product_name}</span>
+                    )}
+                    {material.job_info?.processed_pages !== null && (
+                      <span className="ml-2">
+                        {material.job_info.processed_pages}/{material.job_info.total_pages || '?'} páginas
+                      </span>
+                    )}
+                    {material.blocks_count > 0 && (
+                      <span className="ml-2 text-green-600">{material.blocks_count} blocos</span>
+                    )}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                {material.can_resume ? (
+                  <Button 
+                    size="sm"
+                    onClick={() => handleResumeFromList(material.id)}
+                    className="bg-amber-600 hover:bg-amber-700"
+                  >
+                    <RotateCcw className="w-4 h-4" />
+                    Retomar
+                  </Button>
+                ) : (
+                  <span className="text-xs text-slate-400 mr-2">Requer re-upload</span>
+                )}
+                <button
+                  onClick={() => handleDiscardPending(material.id, material.product_id)}
+                  className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded"
+                  title="Descartar"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </motion.div>
+    );
+  };
+
   const renderStep1 = () => (
     <motion.div
       initial={{ opacity: 0, x: 20 }}
@@ -285,6 +463,8 @@ export function SmartUpload() {
       exit={{ opacity: 0, x: -20 }}
       className="space-y-6"
     >
+      {renderPendingSection()}
+
       <div className="text-center mb-8">
         <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4">
           <Upload className="w-8 h-8 text-primary" />
