@@ -1462,6 +1462,9 @@ async def smart_upload_stream(
     if current_user.role not in ["admin", "gestao_rv", "broker"]:
         raise HTTPException(status_code=403, detail="Acesso negado")
     
+    # Extrair user_id antes de entrar em thread (evita erro de sessão desvinculada)
+    user_id = current_user.id
+    
     if not file.filename.lower().endswith('.pdf'):
         raise HTTPException(status_code=400, detail="Apenas arquivos PDF são suportados")
     
@@ -1556,7 +1559,7 @@ async def smart_upload_stream(
                 material_id=material.id,
                 document_title=name or file.filename.replace('.pdf', ''),
                 db=db_local,
-                user_id=current_user.id,
+                user_id=user_id,
                 progress_callback=progress_callback,
                 log_callback=lambda msg, t: progress_queue.put({"type": "log", "message": msg, "log_type": t})
             )
