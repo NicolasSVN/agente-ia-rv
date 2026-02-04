@@ -691,6 +691,97 @@ async def takeover_conversation(
     return {"success": True, "message": message, "status": conv.status, "conversation_state": conv.conversation_state}
 
 
+class ResolveTicketRequest(BaseModel):
+    summary: Optional[str] = None
+    save_to_knowledge: bool = False
+    knowledge_title: Optional[str] = None
+    tags: List[str] = []
+
+
+@router.post("/{conversation_id}/resolve")
+async def resolve_conversation(
+    conversation_id: int,
+    request: ResolveTicketRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Resolve um ticket/conversa, marcando como solucionado.
+    Opcionalmente salva a resolução na base de conhecimento para uso futuro pelo agente.
+    """
+    from database.models import ConversationState
+    from datetime import datetime
+    from services.vector_store import VectorStore
+    
+    conv = db.query(Conversation).filter(Conversation.id == conversation_id).first()
+    if not conv:
+        raise HTTPException(status_code=404, detail="Conversa não encontrada")
+    
+    conv.status = ConversationStatus.BOT_ACTIVE.value
+    conv.conversation_state = ConversationState.COMPLETED.value
+    conv.ticket_status = TicketStatusV2.SOLVED.value
+    conv.solved_at = datetime.utcnow()
+    conv.assigned_to = None
+    
+    if request.summary:
+        conv.resolution_notes = request.summary
+    
+    history_entry = TicketHistory(
+        conversation_id=conv.id,
+        user_id=current_user.id,
+        action_type=TicketHistoryActionType.STATUS_CHANGE.value,
+        from_value=TicketStatusV2.IN_PROGRESS.value,
+        to_value=TicketStatusV2.SOLVED.value,
+        notes=request.summary or "Ticket resolvido"
+    )
+    db.add(history_entry)
+    
+    knowledge_created = False
+    
+    if request.save_to_knowledge and request.summary:
+        try:
+            title = request.knowledge_title or f"Resolução: {conv.contact_name or conv.phone}"
+            
+            content = f"Pergunta/Problema: {conv.conversation_topic or 'Não categorizado'}\n\n"
+            content += f"Resolução: {request.summary}\n\n"
+            if request.tags:
+                content += f"Tags: {', '.join(request.tags)}"
+            
+            vector_store = VectorStore()
+            doc_id = f"ticket_resolution_{conv.id}_{datetime.utcnow().timestamp()}"
+            
+            tags_text = ""
+            if request.tags:
+                tags_text = f"\n\n[Tags: {', '.join(request.tags)}]"
+            
+            vector_store.add_document(
+                doc_id=doc_id,
+                text=content + tags_text,
+                metadata={
+                    "source": f"Resolução de Ticket #{conv.id}",
+                    "title": title,
+                    "type": "ticket_resolution",
+                    "category": "resolucao_ticket",
+                    "conversation_id": str(conv.id),
+                    "resolved_by": current_user.username,
+                    "tags": ",".join(request.tags) if request.tags else ""
+                }
+            )
+            
+            knowledge_created = True
+            
+        except Exception as e:
+            print(f"[RESOLVE] Erro ao criar conhecimento: {e}")
+    
+    db.commit()
+    
+    return {
+        "success": True,
+        "message": "Ticket resolvido com sucesso",
+        "knowledge_created": knowledge_created
+    }
+
+
 @router.get("/by-phone/{phone}")
 async def get_conversation_by_phone(
     phone: str,

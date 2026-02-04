@@ -365,6 +365,7 @@ class ConversationState(str, enum.Enum):
     READY = "ready"
     IN_PROGRESS = "in_progress"
     HUMAN_TAKEOVER = "human_takeover"
+    COMPLETED = "completed"
 
 
 class ConversationStatus(str, enum.Enum):
@@ -506,6 +507,7 @@ class Conversation(Base):
     awaiting_confirmation = Column(Boolean, default=False)
     last_bot_response_at = Column(DateTime(timezone=True), nullable=True)
     confirmation_sent_at = Column(DateTime(timezone=True), nullable=True)
+    resolution_notes = Column(Text, nullable=True)
     
     assessor = relationship("Assessor", foreign_keys=[assessor_id])
     assigned_user = relationship("User", foreign_keys=[assigned_to])
