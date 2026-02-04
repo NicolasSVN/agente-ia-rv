@@ -1099,7 +1099,7 @@ async def release_ticket(
     
     record_ticket_history(
         db, conversation_id,
-        TicketHistoryActionType.RESOLVED.value,
+        TicketHistoryActionType.STATUS_CHANGED.value,
         actor_user_id=current_user.id,
         from_status=old_status,
         to_status=conv.ticket_status,
