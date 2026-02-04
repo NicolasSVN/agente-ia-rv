@@ -344,7 +344,7 @@ function App() {
   const [messageInput, setMessageInput] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [ticketFilter, setTicketFilter] = useState('new');
-  const [filterCounts, setFilterCounts] = useState({ all: 0, escalated: 0, my_tickets: 0, open: 0, solved_today: 0, new: 0, in_progress: 0, needs_attention: 0 });
+  const [filterCounts, setFilterCounts] = useState({ all: 0, escalated: 0, my_tickets: 0, open: 0, solved_today: 0, new: 0, in_progress: 0 });
   const [isLoading, setIsLoading] = useState(true);
   const [isSending, setIsSending] = useState(false);
   const [showNewModal, setShowNewModal] = useState(false);
@@ -392,8 +392,7 @@ function App() {
       const offset = pageNum * PAGE_SIZE;
       let url = `${API_BASE}/conversations/?limit=${PAGE_SIZE}&offset=${offset}`;
       if (searchQuery) url += `&search=${encodeURIComponent(searchQuery)}`;
-      if (ticketFilter === 'needs_attention') url += `&needs_attention=true`;
-      else if (ticketFilter === 'escalated') url += `&escalation_level=t1`;
+      if (ticketFilter === 'escalated') url += `&escalation_level=t1`;
       else if (ticketFilter === 'my_tickets') url += `&assigned_to_me=true`;
       else if (ticketFilter === 'open') url += `&ticket_status=open`;
       else if (ticketFilter === 'new') url += `&ticket_status=new`;
@@ -831,7 +830,6 @@ function App() {
                   { value: 'in_progress', label: 'Em Andamento', count: filterCounts.in_progress || filterCounts.open, color: 'amber', icon: Clock },
                   { value: 'solved', label: 'Resolvidos', count: filterCounts.solved_today, color: 'green', icon: CheckCircle2 },
                   { value: 'my_tickets', label: 'Meus', count: filterCounts.my_tickets, color: 'purple', icon: User },
-                  { value: 'needs_attention', label: 'Atenção', count: filterCounts.needs_attention || (filterCounts.escalated + filterCounts.new), color: 'red', icon: AlertCircle },
                 ].map(f => {
                   const Icon = f.icon;
                   const isActive = ticketFilter === f.value;

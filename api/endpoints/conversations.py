@@ -70,7 +70,6 @@ class FilterCountsResponse(BaseModel):
     solved_today: int = 0
     new: int = 0
     in_progress: int = 0
-    needs_attention: int = 0
 
 
 class FilterOptionsResponse(BaseModel):
@@ -147,7 +146,6 @@ async def list_conversations(
     ticket_status: Optional[str] = Query(None, description="Filtrar por ticket_status V2 (new, open, in_progress, solved)"),
     escalation_level: Optional[str] = Query(None, description="Filtrar por nível de escalonamento (t0, t1)"),
     assigned_to_me: Optional[bool] = Query(None, description="Filtrar meus tickets"),
-    needs_attention: Optional[bool] = Query(None, description="Filtrar conversas que precisam de atenção (escaladas/novas, não resolvidas)"),
     unidade: Optional[str] = Query(None, description="Filtrar por unidade do assessor"),
     broker: Optional[str] = Query(None, description="Filtrar por broker do assessor"),
     escalation_category: Optional[str] = Query(None, description="Filtrar por categoria de escalação"),
@@ -179,15 +177,7 @@ async def list_conversations(
         query = query.filter(Conversation.status == status)
     
     # V2 Zendesk-like filters
-    if needs_attention:
-        query = query.filter(
-            and_(
-                Conversation.escalation_level == EscalationLevel.T1_HUMAN.value,
-                Conversation.ticket_status.in_([TicketStatusV2.NEW.value, TicketStatusV2.OPEN.value]),
-                Conversation.assigned_to.is_(None)
-            )
-        )
-    elif ticket_status:
+    if ticket_status:
         query = query.filter(Conversation.ticket_status == ticket_status)
     
     if escalation_level:
@@ -987,11 +977,6 @@ async def get_filter_counts(
     in_progress_count = db.query(func.count(Conversation.id)).filter(
         Conversation.ticket_status == TicketStatusV2.IN_PROGRESS.value
     ).scalar() or 0
-    needs_attention = db.query(func.count(Conversation.id)).filter(
-        Conversation.escalation_level == EscalationLevel.T1_HUMAN.value,
-        Conversation.ticket_status.in_([TicketStatusV2.NEW.value, TicketStatusV2.OPEN.value]),
-        Conversation.assigned_to.is_(None)
-    ).scalar() or 0
     
     return FilterCountsResponse(
         all=all_count,
@@ -1000,8 +985,7 @@ async def get_filter_counts(
         open=open_count,
         solved_today=solved_today,
         new=new_count,
-        in_progress=in_progress_count,
-        needs_attention=needs_attention
+        in_progress=in_progress_count
     )
 
 
