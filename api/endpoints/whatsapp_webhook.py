@@ -384,7 +384,6 @@ async def process_text_message(phone: str, message: str, db: Session, message_re
             except Exception as e:
                 print(f"[WEBHOOK] Erro na análise de escalação, usando fallback: {e}")
                 from database.models import EscalationLevel, TicketStatusV2
-                from datetime import datetime
                 conversation.escalation_category = "other"
                 conversation.escalation_reason_detail = str(transfer_reason) if transfer_reason else "Transferência automática"
                 conversation.ticket_summary = normalized_message[:200] if normalized_message else "Solicitação de atendimento"
