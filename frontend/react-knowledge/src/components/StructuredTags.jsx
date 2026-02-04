@@ -222,20 +222,19 @@ export function StructuredTags({ value = [], onChange }) {
                           
                           return (
                             <div key={tag.value} className="relative inline-block">
-                              <motion.button
+                              <button
                                 type="button"
-                                whileHover={{ scale: 1.02 }}
-                                whileTap={{ scale: 0.98 }}
                                 onClick={() => toggleTag(tag.value)}
                                 onMouseEnter={() => setHoveredTag(tag.value)}
                                 onMouseLeave={() => setHoveredTag(null)}
                                 className={`px-3 py-1.5 rounded-full border text-xs font-medium transition-all
+                                           hover:shadow-sm active:scale-[0.98]
                                            ${isSelected 
                                              ? colors.selected
                                              : `bg-white ${colors.border} ${colors.text} ${colors.hover}`}`}
                               >
                                 {tag.label}
-                              </motion.button>
+                              </button>
                               
                               {isHovered && (
                                 <motion.div
