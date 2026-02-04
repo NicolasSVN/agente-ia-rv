@@ -62,8 +62,8 @@ function TicketStatusBadge({ ticketStatus, escalationLevel }) {
   const statusConfig = {
     new: { bg: 'bg-blue-100', text: 'text-blue-700', border: 'border-blue-200', label: 'Novo', icon: AlertCircle },
     open: { bg: 'bg-yellow-100', text: 'text-yellow-700', border: 'border-yellow-200', label: 'Aberto', icon: Clock },
-    in_progress: { bg: 'bg-purple-100', text: 'text-purple-700', border: 'border-purple-200', label: 'Em Progresso', icon: ArrowUpCircle },
-    solved: { bg: 'bg-green-100', text: 'text-green-700', border: 'border-green-200', label: 'Resolvido', icon: CheckCircle2 },
+    in_progress: { bg: 'bg-amber-100', text: 'text-amber-700', border: 'border-amber-200', label: 'Em Andamento', icon: ArrowUpCircle },
+    solved: { bg: 'bg-green-100', text: 'text-green-700', border: 'border-green-200', label: 'Concluído', icon: CheckCircle2 },
   };
   
   // Para conversas escaladas sem ticket_status definido, usar 'new' como padrão
@@ -564,10 +564,10 @@ function App() {
     if (!currentConversation) return;
     try {
       const res = await fetch(`${API_BASE}/conversations/${currentConversation.id}/status`, {
-        method: 'PUT',
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ ticket_status: newStatus }),
+        body: JSON.stringify({ status: newStatus }),
       });
       if (!res.ok) {
         const err = await res.json();
@@ -844,7 +844,7 @@ function App() {
                 {[
                   { value: 'new', label: 'Novos', count: filterCounts.new, color: 'blue', icon: AlertCircle },
                   { value: 'in_progress', label: 'Em Andamento', count: filterCounts.in_progress || filterCounts.open, color: 'amber', icon: Clock },
-                  { value: 'solved', label: 'Resolvidos', count: filterCounts.solved_today, color: 'green', icon: CheckCircle2 },
+                  { value: 'solved', label: 'Concluídos', count: filterCounts.solved_today, color: 'green', icon: CheckCircle2 },
                   { value: 'my_tickets', label: 'Meus', count: filterCounts.my_tickets, color: 'purple', icon: User },
                 ].map(f => {
                   const Icon = f.icon;
@@ -1027,9 +1027,9 @@ function App() {
                       <>
                         <button
                           onClick={() => updateTicketStatus('solved')}
-                          className="flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-sm transition-colors bg-green-100 text-green-700 hover:bg-green-200"
+                          className="flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-sm transition-colors bg-green-600 text-white hover:bg-green-700"
                         >
-                          Resolvido
+                          Concluir
                         </button>
                         <button
                           onClick={releaseTicket}
@@ -1047,7 +1047,7 @@ function App() {
                       <option value="new">Novo</option>
                       <option value="open">Aberto</option>
                       <option value="in_progress">Em Andamento</option>
-                      <option value="solved">Resolvido</option>
+                      <option value="solved">Concluído</option>
                     </select>
                     <button
                       onClick={toggleTakeover}
