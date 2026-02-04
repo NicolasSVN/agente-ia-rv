@@ -946,7 +946,7 @@ async def take_ticket(
     current_user: User = Depends(get_current_user)
 ):
     """Assume um ticket (Zendesk-like 'Assumir'). Envia mensagem automática ao contato."""
-    from services.zapi_service import get_zapi_service
+    from services.whatsapp_client import zapi_client
     
     conv = db.query(Conversation).filter(Conversation.id == conversation_id).first()
     if not conv:
@@ -985,11 +985,10 @@ async def take_ticket(
     
     greeting_sent = False
     try:
-        zapi = get_zapi_service()
-        if zapi and conv.phone:
+        if zapi_client and conv.phone:
             first_name = current_user.username.split()[0] if current_user.username else "um especialista"
             greeting = get_takeover_greeting(first_name)
-            await zapi.send_text(conv.phone, greeting)
+            await zapi_client.send_text(conv.phone, greeting)
             greeting_sent = True
     except Exception as e:
         print(f"[Take] Erro ao enviar saudação: {e}")
