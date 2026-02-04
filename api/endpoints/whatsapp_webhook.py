@@ -492,39 +492,26 @@ async def process_text_message(phone: str, message: str, db: Session, message_re
         
         reset_stalled_counter(db, conversation)
         
-        ticket = None
-        if should_create_ticket:
-            user = crud.get_user_by_phone(db, phone)
-            
-            ticket = crud.create_ticket(
-                db,
-                title=f"Chamado via WhatsApp - {phone}",
-                description=f"Cliente solicitou atendimento.\n\nÚltima mensagem: {normalized_message}",
-                client_id=user.id if user else None,
-                client_phone=phone
-            )
-            
-            response += f"\n\nChamado #{ticket.id} criado com sucesso!"
-        
-        if message_record:
-            message_record.ai_response = response
-            message_record.ai_intent = context.get("intent") if context else None
-            if ticket:
-                message_record.ticket_id = ticket.id
-            db.commit()
-        
         is_human_transfer = should_create_ticket or (context and context.get("human_transfer"))
         transfer_reason = None
+        created_ticket_id = None
+        
         if is_human_transfer:
             transfer_reason = context.get("transfer_reason", "Solicitação de atendimento") if context else "Solicitação de atendimento"
             
             try:
-                await escalate_to_human_with_analysis(
+                escalation_result = await escalate_to_human_with_analysis(
                     db, conversation, normalized_message, transfer_reason
                 )
-                print(f"[WEBHOOK] Escalação via OpenAI completa - ticket_status: {conversation.ticket_status}")
+                created_ticket_id = escalation_result.get("ticket_id") if escalation_result else None
+                print(f"[WEBHOOK] Escalação via OpenAI completa - ticket_status: {conversation.ticket_status}, ticket_id: {created_ticket_id}")
+                
+                if created_ticket_id:
+                    response += f"\n\nChamado #{created_ticket_id} criado com sucesso!"
             except Exception as e:
                 print(f"[WEBHOOK] Erro na escalação via OpenAI, usando fallback: {e}")
+                import traceback
+                traceback.print_exc()
                 conversation.escalation_category = "other"
                 conversation.escalation_reason_detail = str(transfer_reason) if transfer_reason else "Transferência automática"
                 conversation.ticket_summary = normalized_message[:200] if normalized_message else "Solicitação de atendimento"
@@ -536,6 +523,13 @@ async def process_text_message(phone: str, message: str, db: Session, message_re
                 conversation.transfer_reason = transfer_reason
                 conversation.transferred_at = datetime.utcnow()
                 db.commit()
+        
+        if message_record:
+            message_record.ai_response = response
+            message_record.ai_intent = context.get("intent") if context else None
+            if created_ticket_id:
+                message_record.ticket_id = created_ticket_id
+            db.commit()
         
         try:
             retrieval_log = RetrievalLog(
