@@ -10,7 +10,7 @@ import { useToast } from '../components/Toast';
 
 const API_BASE = '/api/products';
 
-function parseTableContent(content) {
+function convertTableToTopics(content) {
   if (!content) return null;
   
   try {
@@ -20,46 +20,44 @@ function parseTableContent(content) {
     }
     
     if (parsed && parsed.headers && Array.isArray(parsed.headers) && parsed.rows && Array.isArray(parsed.rows)) {
-      return parsed;
+      const topics = [];
+      const headers = parsed.headers;
+      
+      parsed.rows.forEach((row, rowIdx) => {
+        const rowTopics = [];
+        row.forEach((cell, cellIdx) => {
+          if (cell && cell.toString().trim()) {
+            const header = headers[cellIdx] || `Campo ${cellIdx + 1}`;
+            rowTopics.push(`${header}: ${cell}`);
+          }
+        });
+        if (rowTopics.length > 0) {
+          topics.push(rowTopics.join(' | '));
+        }
+      });
+      
+      return topics.join('\n');
     }
   } catch (e) {
   }
   return null;
 }
 
-function TablePreview({ data, maxRows = 3 }) {
-  const headers = data.headers || [];
-  const rows = data.rows || [];
-  const displayRows = rows.slice(0, maxRows);
-  const hasMore = rows.length > maxRows;
+function TopicsPreview({ content, maxLines = 4 }) {
+  const lines = content.split('\n').slice(0, maxLines);
+  const hasMore = content.split('\n').length > maxLines;
   
   return (
-    <div className="overflow-x-auto">
-      <table className="min-w-full text-xs border-collapse">
-        <thead>
-          <tr className="bg-muted/10">
-            {headers.map((h, i) => (
-              <th key={i} className="px-2 py-1.5 text-left font-medium text-foreground border border-border/50 whitespace-nowrap">
-                {h}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {displayRows.map((row, rowIdx) => (
-            <tr key={rowIdx} className={rowIdx % 2 === 0 ? 'bg-card' : 'bg-muted/5'}>
-              {row.map((cell, cellIdx) => (
-                <td key={cellIdx} className="px-2 py-1 text-muted border border-border/50 whitespace-nowrap max-w-[200px] truncate">
-                  {cell}
-                </td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
+    <div className="space-y-1">
+      {lines.map((line, i) => (
+        <div key={i} className="flex items-start gap-2 text-sm text-muted">
+          <span className="text-primary mt-0.5">•</span>
+          <span className="line-clamp-1">{line}</span>
+        </div>
+      ))}
       {hasMore && (
-        <p className="text-xs text-muted mt-1 italic">
-          + {rows.length - maxRows} linhas adicionais...
+        <p className="text-xs text-muted/70 italic pl-4">
+          + {content.split('\n').length - maxLines} itens adicionais...
         </p>
       )}
     </div>
@@ -67,21 +65,21 @@ function TablePreview({ data, maxRows = 3 }) {
 }
 
 function ContentPreview({ content, blockType }) {
-  const tableData = useMemo(() => {
+  const topicsContent = useMemo(() => {
     if (blockType === 'tabela' || blockType === 'table') {
-      return parseTableContent(content);
+      return convertTableToTopics(content);
     }
     return null;
   }, [content, blockType]);
 
-  if (tableData) {
+  if (topicsContent) {
     return (
       <div className="mb-3">
         <div className="flex items-center gap-1.5 text-xs text-muted mb-2">
           <Table2 className="w-3.5 h-3.5" />
-          <span>{tableData.headers?.length || 0} colunas · {tableData.rows?.length || 0} linhas</span>
+          <span>Dados extraídos</span>
         </div>
-        <TablePreview data={tableData} maxRows={3} />
+        <TopicsPreview content={topicsContent} maxLines={4} />
       </div>
     );
   }
@@ -131,7 +129,7 @@ function PDFViewer({ materialId, page = 1 }) {
             <ZoomIn className="w-4 h-4 text-muted" />
           </button>
           <a
-            href={pdfUrl}
+            href={`${API_BASE}/materials/${materialId}/pdf`}
             target="_blank"
             rel="noopener noreferrer"
             className="p-1 hover:bg-muted/20 rounded transition-colors ml-2"
@@ -163,71 +161,12 @@ function PDFViewer({ materialId, page = 1 }) {
   );
 }
 
-function TableEditor({ data, onChange }) {
-  const [tableData, setTableData] = useState(data);
-  
-  const updateCell = (rowIdx, cellIdx, value) => {
-    const newRows = [...tableData.rows];
-    newRows[rowIdx] = [...newRows[rowIdx]];
-    newRows[rowIdx][cellIdx] = value;
-    const updated = { ...tableData, rows: newRows };
-    setTableData(updated);
-    onChange(JSON.stringify(updated));
-  };
-  
-  const updateHeader = (idx, value) => {
-    const newHeaders = [...tableData.headers];
-    newHeaders[idx] = value;
-    const updated = { ...tableData, headers: newHeaders };
-    setTableData(updated);
-    onChange(JSON.stringify(updated));
-  };
-  
-  return (
-    <div className="overflow-auto max-h-[400px]">
-      <table className="min-w-full text-xs border-collapse">
-        <thead className="sticky top-0 bg-card">
-          <tr>
-            {tableData.headers.map((h, i) => (
-              <th key={i} className="px-2 py-1.5 border border-border/50">
-                <input
-                  type="text"
-                  value={h}
-                  onChange={(e) => updateHeader(i, e.target.value)}
-                  className="w-full px-1 py-0.5 bg-muted/10 border-0 rounded text-foreground font-medium focus:outline-none focus:ring-1 focus:ring-primary/30"
-                />
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {tableData.rows.map((row, rowIdx) => (
-            <tr key={rowIdx} className={rowIdx % 2 === 0 ? 'bg-card' : 'bg-muted/5'}>
-              {row.map((cell, cellIdx) => (
-                <td key={cellIdx} className="px-1 py-0.5 border border-border/50">
-                  <input
-                    type="text"
-                    value={cell}
-                    onChange={(e) => updateCell(rowIdx, cellIdx, e.target.value)}
-                    className="w-full px-1 py-0.5 bg-transparent border-0 text-muted focus:outline-none focus:ring-1 focus:ring-primary/30 rounded"
-                  />
-                </td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
 export function ReviewQueue() {
   const { addToast } = useToast();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedItem, setSelectedItem] = useState(null);
   const [editContent, setEditContent] = useState('');
-  const [editTableData, setEditTableData] = useState(null);
   const [rejectReason, setRejectReason] = useState('');
   const [showEditModal, setShowEditModal] = useState(false);
   const [showRejectModal, setShowRejectModal] = useState(false);
@@ -303,13 +242,12 @@ export function ReviewQueue() {
   const openEditModal = (item) => {
     setSelectedItem(item);
     const content = item.extracted_content || item.content || '';
-    setEditContent(content);
     
     if (item.block_type === 'tabela' || item.block_type === 'table') {
-      const tableData = parseTableContent(content);
-      setEditTableData(tableData);
+      const topicsContent = convertTableToTopics(content);
+      setEditContent(topicsContent || content);
     } else {
-      setEditTableData(null);
+      setEditContent(content);
     }
     
     setShowEditModal(true);
@@ -470,28 +408,19 @@ export function ReviewQueue() {
           <div className="w-1/2 flex flex-col">
             <div className="flex items-center justify-between px-3 py-2 bg-muted/10 border-b border-border rounded-t-lg">
               <span className="text-xs font-medium text-muted">Conteúdo Extraído</span>
-              {selectedItem?.block_type === 'tabela' && editTableData && (
-                <span className="text-xs text-muted">
-                  {editTableData.headers?.length || 0} colunas · {editTableData.rows?.length || 0} linhas
-                </span>
+              {selectedItem?.block_type === 'tabela' && (
+                <span className="text-xs text-muted">Convertido em tópicos</span>
               )}
             </div>
             
             <div className="flex-1 overflow-auto p-3 bg-card border border-t-0 border-border rounded-b-lg">
-              {selectedItem?.block_type === 'tabela' && editTableData ? (
-                <TableEditor 
-                  data={editTableData} 
-                  onChange={(newContent) => setEditContent(newContent)}
-                />
-              ) : (
-                <textarea
-                  value={editContent}
-                  onChange={(e) => setEditContent(e.target.value)}
-                  className="w-full h-full px-3 py-2 bg-transparent border-0
-                             text-foreground text-sm resize-none focus:outline-none"
-                  placeholder="Conteúdo do bloco..."
-                />
-              )}
+              <textarea
+                value={editContent}
+                onChange={(e) => setEditContent(e.target.value)}
+                className="w-full h-full px-3 py-2 bg-transparent border-0
+                           text-foreground text-sm resize-none focus:outline-none"
+                placeholder="Conteúdo do bloco..."
+              />
             </div>
             
             {selectedItem?.risk_reason && (

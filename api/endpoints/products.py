@@ -1257,7 +1257,8 @@ async def get_material_pdf(
     return FileResponse(
         file_path,
         media_type="application/pdf",
-        filename=material.name + ".pdf"
+        filename=material.name + ".pdf",
+        headers={"Content-Disposition": "inline"}
     )
 
 
