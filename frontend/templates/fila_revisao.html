@@ -150,6 +150,78 @@
         .filter-tab:hover:not(.active) {
             background: #e5e7eb;
         }
+        
+        .selection-bar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: white;
+            border: 1px solid #e5e7eb;
+            border-radius: 12px;
+            padding: 12px 16px;
+            margin-bottom: 16px;
+        }
+        
+        .checkbox-wrapper {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        
+        .checkbox-custom {
+            width: 20px;
+            height: 20px;
+            border: 2px solid #d1d5db;
+            border-radius: 4px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+            background: white;
+            flex-shrink: 0;
+        }
+        
+        .checkbox-custom:hover {
+            border-color: #92400e;
+        }
+        
+        .checkbox-custom.checked {
+            background: #92400e;
+            border-color: #92400e;
+        }
+        
+        .checkbox-custom.checked svg {
+            display: block;
+        }
+        
+        .checkbox-custom svg {
+            display: none;
+            width: 14px;
+            height: 14px;
+            color: white;
+        }
+        
+        .btn-bulk-approve {
+            background: #10b981;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.2s;
+        }
+        
+        .btn-bulk-approve:hover {
+            background: #059669;
+        }
+        
+        .btn-bulk-approve:disabled {
+            background: #9ca3af;
+            cursor: not-allowed;
+        }
     </style>
 </head>
 <body>
@@ -195,6 +267,23 @@
                     <button class="filter-tab" data-filter="high">Alto Risco</button>
                     <button class="filter-tab" data-filter="medium">Médio Risco</button>
                     <button class="filter-tab" data-filter="low">Baixo Risco</button>
+                </div>
+
+                <div class="selection-bar" id="selectionBar">
+                    <div class="checkbox-wrapper">
+                        <div class="checkbox-custom" id="selectAllCheckbox" onclick="toggleSelectAll()">
+                            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path>
+                            </svg>
+                        </div>
+                        <span class="text-sm text-gray-600" id="selectionText">Selecionar Todos</span>
+                    </div>
+                    <button class="btn-bulk-approve" id="bulkApproveBtn" onclick="bulkApprove()" disabled>
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                        </svg>
+                        <span id="bulkApproveBtnText">Aprovar Selecionados</span>
+                    </button>
                 </div>
 
                 <div id="reviewList">
@@ -281,12 +370,15 @@
     <script>
         let allItems = [];
         let currentFilter = 'all';
+        let selectedItems = new Set();
 
         document.querySelectorAll('.filter-tab').forEach(tab => {
             tab.addEventListener('click', () => {
                 document.querySelectorAll('.filter-tab').forEach(t => t.classList.remove('active'));
                 tab.classList.add('active');
                 currentFilter = tab.dataset.filter;
+                selectedItems.clear();
+                updateSelectionUI();
                 renderItems();
             });
         });
@@ -299,11 +391,120 @@
                 if (!response.ok) throw new Error('Erro ao carregar itens');
                 const data = await response.json();
                 allItems = data.pending_items || [];
+                selectedItems.clear();
                 updateCounters();
+                updateSelectionUI();
                 renderItems();
             } catch (error) {
                 console.error('Erro:', error);
                 AppNotifications.show('Erro ao carregar itens pendentes', 'error');
+            }
+        }
+
+        function getSelectableItems() {
+            let filtered = allItems;
+            if (currentFilter !== 'all') {
+                filtered = allItems.filter(item => getRiskLevel(item.confidence_score) === currentFilter);
+            }
+            return filtered.filter(item => item.block_id);
+        }
+
+        function toggleSelectAll() {
+            const selectable = getSelectableItems();
+            if (selectedItems.size === selectable.length && selectable.length > 0) {
+                selectedItems.clear();
+            } else {
+                selectedItems = new Set(selectable.map(i => i.block_id));
+            }
+            updateSelectionUI();
+            renderItems();
+        }
+
+        function toggleItemSelection(blockId) {
+            if (!blockId) return;
+            if (selectedItems.has(blockId)) {
+                selectedItems.delete(blockId);
+            } else {
+                selectedItems.add(blockId);
+            }
+            updateSelectionUI();
+            updateCheckboxUI(blockId);
+        }
+
+        function updateSelectionUI() {
+            const selectable = getSelectableItems();
+            const selectAllCheckbox = document.getElementById('selectAllCheckbox');
+            const selectionText = document.getElementById('selectionText');
+            const bulkApproveBtn = document.getElementById('bulkApproveBtn');
+            const bulkApproveBtnText = document.getElementById('bulkApproveBtnText');
+            
+            if (selectedItems.size === selectable.length && selectable.length > 0) {
+                selectAllCheckbox.classList.add('checked');
+                selectionText.textContent = 'Desmarcar Todos';
+            } else {
+                selectAllCheckbox.classList.remove('checked');
+                selectionText.textContent = selectedItems.size > 0 
+                    ? `${selectedItems.size} selecionado${selectedItems.size !== 1 ? 's' : ''}` 
+                    : 'Selecionar Todos';
+            }
+            
+            bulkApproveBtn.disabled = selectedItems.size === 0;
+            bulkApproveBtnText.textContent = selectedItems.size > 0 
+                ? `Aprovar ${selectedItems.size} Selecionado${selectedItems.size !== 1 ? 's' : ''}` 
+                : 'Aprovar Selecionados';
+        }
+
+        function updateCheckboxUI(blockId) {
+            const checkbox = document.querySelector(`[data-block-id="${blockId}"]`);
+            if (checkbox) {
+                if (selectedItems.has(blockId)) {
+                    checkbox.classList.add('checked');
+                } else {
+                    checkbox.classList.remove('checked');
+                }
+            }
+        }
+
+        async function bulkApprove() {
+            if (selectedItems.size === 0) {
+                AppNotifications.show('Selecione ao menos um item', 'warning');
+                return;
+            }
+
+            const confirmed = await AppNotifications.confirm({
+                title: 'Aprovar em Massa',
+                message: `Deseja aprovar ${selectedItems.size} item${selectedItems.size !== 1 ? 's' : ''} selecionado${selectedItems.size !== 1 ? 's' : ''}?`,
+                confirmText: 'Aprovar',
+                cancelText: 'Cancelar',
+                type: 'success'
+            });
+
+            if (!confirmed) return;
+
+            try {
+                const blockIds = Array.from(selectedItems);
+                const response = await fetch('/api/products/blocks/bulk-approve', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({ block_ids: blockIds })
+                });
+
+                if (!response.ok) {
+                    const data = await response.json();
+                    throw new Error(data.detail || 'Erro ao aprovar');
+                }
+
+                const result = await response.json();
+                AppNotifications.show(`${result.approved_count} itens aprovados!`, 'success');
+                
+                allItems = allItems.filter(i => !selectedItems.has(i.block_id));
+                selectedItems.clear();
+                updateCounters();
+                updateSelectionUI();
+                renderItems();
+            } catch (error) {
+                AppNotifications.show(error.message || 'Erro ao aprovar itens', 'error');
             }
         }
 
@@ -349,13 +550,27 @@
             container.innerHTML = filtered.map(item => {
                 const risk = getRiskLevel(item.confidence_score);
                 const content = item.display_content || item.extracted_content || item.original_content || 'Sem conteúdo';
+                const isSelected = item.block_id && selectedItems.has(item.block_id);
+                const checkboxHtml = item.block_id ? `
+                    <div class="checkbox-custom ${isSelected ? 'checked' : ''}" 
+                         data-block-id="${item.block_id}" 
+                         onclick="toggleItemSelection(${item.block_id})"
+                         style="margin-right: 12px;">
+                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path>
+                        </svg>
+                    </div>
+                ` : '';
                 
                 return `
                     <div class="review-card ${risk}-risk" data-id="${item.id}">
                         <div class="flex justify-between items-start mb-3">
-                            <div>
-                                <h3 class="font-semibold text-gray-800">${item.block_title || 'Bloco sem título'}</h3>
-                                <p class="text-sm text-gray-500">${item.product_name || 'Produto não vinculado'} / ${item.material_name || 'Material'}</p>
+                            <div class="flex items-start">
+                                ${checkboxHtml}
+                                <div>
+                                    <h3 class="font-semibold text-gray-800">${item.block_title || 'Bloco sem título'}</h3>
+                                    <p class="text-sm text-gray-500">${item.product_name || 'Produto não vinculado'} / ${item.material_name || 'Material'}</p>
+                                </div>
                             </div>
                             <span class="risk-badge ${risk}">${getRiskLabel(risk)}</span>
                         </div>
