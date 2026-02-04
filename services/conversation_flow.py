@@ -356,7 +356,8 @@ async def escalate_to_human_with_analysis(
     history = []
     for msg in reversed(messages):
         role = "user" if msg.direction == "inbound" else "assistant"
-        history.append({"role": role, "content": msg.content or ""})
+        content = msg.body or msg.transcription or ""
+        history.append({"role": role, "content": content})
     
     agent = OpenAIAgent()
     analysis = await agent.analyze_escalation(history, last_message)
