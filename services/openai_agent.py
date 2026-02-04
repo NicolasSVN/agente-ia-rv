@@ -1072,8 +1072,6 @@ Agente: "Oi {PrimeiroNome}! O que precisa?"
         context_documents = []
         
         conversation_id_for_context = None
-        if conversation_data and conversation_data.get('id'):
-            conversation_id_for_context = str(conversation_data['id'])
         
         if categoria == "SAUDACAO":
             print(f"[OpenAI] Saudação detectada - NÃO consultando documentos")
