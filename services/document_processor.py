@@ -253,6 +253,118 @@ Responda APENAS com o JSON, sem markdown ou explicações."""
             "all_products": list(all_products)
         }
     
+    def process_pdf_resumable(
+        self,
+        pdf_path: str,
+        document_title: str = "",
+        start_page: int = 0,
+        page_callback: Optional[callable] = None,
+        progress_callback: Optional[callable] = None
+    ) -> Dict[str, Any]:
+        """
+        Processa um PDF com suporte a retomada de processamento interrompido.
+        
+        Args:
+            pdf_path: Caminho para o arquivo PDF
+            document_title: Título do documento
+            start_page: Página inicial (0-indexed) para retomar processamento
+            page_callback: Função chamada após cada página (page_number, page_result, is_success)
+            progress_callback: Função chamada a cada página (current, total)
+        
+        Returns:
+            Dict com informações estruturadas de todas as páginas
+        """
+        images = self._pdf_to_images(pdf_path=pdf_path)
+        
+        if not images:
+            return {
+                "title": document_title,
+                "total_pages": 0,
+                "pages": [],
+                "all_facts": [],
+                "error": "Não foi possível converter o PDF em imagens"
+            }
+        
+        total_pages = len(images)
+        pages_data = []
+        all_facts = []
+        all_products = set()
+        last_successful_page = start_page - 1
+        
+        if progress_callback:
+            progress_callback(start_page, total_pages)
+        
+        for i in range(start_page, total_pages):
+            image = images[i]
+            print(f"[DOC_PROCESSOR] Processando página {i + 1}/{total_pages}...")
+            
+            try:
+                import time
+                start_time = time.time()
+                
+                page_result = self.analyze_page(image, document_title)
+                page_result["page_number"] = i + 1
+                
+                processing_time_ms = int((time.time() - start_time) * 1000)
+                page_result["processing_time_ms"] = processing_time_ms
+                
+                pages_data.append(page_result)
+                last_successful_page = i
+                
+                if progress_callback:
+                    progress_callback(i + 1, total_pages)
+                
+                for product in page_result.get("products_mentioned", []):
+                    all_products.add(product.strip().upper())
+                
+                for fact in page_result.get("facts", []):
+                    prefixed_fact = f"[{document_title} - Página {i + 1}] {fact}"
+                    all_facts.append(prefixed_fact)
+                
+                if page_callback:
+                    page_callback(i + 1, page_result, True, None)
+                    
+            except Exception as e:
+                print(f"[DOC_PROCESSOR] Erro na página {i + 1}: {e}")
+                error_result = {
+                    "page_number": i + 1,
+                    "error": str(e)
+                }
+                pages_data.append(error_result)
+                
+                if page_callback:
+                    page_callback(i + 1, error_result, False, str(e))
+                
+                return {
+                    "title": document_title,
+                    "total_pages": total_pages,
+                    "pages": pages_data,
+                    "all_facts": all_facts,
+                    "all_products": list(all_products),
+                    "last_successful_page": last_successful_page,
+                    "error": f"Falha na página {i + 1}: {str(e)}",
+                    "interrupted": True
+                }
+        
+        return {
+            "title": document_title,
+            "total_pages": total_pages,
+            "pages": pages_data,
+            "all_facts": all_facts,
+            "all_products": list(all_products),
+            "last_successful_page": total_pages - 1,
+            "completed": True
+        }
+    
+    def get_pdf_page_count(self, pdf_path: str) -> int:
+        """Retorna o número de páginas de um PDF sem processá-lo."""
+        try:
+            images = self._pdf_to_images(pdf_path=pdf_path)
+            return len(images) if images else 0
+        except Exception as e:
+            print(f"[DOC_PROCESSOR] Erro ao contar páginas: {e}")
+            return 0
+    
     def process_image(
         self, 
         image_path: str = None, 

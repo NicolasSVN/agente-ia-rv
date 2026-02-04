@@ -1607,12 +1607,19 @@ async def smart_upload_stream(
         from database.database import SessionLocal
         from services.product_ingestor import get_product_ingestor
         from services.document_metadata_extractor import get_metadata_extractor
-        from database.models import ProcessingStatus
+        from database.models import (
+            ProcessingStatus, DocumentProcessingJob, DocumentPageResult,
+            ProcessingJobStatus, PageProcessingStatus
+        )
+        from services.document_processor import get_document_processor
         import json as json_module
+        from datetime import datetime
+        import hashlib
         
         db_local = SessionLocal()
         material_id_local = material.id
         processing_success = False
+        processing_job = None
         
         try:
             progress_queue.put({
@@ -1625,6 +1632,33 @@ async def smart_upload_stream(
             if mat:
                 mat.processing_status = ProcessingStatus.PROCESSING.value
                 db_local.commit()
+            
+            with open(file_path, 'rb') as f:
+                file_hash = hashlib.sha256(f.read()).hexdigest()
+            
+            doc_processor = get_document_processor()
+            total_pages = doc_processor.get_pdf_page_count(file_path)
+            
+            processing_job = DocumentProcessingJob(
+                material_id=material_id_local,
+                file_path=file_path,
+                file_hash=file_hash,
+                total_pages=total_pages,
+                status=ProcessingJobStatus.PROCESSING.value,
+                started_at=datetime.utcnow()
+            )
+            db_local.add(processing_job)
+            db_local.commit()
+            db_local.refresh(processing_job)
+            
+            for page_num in range(1, total_pages + 1):
+                page_result = DocumentPageResult(
+                    job_id=processing_job.id,
+                    page_number=page_num,
+                    status=PageProcessingStatus.PENDING.value
+                )
+                db_local.add(page_result)
+            db_local.commit()
             
             progress_queue.put({
                 "type": "log",
@@ -1770,6 +1804,20 @@ async def smart_upload_stream(
             
             processing_success = True
             
+            if processing_job:
+                processing_job.status = ProcessingJobStatus.COMPLETED.value
+                processing_job.processed_pages = processing_job.total_pages
+                processing_job.last_processed_page = processing_job.total_pages
+                processing_job.completed_at = datetime.utcnow()
+                
+                for page_result in db_local.query(DocumentPageResult).filter(
+                    DocumentPageResult.job_id == processing_job.id
+                ).all():
+                    page_result.status = PageProcessingStatus.SUCCESS.value
+                    page_result.processed_at = datetime.utcnow()
+                
+                db_local.commit()
+            
             progress_queue.put({
                 "type": "complete",
                 "success": True,
@@ -1783,10 +1831,15 @@ async def smart_upload_stream(
             })
             
         except Exception as e:
+            if processing_job:
+                processing_job.status = ProcessingJobStatus.PAUSED.value
+                processing_job.error_message = str(e)[:500]
+                db_local.commit()
+            
             mat = db_local.query(Material).filter(Material.id == material_id_local).first()
             if mat:
                 blocks_count = len(mat.blocks) if mat.blocks else 0
-                if blocks_count == 0:
+                if blocks_count == 0 and not processing_job:
                     db_local.delete(mat)
                     db_local.commit()
                     progress_queue.put({
@@ -1798,16 +1851,247 @@ async def smart_upload_stream(
                     mat.processing_status = ProcessingStatus.FAILED.value
                     mat.processing_error = str(e)[:500]
                     db_local.commit()
+                    
+                    if processing_job:
+                        progress_queue.put({
+                            "type": "log",
+                            "message": "Processamento interrompido - pode ser retomado",
+                            "log_type": "warning"
+                        })
             
             progress_queue.put({
                 "type": "error",
-                "message": f"Erro no processamento: {str(e)}"
+                "message": f"Erro no processamento: {str(e)}",
+                "resumable": processing_job is not None,
+                "job_id": processing_job.id if processing_job else None
             })
         finally:
             db_local.close()
             progress_queue.put(None)
     
     thread = threading.Thread(target=process_with_progress)
+    thread.start()
+    
+    async def event_generator():
+        try:
+            while True:
+                try:
+                    event = progress_queue.get(timeout=0.5)
+                    if event is None:
+                        break
+                    yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+                except queue.Empty:
+                    yield f"data: {json.dumps({'type': 'ping'})}\n\n"
+                    
+                if await request.is_disconnected():
+                    break
+        finally:
+            if upload_id in upload_progress_queues:
+                del upload_progress_queues[upload_id]
+    
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"
+        }
+    )
+
+
+@router.get("/materials/{material_id}/processing-status")
+async def get_processing_status(
+    material_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Retorna o status do processamento de um material, incluindo info de retomada."""
+    from database.models import DocumentProcessingJob, ProcessingJobStatus
+    
+    material = db.query(Material).filter(Material.id == material_id).first()
+    if not material:
+        raise HTTPException(status_code=404, detail="Material não encontrado")
+    
+    job = db.query(DocumentProcessingJob).filter(
+        DocumentProcessingJob.material_id == material_id
+    ).order_by(DocumentProcessingJob.created_at.desc()).first()
+    
+    if not job:
+        return {
+            "has_job": False,
+            "resumable": False
+        }
+    
+    return {
+        "has_job": True,
+        "job_id": job.id,
+        "status": job.status,
+        "total_pages": job.total_pages,
+        "processed_pages": job.processed_pages,
+        "last_processed_page": job.last_processed_page,
+        "resumable": job.status in [ProcessingJobStatus.PAUSED.value, ProcessingJobStatus.FAILED.value],
+        "error_message": job.error_message,
+        "file_path": job.file_path
+    }
+
+
+@router.post("/materials/{material_id}/resume-upload")
+async def resume_upload(
+    request: Request,
+    material_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Retoma o processamento de um upload interrompido.
+    Continua de onde parou usando o DocumentProcessingJob existente.
+    """
+    from database.models import (
+        DocumentProcessingJob, DocumentPageResult,
+        ProcessingJobStatus, PageProcessingStatus, ProcessingStatus
+    )
+    
+    if current_user.role not in ["admin", "gestao_rv", "broker"]:
+        raise HTTPException(status_code=403, detail="Acesso negado")
+    
+    material = db.query(Material).filter(Material.id == material_id).first()
+    if not material:
+        raise HTTPException(status_code=404, detail="Material não encontrado")
+    
+    job = db.query(DocumentProcessingJob).filter(
+        DocumentProcessingJob.material_id == material_id
+    ).order_by(DocumentProcessingJob.created_at.desc()).first()
+    
+    if not job:
+        raise HTTPException(status_code=404, detail="Nenhum job de processamento encontrado para este material")
+    
+    if job.status not in [ProcessingJobStatus.PAUSED.value, ProcessingJobStatus.FAILED.value]:
+        raise HTTPException(status_code=400, detail=f"Job não pode ser retomado (status: {job.status})")
+    
+    if not os.path.exists(job.file_path):
+        raise HTTPException(status_code=404, detail="Arquivo PDF original não encontrado")
+    
+    user_id = current_user.id
+    
+    upload_id = str(uuid.uuid4())
+    progress_queue = queue.Queue()
+    upload_progress_queues[upload_id] = progress_queue
+    
+    def resume_with_progress():
+        from database.database import SessionLocal
+        from services.product_ingestor import get_product_ingestor
+        from datetime import datetime
+        import json as json_module
+        
+        db_local = SessionLocal()
+        processing_success = False
+        
+        try:
+            job_local = db_local.query(DocumentProcessingJob).filter(
+                DocumentProcessingJob.id == job.id
+            ).first()
+            
+            job_local.status = ProcessingJobStatus.PROCESSING.value
+            job_local.retry_count += 1
+            db_local.commit()
+            
+            mat = db_local.query(Material).filter(Material.id == material_id).first()
+            if mat:
+                mat.processing_status = ProcessingStatus.PROCESSING.value
+                db_local.commit()
+            
+            start_page = job_local.last_processed_page
+            
+            progress_queue.put({
+                "type": "start",
+                "message": f"Retomando processamento da página {start_page + 1}/{job_local.total_pages}...",
+                "material_id": material_id,
+                "resuming_from": start_page
+            })
+            
+            ingestor = get_product_ingestor()
+            
+            def progress_callback(current, total):
+                progress_queue.put({
+                    "type": "progress",
+                    "current": current,
+                    "total": total,
+                    "percent": int((current / total) * 100) if total > 0 else 0,
+                    "message": f"Processando página {current}/{total}"
+                })
+                
+                job_local.processed_pages = current
+                job_local.last_processed_page = current
+                db_local.commit()
+            
+            result = ingestor.process_pdf_with_product_detection_streaming(
+                pdf_path=job_local.file_path,
+                material_id=material_id,
+                document_title=mat.name if mat else "Documento",
+                db=db_local,
+                user_id=user_id,
+                progress_callback=progress_callback,
+                log_callback=lambda msg, t: progress_queue.put({"type": "log", "message": msg, "log_type": t}),
+                start_page=start_page
+            )
+            
+            job_local.status = ProcessingJobStatus.COMPLETED.value
+            job_local.processed_pages = job_local.total_pages
+            job_local.last_processed_page = job_local.total_pages
+            job_local.completed_at = datetime.utcnow()
+            
+            for page_result in db_local.query(DocumentPageResult).filter(
+                DocumentPageResult.job_id == job_local.id
+            ).all():
+                page_result.status = PageProcessingStatus.SUCCESS.value
+                page_result.processed_at = datetime.utcnow()
+            
+            if mat:
+                mat.processing_status = ProcessingStatus.SUCCESS.value
+            
+            db_local.commit()
+            
+            processing_success = True
+            
+            progress_queue.put({
+                "type": "complete",
+                "success": True,
+                "message": "Processamento retomado e concluído com sucesso!",
+                "stats": {
+                    "blocks_created": result.get("stats", {}).get("blocks_created", 0),
+                    "products_matched": list(result.get("stats", {}).get("products_matched", [])),
+                    "auto_approved": result.get("stats", {}).get("auto_approved", 0),
+                    "pending_review": result.get("stats", {}).get("pending_review", 0)
+                }
+            })
+            
+        except Exception as e:
+            job_local = db_local.query(DocumentProcessingJob).filter(
+                DocumentProcessingJob.id == job.id
+            ).first()
+            if job_local:
+                job_local.status = ProcessingJobStatus.PAUSED.value
+                job_local.error_message = str(e)[:500]
+                db_local.commit()
+            
+            mat = db_local.query(Material).filter(Material.id == material_id).first()
+            if mat:
+                mat.processing_status = ProcessingStatus.FAILED.value
+                mat.processing_error = str(e)[:500]
+                db_local.commit()
+            
+            progress_queue.put({
+                "type": "error",
+                "message": f"Erro ao retomar processamento: {str(e)}",
+                "resumable": True,
+                "job_id": job.id
+            })
+        finally:
+            db_local.close()
+            progress_queue.put(None)
+    
+    thread = threading.Thread(target=resume_with_progress)
     thread.start()
     
     async def event_generator():

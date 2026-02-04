@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Upload, FileText, CheckCircle, ArrowRight, Sparkles, Info, AlertCircle } from 'lucide-react';
+import { Upload, FileText, CheckCircle, ArrowRight, Sparkles, Info, AlertCircle, RotateCcw } from 'lucide-react';
 import { materialsAPI, productsAPI } from '../services/api';
 import { FileUpload } from '../components/FileUpload';
 import { Button } from '../components/Button';
@@ -31,6 +31,8 @@ export function SmartUpload() {
   const [logs, setLogs] = useState([]);
   const [stats, setStats] = useState(null);
   const [hasError, setHasError] = useState(false);
+  const [resumableInfo, setResumableInfo] = useState(null);
+  const [resumableMaterialId, setResumableMaterialId] = useState(null);
 
   useEffect(() => {
     if (logRef.current) {
@@ -50,6 +52,72 @@ export function SmartUpload() {
   const addLog = (message, type = 'info') => {
     const time = new Date().toLocaleTimeString('pt-BR');
     setLogs(prev => [...prev, { time, message, type }]);
+  };
+
+  const handleResume = async () => {
+    if (!resumableMaterialId) return;
+    
+    setUploading(true);
+    setStep(3);
+    setLogs([]);
+    setHasError(false);
+    setStats(null);
+    setResumableInfo(null);
+    
+    addLog('Retomando processamento...', 'info');
+    
+    try {
+      const response = await fetch(`/api/products/materials/${resumableMaterialId}/resume-upload`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        }
+      });
+      
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        
+        const text = decoder.decode(value, { stream: true });
+        const lines = text.split('\n');
+        
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const event = JSON.parse(line.slice(6));
+              
+              if (event.type === 'progress') {
+                setUploadProgress(event.percent);
+                setCurrentPage(event.current || 0);
+                setTotalPages(event.total || 0);
+              } else if (event.type === 'log') {
+                addLog(event.message, event.log_type || 'info');
+              } else if (event.type === 'complete') {
+                setUploadComplete(true);
+                setUploadProgress(100);
+                setStats(event.stats);
+                addLog(event.message || 'Processamento concluído!', 'success');
+                addToast({ type: 'success', message: 'Documento processado com sucesso!' });
+              } else if (event.type === 'error') {
+                setHasError(true);
+                addLog(event.message, 'error');
+                if (event.resumable) {
+                  setResumableInfo({ jobId: event.job_id });
+                }
+              }
+            } catch (e) {}
+          }
+        }
+      }
+    } catch (err) {
+      setHasError(true);
+      addLog(`Erro: ${err.message}`, 'error');
+    } finally {
+      setUploading(false);
+    }
   };
 
   const handleUploadWithProduct = async () => {
@@ -168,6 +236,11 @@ export function SmartUpload() {
                   setUploading(false);
                   addLog(event.message, 'error');
                   addToast(event.message, 'error');
+                  if (event.resumable && event.job_id) {
+                    setResumableInfo({ jobId: event.job_id });
+                  }
+                } else if (event.type === 'start' && event.material_id) {
+                  setResumableMaterialId(event.material_id);
                 }
               } catch (e) {
               }
@@ -387,16 +460,37 @@ export function SmartUpload() {
           </div>
 
           {hasError && (
-            <div className="flex gap-3 justify-center">
-              <Button variant="secondary" onClick={() => {
-                setStep(2);
-                setUploading(false);
-                setUploadProgress(0);
-                setLogs([]);
-                setHasError(false);
-              }}>
-                Tentar Novamente
-              </Button>
+            <div className="space-y-4">
+              {resumableInfo && resumableMaterialId && (
+                <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg">
+                  <div className="flex items-center gap-2 mb-2">
+                    <RotateCcw className="w-5 h-5 text-amber-600" />
+                    <span className="font-medium text-amber-800">Processamento pode ser retomado</span>
+                  </div>
+                  <p className="text-sm text-amber-700 mb-3">
+                    O arquivo PDF foi salvo e você pode retomar o processamento de onde parou.
+                  </p>
+                  <Button 
+                    onClick={handleResume}
+                    className="bg-amber-600 hover:bg-amber-700"
+                  >
+                    <RotateCcw className="w-4 h-4" />
+                    Retomar Processamento
+                  </Button>
+                </div>
+              )}
+              <div className="flex gap-3 justify-center">
+                <Button variant="secondary" onClick={() => {
+                  setStep(2);
+                  setUploading(false);
+                  setUploadProgress(0);
+                  setLogs([]);
+                  setHasError(false);
+                  setResumableInfo(null);
+                }}>
+                  Tentar Novamente
+                </Button>
+              </div>
             </div>
           )}
         </>

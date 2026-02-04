@@ -2,7 +2,7 @@
 Modelos SQLAlchemy para o banco de dados.
 Define as tabelas User, Ticket, Interaction, TicketCategory e Integration.
 """
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Text, Boolean
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Text, Boolean, Index
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from database.database import Base
@@ -818,6 +818,78 @@ class BlockVersion(Base):
     
     block = relationship("ContentBlock", back_populates="versions")
     author = relationship("User", foreign_keys=[author_id])
+
+
+class ProcessingJobStatus(str, enum.Enum):
+    """Status do job de processamento de documento."""
+    PENDING = "pending"
+    PROCESSING = "processing"
+    PAUSED = "paused"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
+class PageProcessingStatus(str, enum.Enum):
+    """Status do processamento de cada página."""
+    PENDING = "pending"
+    PROCESSING = "processing"
+    SUCCESS = "success"
+    FAILED = "failed"
+    SKIPPED = "skipped"
+
+
+class DocumentProcessingJob(Base):
+    """
+    Rastreia o estado geral do processamento de cada documento.
+    Permite retomar processamentos interrompidos.
+    """
+    __tablename__ = "document_processing_jobs"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    material_id = Column(Integer, ForeignKey("materials.id"), nullable=False, index=True)
+    file_path = Column(String(500), nullable=False)
+    file_hash = Column(String(64), nullable=True)
+    total_pages = Column(Integer, nullable=False, default=0)
+    processed_pages = Column(Integer, default=0)
+    last_processed_page = Column(Integer, default=0)
+    status = Column(String(30), default=ProcessingJobStatus.PENDING.value, index=True)
+    error_message = Column(Text, nullable=True)
+    retry_count = Column(Integer, default=0)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    started_at = Column(DateTime(timezone=True), nullable=True)
+    completed_at = Column(DateTime(timezone=True), nullable=True)
+    
+    material = relationship("Material", backref="processing_jobs")
+    page_results = relationship("DocumentPageResult", back_populates="job", cascade="all, delete-orphan", order_by="DocumentPageResult.page_number")
+
+
+class DocumentPageResult(Base):
+    """
+    Rastreia o resultado do processamento de cada página individualmente.
+    Permite retomar processamentos de onde pararam.
+    """
+    __tablename__ = "document_page_results"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    job_id = Column(Integer, ForeignKey("document_processing_jobs.id"), nullable=False, index=True)
+    page_number = Column(Integer, nullable=False)
+    status = Column(String(30), default=PageProcessingStatus.PENDING.value)
+    content_type = Column(String(50), nullable=True)
+    raw_data = Column(Text, nullable=True)
+    summary = Column(Text, nullable=True)
+    products_found = Column(Text, default="[]")
+    facts_extracted = Column(Text, default="[]")
+    created_block_ids = Column(Text, default="[]")
+    error_message = Column(Text, nullable=True)
+    processing_time_ms = Column(Integer, nullable=True)
+    processed_at = Column(DateTime(timezone=True), nullable=True)
+    
+    job = relationship("DocumentProcessingJob", back_populates="page_results")
+    
+    __table_args__ = (
+        Index('ix_page_job_page', 'job_id', 'page_number', unique=True),
+    )
 
 
 class WhatsAppScript(Base):

@@ -134,7 +134,7 @@ class ProductIngestor:
                 tables = raw_data.get("tables", [])
                 for i, table in enumerate(tables):
                     table_json = json.dumps(table, ensure_ascii=False)
-                    block = self._create_block(
+                    block, was_created = self._create_block(
                         material_id=material_id,
                         block_type=ContentBlockType.TABLE.value,
                         title=f"Tabela - Página {page_num}" + (f" ({i+1})" if len(tables) > 1 else ""),
@@ -145,15 +145,15 @@ class ProductIngestor:
                         user_id=user_id
                     )
                     block_order += 1
-                    stats["blocks_created"] += 1
-                    
-                    if block.status == ContentBlockStatus.AUTO_APPROVED.value:
-                        stats["auto_approved"] += 1
-                    else:
-                        stats["pending_review"] += 1
+                    if was_created:
+                        stats["blocks_created"] += 1
+                        if block.status == ContentBlockStatus.AUTO_APPROVED.value:
+                            stats["auto_approved"] += 1
+                        else:
+                            stats["pending_review"] += 1
             
             if content_type == "infographic":
-                block = self._create_block(
+                block, was_created = self._create_block(
                     material_id=material_id,
                     block_type=ContentBlockType.CHART.value,
                     title=f"Gráfico - Página {page_num}",
@@ -164,15 +164,16 @@ class ProductIngestor:
                     user_id=user_id
                 )
                 block_order += 1
-                stats["blocks_created"] += 1
-                stats["pending_review"] += 1
+                if was_created:
+                    stats["blocks_created"] += 1
+                    stats["pending_review"] += 1
             
             if facts and content_type not in ["table", "infographic"]:
                 text_content = "\n\n".join(facts)
                 if summary:
                     text_content = f"{summary}\n\n{text_content}"
                 
-                block = self._create_block(
+                block, was_created = self._create_block(
                     material_id=material_id,
                     block_type=ContentBlockType.TEXT.value,
                     title=f"Conteúdo - Página {page_num}",
@@ -183,12 +184,12 @@ class ProductIngestor:
                     user_id=user_id
                 )
                 block_order += 1
-                stats["blocks_created"] += 1
-                
-                if block.status == ContentBlockStatus.AUTO_APPROVED.value:
-                    stats["auto_approved"] += 1
-                else:
-                    stats["pending_review"] += 1
+                if was_created:
+                    stats["blocks_created"] += 1
+                    if block.status == ContentBlockStatus.AUTO_APPROVED.value:
+                        stats["auto_approved"] += 1
+                    else:
+                        stats["pending_review"] += 1
         
         material = db.query(Material).filter(Material.id == material_id).first()
         if material:
@@ -322,7 +323,7 @@ class ProductIngestor:
                 tables = raw_data.get("tables", [])
                 for i, table in enumerate(tables):
                     table_json = json.dumps(table, ensure_ascii=False)
-                    block = self._create_block(
+                    block, was_created = self._create_block(
                         material_id=target_material_id,
                         block_type=ContentBlockType.TABLE.value,
                         title=f"Tabela - Página {page_num}" + (f" ({i+1})" if len(tables) > 1 else ""),
@@ -333,14 +334,15 @@ class ProductIngestor:
                         user_id=user_id
                     )
                     block_order += 1
-                    stats["blocks_created"] += 1
-                    if block.status == ContentBlockStatus.AUTO_APPROVED.value:
-                        stats["auto_approved"] += 1
-                    else:
-                        stats["pending_review"] += 1
+                    if was_created:
+                        stats["blocks_created"] += 1
+                        if block.status == ContentBlockStatus.AUTO_APPROVED.value:
+                            stats["auto_approved"] += 1
+                        else:
+                            stats["pending_review"] += 1
             
             if content_type == "infographic":
-                block = self._create_block(
+                block, was_created = self._create_block(
                     material_id=target_material_id,
                     block_type=ContentBlockType.CHART.value,
                     title=f"Gráfico - Página {page_num}",
@@ -351,15 +353,16 @@ class ProductIngestor:
                     user_id=user_id
                 )
                 block_order += 1
-                stats["blocks_created"] += 1
-                stats["pending_review"] += 1
+                if was_created:
+                    stats["blocks_created"] += 1
+                    stats["pending_review"] += 1
             
             if facts and content_type not in ["table", "infographic"]:
                 text_content = "\n\n".join(facts)
                 if summary:
                     text_content = f"{summary}\n\n{text_content}"
                 
-                block = self._create_block(
+                block, was_created = self._create_block(
                     material_id=target_material_id,
                     block_type=ContentBlockType.TEXT.value,
                     title=f"Conteúdo - Página {page_num}",
@@ -370,11 +373,12 @@ class ProductIngestor:
                     user_id=user_id
                 )
                 block_order += 1
-                stats["blocks_created"] += 1
-                if block.status == ContentBlockStatus.AUTO_APPROVED.value:
-                    stats["auto_approved"] += 1
-                else:
-                    stats["pending_review"] += 1
+                if was_created:
+                    stats["blocks_created"] += 1
+                    if block.status == ContentBlockStatus.AUTO_APPROVED.value:
+                        stats["auto_approved"] += 1
+                    else:
+                        stats["pending_review"] += 1
         
         original_material = db.query(Material).filter(Material.id == material_id).first()
         if original_material:
@@ -423,10 +427,12 @@ class ProductIngestor:
         db: Session,
         user_id: Optional[int] = None,
         progress_callback: Optional[callable] = None,
-        log_callback: Optional[callable] = None
+        log_callback: Optional[callable] = None,
+        start_page: int = 0
     ) -> Dict[str, Any]:
         """
         Processa PDF com detecção automática de produtos, enviando logs em tempo real.
+        start_page: Página inicial para processamento (para retomada).
         """
         from database.models import Product, Material
         
@@ -480,8 +486,19 @@ class ProductIngestor:
         
         block_order = 0
         
+        existing_blocks = db.query(ContentBlock).filter(
+            ContentBlock.material_id == material_id
+        ).count()
+        
+        if start_page > 0:
+            log(f"Retomando processamento da página {start_page + 1}...", "info")
+        
         for page in processed.get("pages", []):
             page_num = page.get("page_number", 0)
+            
+            if page_num < start_page:
+                continue
+            
             content_type = page.get("content_type", "text")
             summary = page.get("summary", "")
             facts = page.get("facts", [])
@@ -545,7 +562,7 @@ class ProductIngestor:
                 tables = raw_data.get("tables", [])
                 for i, table in enumerate(tables):
                     table_json = json.dumps(table, ensure_ascii=False)
-                    block = self._create_block(
+                    block, was_created = self._create_block(
                         material_id=target_material_id,
                         block_type=ContentBlockType.TABLE.value,
                         title=f"Tabela - Página {page_num}" + (f" ({i+1})" if len(tables) > 1 else ""),
@@ -556,15 +573,16 @@ class ProductIngestor:
                         user_id=user_id
                     )
                     block_order += 1
-                    stats["blocks_created"] += 1
-                    blocks_created_page += 1
-                    if block.status == ContentBlockStatus.AUTO_APPROVED.value:
-                        stats["auto_approved"] += 1
-                    else:
-                        stats["pending_review"] += 1
+                    if was_created:
+                        stats["blocks_created"] += 1
+                        blocks_created_page += 1
+                        if block.status == ContentBlockStatus.AUTO_APPROVED.value:
+                            stats["auto_approved"] += 1
+                        else:
+                            stats["pending_review"] += 1
             
             if content_type == "infographic":
-                block = self._create_block(
+                block, was_created = self._create_block(
                     material_id=target_material_id,
                     block_type=ContentBlockType.CHART.value,
                     title=f"Gráfico - Página {page_num}",
@@ -575,16 +593,17 @@ class ProductIngestor:
                     user_id=user_id
                 )
                 block_order += 1
-                stats["blocks_created"] += 1
-                blocks_created_page += 1
-                stats["pending_review"] += 1
+                if was_created:
+                    stats["blocks_created"] += 1
+                    blocks_created_page += 1
+                    stats["pending_review"] += 1
             
             if facts and content_type not in ["table", "infographic"]:
                 text_content = "\n\n".join(facts)
                 if summary:
                     text_content = f"{summary}\n\n{text_content}"
                 
-                block = self._create_block(
+                block, was_created = self._create_block(
                     material_id=target_material_id,
                     block_type=ContentBlockType.TEXT.value,
                     title=f"Conteúdo - Página {page_num}",
@@ -595,12 +614,13 @@ class ProductIngestor:
                     user_id=user_id
                 )
                 block_order += 1
-                stats["blocks_created"] += 1
-                blocks_created_page += 1
-                if block.status == ContentBlockStatus.AUTO_APPROVED.value:
-                    stats["auto_approved"] += 1
-                else:
-                    stats["pending_review"] += 1
+                if was_created:
+                    stats["blocks_created"] += 1
+                    blocks_created_page += 1
+                    if block.status == ContentBlockStatus.AUTO_APPROVED.value:
+                        stats["auto_approved"] += 1
+                    else:
+                        stats["pending_review"] += 1
             
             if blocks_created_page > 0:
                 log(f"Página {page_num}: {blocks_created_page} bloco(s) criado(s)")
@@ -676,9 +696,21 @@ class ProductIngestor:
         order: int,
         db: Session,
         user_id: Optional[int] = None
-    ) -> ContentBlock:
-        """Cria um ContentBlock com detecção de risco automática."""
+    ) -> tuple:
+        """
+        Cria um ContentBlock com detecção de risco automática e verificação de duplicatas.
+        Retorna (block, was_created) onde was_created indica se o bloco foi novo.
+        """
         content_hash = compute_hash(content)
+        
+        existing_block = db.query(ContentBlock).filter(
+            ContentBlock.material_id == material_id,
+            ContentBlock.content_hash == content_hash
+        ).first()
+        
+        if existing_block:
+            return (existing_block, False)
+        
         is_high_risk, risk_reason, confidence = detect_high_risk(content, block_type)
         
         if is_high_risk:
@@ -725,7 +757,7 @@ class ProductIngestor:
             db.add(review_item)
         
         db.commit()
-        return block
+        return (block, True)
     
     def index_approved_blocks(
         self,
