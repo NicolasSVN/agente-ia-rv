@@ -605,6 +605,14 @@ class MaterialStatus(str, enum.Enum):
     ARCHIVED = "arquivado"
 
 
+class ProcessingStatus(str, enum.Enum):
+    """Status de processamento do material."""
+    PENDING = "pending"
+    PROCESSING = "processing"
+    SUCCESS = "success"
+    FAILED = "failed"
+
+
 class MaterialType(str, enum.Enum):
     """Tipos de material de produto."""
     COMITE = "comite"                    # Decisões e teses de comitê de investimentos
@@ -693,6 +701,9 @@ class Material(Base):
     tags = Column(Text, default="[]")  # JSON array de tags estruturadas
     material_categories = Column(Text, default="[]")  # JSON array de categorias selecionadas
     auto_generated_tags = Column(Text, default="[]")  # Tags geradas automaticamente pelo GPT-4 Vision
+    processing_status = Column(String(30), default=ProcessingStatus.PENDING.value)
+    processing_error = Column(Text, nullable=True)
+    extracted_metadata = Column(Text, nullable=True)  # JSON com metadados extraídos (fund_name, ticker, gestora, confidence)
     created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())

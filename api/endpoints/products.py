@@ -1534,9 +1534,110 @@ async def smart_upload_stream(
     def process_with_progress():
         from database.database import SessionLocal
         from services.product_ingestor import get_product_ingestor
+        from services.document_metadata_extractor import get_metadata_extractor
+        from database.models import ProcessingStatus
+        import json as json_module
         
         db_local = SessionLocal()
+        material_id_local = material.id
+        processing_success = False
+        
         try:
+            progress_queue.put({
+                "type": "start",
+                "message": "Iniciando processamento do documento...",
+                "material_id": material_id_local
+            })
+            
+            mat = db_local.query(Material).filter(Material.id == material_id_local).first()
+            if mat:
+                mat.processing_status = ProcessingStatus.PROCESSING.value
+                db_local.commit()
+            
+            progress_queue.put({
+                "type": "log",
+                "message": "Extraindo metadados do documento (analisando primeiras páginas)...",
+                "log_type": "info"
+            })
+            
+            try:
+                extractor = get_metadata_extractor()
+                existing_products = db_local.query(Product).filter(
+                    (Product.ticker != "__SYSTEM_UNASSIGNED__") | (Product.ticker == None)
+                ).all()
+                existing_products_list = [{"id": p.id, "name": p.name, "ticker": p.ticker} for p in existing_products]
+                
+                metadata = extractor.extract_metadata(
+                    pdf_path=file_path,
+                    pages_to_analyze=[0, 1, 2],
+                    existing_products=existing_products_list
+                )
+                
+                if mat:
+                    mat.extracted_metadata = json_module.dumps(metadata.to_dict(), ensure_ascii=False)
+                    db_local.commit()
+                
+                progress_queue.put({
+                    "type": "metadata",
+                    "message": f"Metadados extraídos: {metadata.fund_name or 'N/A'} | Ticker: {metadata.ticker or 'N/A'} | Gestora: {metadata.gestora or 'N/A'}",
+                    "log_type": "info",
+                    "data": metadata.to_dict()
+                })
+                
+                if metadata.confidence >= 0.5 and (metadata.ticker or metadata.fund_name):
+                    matched_product = None
+                    
+                    if metadata.ticker:
+                        matched_product = db_local.query(Product).filter(
+                            Product.ticker == metadata.ticker
+                        ).first()
+                    
+                    if not matched_product and metadata.fund_name:
+                        from services.document_metadata_extractor import normalize_text
+                        fund_normalized = normalize_text(metadata.fund_name)
+                        for prod in existing_products:
+                            if normalize_text(prod.name) in fund_normalized or fund_normalized in normalize_text(prod.name):
+                                matched_product = prod
+                                break
+                    
+                    if matched_product and matched_product.ticker != "__SYSTEM_UNASSIGNED__":
+                        if mat:
+                            mat.product_id = matched_product.id
+                            db_local.commit()
+                        progress_queue.put({
+                            "type": "log",
+                            "message": f"Produto identificado automaticamente: {matched_product.name} ({matched_product.ticker})",
+                            "log_type": "success"
+                        })
+                    elif metadata.ticker and metadata.fund_name:
+                        new_product = Product(
+                            name=metadata.fund_name,
+                            ticker=metadata.ticker,
+                            category=metadata.gestora or "FII",
+                            manager=metadata.gestora,
+                            status="ativo"
+                        )
+                        db_local.add(new_product)
+                        db_local.commit()
+                        db_local.refresh(new_product)
+                        
+                        if mat:
+                            mat.product_id = new_product.id
+                            db_local.commit()
+                        
+                        progress_queue.put({
+                            "type": "log",
+                            "message": f"Novo produto criado: {new_product.name} ({new_product.ticker})",
+                            "log_type": "success"
+                        })
+                
+            except Exception as meta_err:
+                progress_queue.put({
+                    "type": "log",
+                    "message": f"Aviso: Extração de metadados falhou ({str(meta_err)[:100]}), continuando...",
+                    "log_type": "warning"
+                })
+            
             ingestor = get_product_ingestor()
             
             def progress_callback(current, total):
@@ -1548,21 +1649,22 @@ async def smart_upload_stream(
                     "message": f"Processando página {current}/{total}"
                 })
             
-            progress_queue.put({
-                "type": "start",
-                "message": "Iniciando processamento do documento...",
-                "material_id": material.id
-            })
-            
             result = ingestor.process_pdf_with_product_detection_streaming(
                 pdf_path=file_path,
-                material_id=material.id,
+                material_id=material_id_local,
                 document_title=name or file.filename.replace('.pdf', ''),
                 db=db_local,
                 user_id=user_id,
                 progress_callback=progress_callback,
                 log_callback=lambda msg, t: progress_queue.put({"type": "log", "message": msg, "log_type": t})
             )
+            
+            mat = db_local.query(Material).filter(Material.id == material_id_local).first()
+            if mat:
+                mat.processing_status = ProcessingStatus.SUCCESS.value
+                db_local.commit()
+            
+            processing_success = True
             
             progress_queue.put({
                 "type": "complete",
@@ -1577,6 +1679,22 @@ async def smart_upload_stream(
             })
             
         except Exception as e:
+            mat = db_local.query(Material).filter(Material.id == material_id_local).first()
+            if mat:
+                blocks_count = len(mat.blocks) if mat.blocks else 0
+                if blocks_count == 0:
+                    db_local.delete(mat)
+                    db_local.commit()
+                    progress_queue.put({
+                        "type": "log",
+                        "message": "Material removido (processamento falhou sem criar blocos)",
+                        "log_type": "warning"
+                    })
+                else:
+                    mat.processing_status = ProcessingStatus.FAILED.value
+                    mat.processing_error = str(e)[:500]
+                    db_local.commit()
+            
             progress_queue.put({
                 "type": "error",
                 "message": f"Erro no processamento: {str(e)}"
