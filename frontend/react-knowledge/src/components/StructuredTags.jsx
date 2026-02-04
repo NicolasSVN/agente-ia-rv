@@ -221,7 +221,7 @@ export function StructuredTags({ value = [], onChange }) {
                           const isHovered = hoveredTag === tag.value;
                           
                           return (
-                            <div key={tag.value} className="relative">
+                            <div key={tag.value} className="relative inline-block">
                               <motion.button
                                 type="button"
                                 whileHover={{ scale: 1.02 }}
@@ -241,14 +241,30 @@ export function StructuredTags({ value = [], onChange }) {
                                 <motion.div
                                   initial={{ opacity: 0, y: 5 }}
                                   animate={{ opacity: 1, y: 0 }}
-                                  className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 
-                                             px-2.5 py-1.5 bg-slate-800 text-white text-xs rounded-lg 
+                                  style={{ 
+                                    position: 'absolute',
+                                    left: '50%',
+                                    transform: 'translateX(-50%)',
+                                    bottom: '100%',
+                                    marginBottom: '8px'
+                                  }}
+                                  className="px-2.5 py-1.5 bg-slate-800 text-white text-xs rounded-lg 
                                              shadow-lg z-50 whitespace-nowrap pointer-events-none"
                                 >
                                   {tag.tip}
-                                  <div className="absolute left-1/2 -translate-x-1/2 top-full w-0 h-0 
-                                                  border-l-4 border-r-4 border-t-4 
-                                                  border-l-transparent border-r-transparent border-t-slate-800" />
+                                  <div 
+                                    style={{
+                                      position: 'absolute',
+                                      left: '50%',
+                                      transform: 'translateX(-50%)',
+                                      top: '100%',
+                                      width: 0,
+                                      height: 0,
+                                      borderLeft: '4px solid transparent',
+                                      borderRight: '4px solid transparent',
+                                      borderTop: '4px solid #1e293b'
+                                    }}
+                                  />
                                 </motion.div>
                               )}
                             </div>
