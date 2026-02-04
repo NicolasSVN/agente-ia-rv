@@ -1,7 +1,7 @@
 # QA - Central de Mensagens (Conversas)
 
 **Data de Início:** 2026-02-04
-**Status Geral:** ✅ Completo (21/21 testes core passando)
+**Status Geral:** ✅ Completo (27/28 testes passando, incluindo Seção J - Agente Stevan)
 
 ---
 
@@ -139,6 +139,47 @@
 
 ---
 
+## J. AGENTE STEVAN - INTELIGÊNCIA DE RESPOSTA
+
+| ID | Teste | Status | Observações |
+|----|-------|--------|-------------|
+| J1 | Produto na Base (RAG) | ✅ | MANA11 encontrado, classificação DOCUMENTAL, resposta gerada |
+| J2 | Produto Similar | ✅ | XYZ9999 não encontrado, bot respondeu com produto similar (MANA11) |
+| J3 | FII Externo (FundsExplorer) | ✅ | VISC11 buscado via FundsExplorer após confirmação "sim, pode buscar" |
+| J4 | Ação (Não Suportado) | ⚠️ | PETR4 - agente tenta responder mas FundsExplorer não suporta ações |
+| J5 | last_bot_response_at | 🔧 | Campo atualizado após fix de sessão SQLAlchemy |
+| J6 | Escalação para Humano | ✅ | "quero falar com atendente" → Ticket #4 criado, escalation_category: explicit_human_request |
+| J7 | Nova Escalação = Novo Ticket | ✅ | Após resolver, nova escalação cria Ticket #5 (ticket_number 4) |
+
+### Detalhes dos Testes J
+
+**J1 - Busca na Base (RAG):**
+- Query: "me fala sobre o MANA11"
+- Classificação: DOCUMENTAL
+- Resultado: Encontrou produto na base, gerou resposta com dados do ChromaDB
+- Nota: Erro $contains no ChromaDB compensado por fallback/fuzzy matching
+
+**J3 - FundsExplorer:**
+- Query: "me fala sobre o VISC11"
+- Resposta inicial: "Quer que eu busque informações públicas?"
+- Confirmação: "sim, pode buscar" 
+- Fix aplicado: Detecção de resposta afirmativa mais flexível (split words)
+- Resultado: Dados do FundsExplorer retornados com sucesso
+
+**J5 - Resolução pelo Bot:**
+- Campo `last_bot_response_at` não estava sendo atualizado
+- Causa: Objeto `conversation` não persistente na sessão
+- Fix: Recarregar conversa via query antes de atualizar
+- Resultado: Campo atualizado corretamente após cada resposta do bot
+
+**J7 - Arquitetura de Tickets Separados:**
+- Conversation e ConversationTicket são modelos separados
+- Cada escalação cria novo ticket com ticket_number sequencial
+- active_ticket_id atualizado para apontar ao ticket atual
+- Tickets anteriores permanecem com histórico completo
+
+---
+
 ## CORREÇÕES APLICADAS
 
 | # | Erro | Correção | Data |
@@ -149,6 +190,8 @@
 | 4 | /release não resetava escalation_level | Adicionar reset de escalation_level | 2026-02-04 |
 | 5 | SSE retornando 422 | Mover /stream para seção de rotas estáticas | 2026-02-04 |
 | 6 | GET /{id} sem campos assessor | Adicionar assessor_unidade, broker, ticket_status | 2026-02-04 |
+| 7 | Resposta afirmativa não detectada | Verificação flexível com split words (sim, pode buscar) | 2026-02-04 |
+| 8 | last_bot_response_at não atualizando | Recarregar conversa antes de atualizar campo | 2026-02-04 |
 
 ---
 
