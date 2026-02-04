@@ -184,6 +184,8 @@ async def list_products(
     """Lista todos os produtos com filtros opcionais."""
     query = db.query(Product)
     
+    query = query.filter(Product.ticker != "__SYSTEM_UNASSIGNED__")
+    
     if search:
         search_term = f"%{search}%"
         query = query.filter(
@@ -1664,6 +1666,38 @@ async def smart_upload_stream(
             if mat:
                 mat.processing_status = ProcessingStatus.SUCCESS.value
                 db_local.commit()
+                
+                placeholder = db_local.query(Product).filter(Product.ticker == "__SYSTEM_UNASSIGNED__").first()
+                if mat.product_id == placeholder.id:
+                    first_block = db_local.query(ContentBlock).filter(
+                        ContentBlock.material_id == mat.id
+                    ).first()
+                    
+                    if first_block:
+                        existing_review = db_local.query(PendingReviewItem).filter(
+                            PendingReviewItem.block_id == first_block.id
+                        ).first()
+                        
+                        if not existing_review:
+                            first_block.status = ContentBlockStatus.PENDING_REVIEW.value
+                            first_block.is_high_risk = True
+                            db_local.commit()
+                            
+                            review_item = PendingReviewItem(
+                                block_id=first_block.id,
+                                original_content=first_block.content[:500] if first_block.content else "",
+                                extracted_content=first_block.content,
+                                confidence_score=30,
+                                risk_reason="Material não vinculado a produto - requer categorização manual"
+                            )
+                            db_local.add(review_item)
+                            db_local.commit()
+                            
+                            progress_queue.put({
+                                "type": "log",
+                                "message": "Material enviado para revisão (produto não identificado)",
+                                "log_type": "warning"
+                            })
             
             processing_success = True
             
