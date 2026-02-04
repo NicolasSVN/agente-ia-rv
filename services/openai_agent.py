@@ -914,7 +914,8 @@ Agente: "Oi {PrimeiroNome}! O que precisa?"
             )
         
         affirmative_responses = ['sim', 'yes', 's', 'quero', 'pode ser', 'pode', 'busca', 'busque', 'ok', 'beleza', 'por favor', 'claro']
-        is_affirmative = user_message.lower().strip() in affirmative_responses
+        msg_lower = user_message.lower().strip()
+        is_affirmative = msg_lower in affirmative_responses or any(word in msg_lower.split() for word in ['sim', 'quero', 'pode', 'busca', 'busque', 'ok', 'claro', 'yes'])
         
         last_intent = None
         pending_fii_ticker = None
