@@ -421,16 +421,21 @@ async def microsoft_callback(
                 status_code=status.HTTP_302_FOUND
             )
         
-        user = crud.get_user_by_email(db, email)
+        print(f"[Microsoft SSO] Email retornado pela Microsoft: {email}")
+        
+        user = crud.get_user_by_email_icase(db, email)
         
         if not user:
-            user = crud.get_user_by_username(db, email)
+            user = crud.get_user_by_username_icase(db, email)
         
         if not user:
+            print(f"[Microsoft SSO] Usuário não encontrado para email: {email}")
             return RedirectResponse(
                 url=f"/login?error=microsoft&detail=Usuário não encontrado. Solicite cadastro ao administrador.",
                 status_code=status.HTTP_302_FOUND
             )
+        
+        print(f"[Microsoft SSO] Usuário encontrado: {user.username} (ID: {user.id})")
         
         if user.role not in ["admin", "broker", "gestao_rv"]:
             return RedirectResponse(

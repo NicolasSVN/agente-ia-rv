@@ -29,6 +29,16 @@ def get_user_by_email(db: Session, email: str) -> Optional[User]:
     return db.query(User).filter(User.email == email).first()
 
 
+def get_user_by_email_icase(db: Session, email: str) -> Optional[User]:
+    """Busca um usuário pelo email (case-insensitive)."""
+    return db.query(User).filter(sql_func.lower(User.email) == email.lower()).first()
+
+
+def get_user_by_username_icase(db: Session, username: str) -> Optional[User]:
+    """Busca um usuário pelo username (case-insensitive)."""
+    return db.query(User).filter(sql_func.lower(User.username) == username.lower()).first()
+
+
 def get_user_by_phone(db: Session, phone: str) -> Optional[User]:
     """Busca um usuário pelo número de telefone."""
     return db.query(User).filter(User.phone == phone).first()
