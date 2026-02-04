@@ -487,7 +487,8 @@ class Conversation(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     
     # V2 Zendesk-like ticket fields (campos opcionais para compatibilidade)
-    ticket_status = Column(String(20), default=TicketStatusV2.NEW.value, index=True)
+    # ticket_status=None para conversas com bot, NEW apenas quando escalado para humano
+    ticket_status = Column(String(20), nullable=True, index=True)
     escalation_level = Column(String(10), default=EscalationLevel.T0_BOT.value, index=True)
     first_response_at = Column(DateTime(timezone=True), nullable=True)
     solved_at = Column(DateTime(timezone=True), nullable=True)

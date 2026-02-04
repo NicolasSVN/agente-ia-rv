@@ -47,15 +47,29 @@ function StatusBadge({ status }) {
 }
 
 function TicketStatusBadge({ ticketStatus, escalationLevel }) {
+  const isEscalated = escalationLevel === 't1';
+  
+  // Se não está escalado (T0) e não tem ticket_status, é conversa com bot - sem badge de ticket
+  if (!isEscalated && !ticketStatus) {
+    return (
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium border bg-gray-100 text-gray-600 border-gray-200">
+        <Bot className="w-3 h-3" />
+        Bot
+      </span>
+    );
+  }
+  
   const statusConfig = {
     new: { bg: 'bg-blue-100', text: 'text-blue-700', border: 'border-blue-200', label: 'Novo', icon: AlertCircle },
     open: { bg: 'bg-yellow-100', text: 'text-yellow-700', border: 'border-yellow-200', label: 'Aberto', icon: Clock },
     in_progress: { bg: 'bg-purple-100', text: 'text-purple-700', border: 'border-purple-200', label: 'Em Progresso', icon: ArrowUpCircle },
     solved: { bg: 'bg-green-100', text: 'text-green-700', border: 'border-green-200', label: 'Resolvido', icon: CheckCircle2 },
   };
-  const c = statusConfig[ticketStatus] || statusConfig.new;
+  
+  // Para conversas escaladas sem ticket_status definido, usar 'new' como padrão
+  const effectiveStatus = ticketStatus || (isEscalated ? 'new' : null);
+  const c = statusConfig[effectiveStatus] || statusConfig.new;
   const Icon = c.icon;
-  const isEscalated = escalationLevel === 't1';
   
   return (
     <div className="flex items-center gap-1.5">
@@ -222,7 +236,7 @@ function ConversationItem({ conversation, isActive, onClick }) {
         <div className="flex items-center justify-between gap-2">
           <p className="text-sm text-gray-500 truncate flex-1">{preview}</p>
           <TicketStatusBadge 
-            ticketStatus={conversation.ticket_status || 'new'} 
+            ticketStatus={conversation.ticket_status} 
             escalationLevel={conversation.escalation_level}
           />
         </div>
@@ -848,7 +862,7 @@ function App() {
                       <div className="flex items-center gap-2">
                         <h2 className="font-semibold text-gray-900 text-lg">{contactName}</h2>
                         <TicketStatusBadge 
-                          ticketStatus={currentConversation.ticket_status || 'new'} 
+                          ticketStatus={currentConversation.ticket_status} 
                           escalationLevel={currentConversation.escalation_level}
                         />
                       </div>

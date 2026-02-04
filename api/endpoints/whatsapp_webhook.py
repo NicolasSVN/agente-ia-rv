@@ -122,7 +122,10 @@ def get_or_create_conversation(
             status=ConversationStatus.BOT_ACTIVE.value,
             conversation_state=initial_state,
             lid_source="webhook" if sender_lid else None,
-            lid_collected_at=datetime.utcnow() if sender_lid else None
+            lid_collected_at=datetime.utcnow() if sender_lid else None,
+            # V2 Ticket: bot ativo = T0, sem ticket_status (só recebe NEW quando escalado)
+            escalation_level=EscalationLevel.T0_BOT.value,
+            ticket_status=None
         )
         db.add(conv)
         db.commit()
