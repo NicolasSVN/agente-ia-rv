@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { FileText, Upload, RefreshCw, Trash2, Search as SearchIcon, Database } from 'lucide-react';
+import { FileText, Upload, RefreshCw, Trash2, Search as SearchIcon, Database, AlertCircle, Play } from 'lucide-react';
 import { knowledgeAPI } from '../services/api';
 import { Button } from '../components/Button';
 import { SearchInput } from '../components/SearchInput';
@@ -102,12 +102,15 @@ export function Documents() {
     doc.filename?.toLowerCase().includes(search.toLowerCase())
   );
 
+  const pendingDocuments = documents.filter((doc) => !doc.is_indexed);
+  const indexedDocuments = documents.filter((doc) => doc.is_indexed);
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Documentos</h1>
-          <p className="text-muted">Base de conhecimento geral da IA</p>
+          <p className="text-muted">Gerencie documentos da base de conhecimento</p>
         </div>
         <div className="flex gap-2">
           <Button variant="secondary" onClick={loadDocuments} disabled={loading}>
@@ -121,11 +124,50 @@ export function Documents() {
         </div>
       </div>
 
+      {!loading && documents.length > 0 && (
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+          <div className="p-4 bg-card border border-border rounded-xl text-center">
+            <div className="text-2xl font-bold text-foreground">{documents.length}</div>
+            <div className="text-sm text-muted">Total de Documentos</div>
+          </div>
+          <div className="p-4 bg-card border border-border rounded-xl text-center">
+            <div className="text-2xl font-bold text-green-600">{indexedDocuments.length}</div>
+            <div className="text-sm text-muted">Indexados</div>
+          </div>
+          {pendingDocuments.length > 0 && (
+            <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl text-center">
+              <div className="text-2xl font-bold text-amber-600">{pendingDocuments.length}</div>
+              <div className="text-sm text-amber-700">Pendentes</div>
+            </div>
+          )}
+        </div>
+      )}
+
       <SearchInput
         value={search}
         onChange={setSearch}
         placeholder="Buscar documentos..."
       />
+
+      {!loading && pendingDocuments.length > 0 && (
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="p-4 bg-amber-50 border border-amber-200 rounded-xl"
+        >
+          <div className="flex items-start gap-3">
+            <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <h3 className="font-semibold text-amber-800">
+                {pendingDocuments.length} documento{pendingDocuments.length !== 1 ? 's' : ''} pendente{pendingDocuments.length !== 1 ? 's' : ''}
+              </h3>
+              <p className="text-sm text-amber-700 mt-1">
+                Estes documentos não foram processados completamente. Clique em <strong>"Processar"</strong> para tentar novamente ou <strong>"Excluir"</strong> para removê-los.
+              </p>
+            </div>
+          </div>
+        </motion.div>
+      )}
 
       {loading ? (
         <div className="py-20">
@@ -172,22 +214,50 @@ export function Documents() {
 
                   <div className="flex items-center gap-2">
                     {doc.is_indexed ? (
-                      <span className="flex items-center gap-1 text-xs text-success">
+                      <span className="flex items-center gap-1 text-xs text-success px-2 py-1 bg-green-50 rounded-full">
                         <Database className="w-3 h-3" />
                         Indexado
                       </span>
                     ) : (
-                      <span className="text-xs text-warning">Pendente</span>
+                      <div className="flex items-center gap-2">
+                        <span className="flex items-center gap-1 text-xs text-amber-700 px-2 py-1 bg-amber-50 border border-amber-200 rounded-full">
+                          <AlertCircle className="w-3 h-3" />
+                          Pendente
+                        </span>
+                        {doc.index_error && (
+                          <span 
+                            className="text-xs text-red-600 max-w-[200px] truncate" 
+                            title={doc.index_error}
+                          >
+                            {doc.index_error.length > 30 ? doc.index_error.substring(0, 30) + '...' : doc.index_error}
+                          </span>
+                        )}
+                      </div>
                     )}
                     
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      onClick={() => handleReindex(doc.id)}
-                      title="Reindexar"
-                    >
-                      <RefreshCw className="w-4 h-4" />
-                    </Button>
+                    {!doc.is_indexed && (
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => handleReindex(doc.id)}
+                        className="text-xs bg-amber-100 hover:bg-amber-200 text-amber-800 border-amber-300"
+                        title="Processar documento novamente"
+                      >
+                        <Play className="w-3 h-3 mr-1" />
+                        Processar
+                      </Button>
+                    )}
+                    
+                    {doc.is_indexed && (
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        onClick={() => handleReindex(doc.id)}
+                        title="Reindexar"
+                      >
+                        <RefreshCw className="w-4 h-4" />
+                      </Button>
+                    )}
                     <Button
                       size="icon"
                       variant="ghost"
