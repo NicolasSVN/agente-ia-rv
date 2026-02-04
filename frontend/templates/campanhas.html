@@ -822,9 +822,15 @@
 
         <main class="main-content" id="mainContent">
             <div class="page-container">
-                <div class="page-header">
-                    <h1 class="page-title">Campanhas Ativas</h1>
-                    <p class="page-subtitle">Dispare mensagens em massa para assessores com recomendacoes de investimento</p>
+                <div class="page-header" style="display: flex; justify-content: space-between; align-items: flex-start;">
+                    <div>
+                        <h1 class="page-title">Campanhas Ativas</h1>
+                        <p class="page-subtitle">Dispare mensagens em massa para assessores com recomendacoes de investimento</p>
+                    </div>
+                    <div id="zapiStatusBadge" class="zapi-status-badge" style="display: flex; align-items: center; gap: 8px; padding: 8px 16px; border-radius: 8px; font-size: 0.85rem; font-weight: 500; cursor: pointer;" onclick="checkZapiStatus()" title="Clique para atualizar">
+                        <span class="status-dot" style="width: 10px; height: 10px; border-radius: 50%; background: #9ca3af;"></span>
+                        <span class="status-text">Verificando conexao...</span>
+                    </div>
                 </div>
 
                 <div class="wizard-container">
@@ -1574,7 +1580,59 @@ Equipe de Gestao" oninput="updateMessagePreview()"></textarea>
             loadHistory();
             loadTemplates();
             setupTextareaFocus();
+            checkZapiStatus();
         });
+
+        async function checkZapiStatus() {
+            const badge = document.getElementById('zapiStatusBadge');
+            const dot = badge.querySelector('.status-dot');
+            const text = badge.querySelector('.status-text');
+            
+            dot.style.background = '#9ca3af';
+            text.textContent = 'Verificando...';
+            badge.style.background = 'rgba(156, 163, 175, 0.1)';
+            badge.style.border = '1px solid rgba(156, 163, 175, 0.3)';
+            
+            try {
+                const response = await fetch('/api/integrations/zapi/health', {
+                    headers: { 'Authorization': 'Bearer ' + localStorage.getItem('access_token') }
+                });
+                const data = await response.json();
+                
+                if (data.status === 'connected' && data.can_send_messages) {
+                    dot.style.background = '#10b981';
+                    text.textContent = 'WhatsApp Conectado';
+                    badge.style.background = 'rgba(16, 185, 129, 0.1)';
+                    badge.style.border = '1px solid rgba(16, 185, 129, 0.3)';
+                    badge.style.color = '#10b981';
+                } else if (data.status === 'disconnected') {
+                    dot.style.background = '#f59e0b';
+                    text.textContent = 'WhatsApp Desconectado';
+                    badge.style.background = 'rgba(245, 158, 11, 0.1)';
+                    badge.style.border = '1px solid rgba(245, 158, 11, 0.3)';
+                    badge.style.color = '#f59e0b';
+                } else if (data.status === 'not_configured') {
+                    dot.style.background = '#ef4444';
+                    text.textContent = 'Z-API Nao Configurada';
+                    badge.style.background = 'rgba(239, 68, 68, 0.1)';
+                    badge.style.border = '1px solid rgba(239, 68, 68, 0.3)';
+                    badge.style.color = '#ef4444';
+                } else {
+                    dot.style.background = '#ef4444';
+                    text.textContent = 'Erro na Conexao';
+                    badge.style.background = 'rgba(239, 68, 68, 0.1)';
+                    badge.style.border = '1px solid rgba(239, 68, 68, 0.3)';
+                    badge.style.color = '#ef4444';
+                }
+            } catch (error) {
+                console.error('Erro ao verificar status Z-API:', error);
+                dot.style.background = '#ef4444';
+                text.textContent = 'Erro ao Verificar';
+                badge.style.background = 'rgba(239, 68, 68, 0.1)';
+                badge.style.border = '1px solid rgba(239, 68, 68, 0.3)';
+                badge.style.color = '#ef4444';
+            }
+        }
 
         function setupTextareaFocus() {
             const textareas = ['messageHeader', 'messageContent', 'messageFooter'];
