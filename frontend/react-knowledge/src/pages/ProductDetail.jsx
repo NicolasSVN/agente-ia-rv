@@ -377,7 +377,7 @@ export function ProductDetail() {
 
         <Tabs.Content value="materials" className="space-y-4">
           <div className="flex justify-end">
-            <Button onClick={() => navigate('/upload')}>
+            <Button onClick={() => navigate(`/upload?product=${id}`)}>
               <Upload className="w-4 h-4" />
               Upload Inteligente
             </Button>
@@ -390,7 +390,7 @@ export function ProductDetail() {
               <p className="text-muted text-sm mb-4">
                 Use o Upload Inteligente para adicionar documentos
               </p>
-              <Button onClick={() => navigate('/upload')}>
+              <Button onClick={() => navigate(`/upload?product=${id}`)}>
                 <Upload className="w-4 h-4" />
                 Fazer Upload
               </Button>

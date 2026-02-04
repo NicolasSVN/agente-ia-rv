@@ -1,8 +1,8 @@
 import { useState, useRef, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Upload, FileText, CheckCircle, ArrowRight, Sparkles, Info, AlertCircle } from 'lucide-react';
-import { materialsAPI } from '../services/api';
+import { materialsAPI, productsAPI } from '../services/api';
 import { FileUpload } from '../components/FileUpload';
 import { Button } from '../components/Button';
 import { ProductAutocomplete } from '../components/ProductAutocomplete';
@@ -12,6 +12,7 @@ import { useToast } from '../components/Toast';
 
 export function SmartUpload() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { addToast } = useToast();
   const logRef = useRef(null);
   
@@ -36,6 +37,15 @@ export function SmartUpload() {
       logRef.current.scrollTop = logRef.current.scrollHeight;
     }
   }, [logs]);
+
+  useEffect(() => {
+    const productId = searchParams.get('product');
+    if (productId) {
+      productsAPI.get(productId).then((product) => {
+        setSelectedProduct(product);
+      }).catch(() => {});
+    }
+  }, [searchParams]);
 
   const addLog = (message, type = 'info') => {
     const time = new Date().toLocaleTimeString('pt-BR');

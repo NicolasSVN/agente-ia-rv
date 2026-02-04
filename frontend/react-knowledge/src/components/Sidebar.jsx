@@ -15,15 +15,15 @@ const configItems = [
 ];
 
 const knowledgeItems = [
-  { href: '/base-conhecimento', label: 'Produtos', icon: 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4' },
-  { href: '/upload-inteligente', label: 'Upload Inteligente', icon: 'M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12' },
+  { href: '/base-conhecimento', label: 'Produtos', icon: 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4', matchPrefix: true, excludePaths: ['/base-conhecimento/upload'] },
+  { href: '/base-conhecimento/upload', label: 'Upload Inteligente', icon: 'M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12', matchPrefix: true },
   { href: '/fila-revisao', label: 'Fila de Revisão', icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4' },
   { href: '/documentos', label: 'Documentos', icon: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z' },
 ];
 
 const integrationsItem = { href: '/integrations', label: 'Integrações', icon: 'M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1' };
 
-const knowledgeRoutes = ['/base-conhecimento', '/upload-inteligente', '/fila-revisao', '/documentos'];
+const knowledgeRoutes = ['/base-conhecimento', '/fila-revisao', '/documentos'];
 const configRoutes = ['/assessores', '/admin', '/agent-brain', '/integrations', ...knowledgeRoutes];
 
 function ChevronIcon({ open, className = '' }) {
@@ -40,7 +40,14 @@ function ChevronIcon({ open, className = '' }) {
 }
 
 function NavItem({ item, currentPath, collapsed, indented = false }) {
-  const isActive = currentPath === item.href;
+  let isActive = currentPath === item.href;
+  if (item.matchPrefix && currentPath.startsWith(item.href)) {
+    if (item.excludePaths && item.excludePaths.some(ep => currentPath.startsWith(ep))) {
+      isActive = false;
+    } else {
+      isActive = true;
+    }
+  }
   
   return (
     <a
@@ -68,10 +75,13 @@ export default function Sidebar({ collapsed, onToggle }) {
     const path = window.location.pathname;
     setCurrentPath(path);
     
-    if (configRoutes.includes(path)) {
+    const isConfigRoute = configRoutes.includes(path) || path.startsWith('/base-conhecimento');
+    const isKnowledgeRoute = knowledgeRoutes.includes(path) || path.startsWith('/base-conhecimento');
+    
+    if (isConfigRoute) {
       setIsSettingsOpen(true);
     }
-    if (knowledgeRoutes.includes(path)) {
+    if (isKnowledgeRoute) {
       setIsKnowledgeOpen(true);
     }
   }, []);
