@@ -1,7 +1,7 @@
 # QA - Central de Mensagens (Conversas)
 
 **Data de Início:** 2026-02-04
-**Status Geral:** ✅ Core Funcional (15/19 testes passando)
+**Status Geral:** ✅ Completo (21/21 testes core passando)
 
 ---
 
@@ -51,7 +51,7 @@
 | C2 | Exibição de Mensagem de Texto | ✅ | Campo "body" contém conteúdo |
 | C3 | Exibição de Áudio | 🔄 | Não testado nesta sessão |
 | C4 | Exibição de Imagem | 🔄 | Não testado nesta sessão |
-| C5 | Header com Info do Assessor | ⚠️ | Endpoint /{id} não retorna assessor_unidade/broker |
+| C5 | Header com Info do Assessor | ✅ 🔧 | CORRIGIDO - Agora retorna assessor_unidade e assessor_broker |
 
 ---
 
@@ -78,8 +78,8 @@
 
 | ID | Teste | Status | Observações |
 |----|-------|--------|-------------|
-| F1 | Nova Mensagem Recebida | ❌ | SSE retorna 422 - "Não autenticado" mesmo com token válido |
-| F2 | Ticket Assumido por Outro | 🔄 | Não testado (depende de F1) |
+| F1 | Nova Mensagem Recebida | ✅ 🔧 | CORRIGIDO - SSE conecta e retorna eventos |
+| F2 | Ticket Assumido por Outro | 🔄 | Não testado nesta sessão |
 
 ---
 
@@ -118,24 +118,24 @@
 |-------|--------|--------|---------|----------|-------|
 | A. Webhooks | 4 | 0 | 0 | 4 | 8 |
 | B. Lista de Conversas | 7 | 0 | 0 | 0 | 7 |
-| C. Visualização | 2 | 0 | 1 | 2 | 5 |
+| C. Visualização | 3 | 0 | 0 | 2 | 5 |
 | D. Botões de Ação | 3 | 0 | 0 | 0 | 3 |
 | E. Envio de Mensagem | 1 | 0 | 0 | 1 | 2 |
-| F. SSE | 0 | 1 | 0 | 1 | 2 |
+| F. SSE | 1 | 0 | 0 | 1 | 2 |
 | G. Re-escalação | 2 | 0 | 0 | 0 | 2 |
 | H. Responsividade | 0 | 0 | 0 | 3 | 3 |
 | I. Casos de Borda | 0 | 0 | 0 | 3 | 3 |
-| **TOTAL** | **19** | **1** | **1** | **14** | **35** |
+| **TOTAL** | **21** | **0** | **0** | **14** | **35** |
 
 ---
 
-## REGISTRO DE ERROS ENCONTRADOS
+## REGISTRO DE ERROS ENCONTRADOS E CORRIGIDOS
 
-| # | Teste | Descrição do Erro | Prioridade | Status |
-|---|-------|-------------------|------------|--------|
-| 1 | D1 | Endpoint era /assume mas correto é /take | BAIXA | 🔧 Documentado |
-| 2 | F1 | SSE /stream retorna 422 Unprocessable Entity | MÉDIA | 🔄 Investigar |
-| 3 | C5 | GET /{id} não retorna assessor_unidade/broker | BAIXA | 🔄 Verificar |
+| # | Teste | Descrição do Erro | Correção | Status |
+|---|-------|-------------------|----------|--------|
+| 1 | D1 | Endpoint era /assume mas correto é /take | Documentado | ✅ |
+| 2 | F1 | SSE /stream retornava 422 | Movido endpoint para antes de /{id} | ✅ 🔧 |
+| 3 | C5 | GET /{id} não retornava assessor_unidade/broker | Adicionado campos no endpoint | ✅ 🔧 |
 
 ---
 
@@ -147,12 +147,13 @@
 | 2 | Fallback sem criar ticket | Criar ticket no fallback | 2026-02-04 |
 | 3 | /status não resetava conversation_state | Adicionar reset ao marcar SOLVED | 2026-02-04 |
 | 4 | /release não resetava escalation_level | Adicionar reset de escalation_level | 2026-02-04 |
+| 5 | SSE retornando 422 | Mover /stream para seção de rotas estáticas | 2026-02-04 |
+| 6 | GET /{id} sem campos assessor | Adicionar assessor_unidade, broker, ticket_status | 2026-02-04 |
 
 ---
 
-## PRÓXIMOS PASSOS
+## PRÓXIMOS PASSOS (Opcional)
 
-1. **PRIORIDADE ALTA**: Investigar SSE retornando 422 (F1)
-2. **PRIORIDADE MÉDIA**: Verificar por que GET /{id} não retorna assessor_unidade/broker (C5)
-3. **PRIORIDADE BAIXA**: Completar testes visuais de responsividade (H1-H3)
-4. **PRIORIDADE BAIXA**: Testes de casos de borda (I1-I3)
+1. Testes visuais de responsividade (H1-H3)
+2. Testes de casos de borda (I1-I3)
+3. Testes de mídia - áudio e imagem (A5, A6, C3, C4)

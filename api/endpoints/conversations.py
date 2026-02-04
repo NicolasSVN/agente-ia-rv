@@ -326,6 +326,102 @@ async def get_filter_counts(
     )
 
 
+@router.get("/metrics", response_model=TicketMetricsResponse)
+async def get_ticket_metrics(
+    days: int = Query(30, ge=1, le=365, description="Período em dias para calcular métricas"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Retorna métricas de atendimento estilo Zendesk."""
+    from sqlalchemy import func
+    from datetime import timedelta
+    
+    start_date = datetime.utcnow() - timedelta(days=days)
+    
+    total = db.query(func.count(Conversation.id)).filter(
+        Conversation.created_at >= start_date
+    ).scalar() or 0
+    
+    solved = db.query(Conversation).filter(
+        Conversation.ticket_status == TicketStatusV2.SOLVED.value,
+        Conversation.solved_at >= start_date
+    ).all()
+    
+    bot_resolved = len([c for c in solved if c.escalation_level == EscalationLevel.T0_BOT.value])
+    human_resolved = len([c for c in solved if c.escalation_level == EscalationLevel.T1_HUMAN.value])
+    
+    escalated = db.query(func.count(Conversation.id)).filter(
+        Conversation.escalation_level == EscalationLevel.T1_HUMAN.value,
+        Conversation.created_at >= start_date
+    ).scalar() or 0
+    
+    first_response_times = []
+    resolution_times = []
+    
+    for conv in solved:
+        if conv.first_response_at and conv.created_at:
+            diff = (conv.first_response_at - conv.created_at).total_seconds() / 60
+            first_response_times.append(diff)
+        if conv.solved_at and conv.created_at:
+            diff = (conv.solved_at - conv.created_at).total_seconds() / 60
+            resolution_times.append(diff)
+    
+    avg_first_response = sum(first_response_times) / len(first_response_times) if first_response_times else None
+    avg_resolution = sum(resolution_times) / len(resolution_times) if resolution_times else None
+    escalation_rate = (escalated / total * 100) if total > 0 else None
+    bot_rate = (bot_resolved / len(solved) * 100) if solved else None
+    
+    return TicketMetricsResponse(
+        total_tickets=total,
+        bot_resolved=bot_resolved,
+        human_resolved=human_resolved,
+        escalated=escalated,
+        avg_first_response_minutes=round(avg_first_response, 1) if avg_first_response else None,
+        avg_resolution_minutes=round(avg_resolution, 1) if avg_resolution else None,
+        escalation_rate=round(escalation_rate, 1) if escalation_rate else None,
+        bot_resolution_rate=round(bot_rate, 1) if bot_rate else None
+    )
+
+
+@router.get("/stream")
+async def stream_conversations(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user_sse)
+):
+    """
+    SSE endpoint para receber notificações em tempo real sobre conversas.
+    Requer autenticação via token SSE (query param, cookie ou header).
+    Use /api/auth/sse-token para obter um token de curta duração para este endpoint.
+    """
+    sse_manager = get_sse_manager()
+    queue = await sse_manager.subscribe("conversations")
+    
+    async def event_generator():
+        try:
+            yield f"data: {json.dumps({'type': 'connected', 'message': 'SSE conectado'})}\n\n"
+            
+            while True:
+                try:
+                    message = await asyncio.wait_for(queue.get(), timeout=30.0)
+                    yield f"data: {json.dumps(message)}\n\n"
+                except asyncio.TimeoutError:
+                    yield f"data: {json.dumps({'type': 'ping'})}\n\n"
+        except asyncio.CancelledError:
+            pass
+        finally:
+            sse_manager.unsubscribe("conversations", queue)
+    
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"
+        }
+    )
+
+
 @router.post("/sync")
 async def sync_chats_from_zapi(
     db: Session = Depends(get_db),
@@ -556,12 +652,25 @@ async def get_conversation(
         contact_name=conv.contact_name,
         assessor_name=assessor.nome if assessor else None,
         assessor_email=assessor.email if assessor else None,
+        assessor_unidade=assessor.unidade if assessor else None,
+        assessor_broker=assessor.broker_responsavel if assessor else None,
         status=conv.status,
+        assigned_to_id=conv.assigned_to,
         assigned_to_name=assigned_user.username if assigned_user else None,
         last_message_at=conv.last_message_at,
         last_message_preview=conv.last_message_preview,
         unread_count=conv.unread_count,
-        created_at=conv.created_at
+        created_at=conv.created_at,
+        ticket_status=conv.ticket_status,
+        escalation_level=conv.escalation_level,
+        escalation_category=conv.escalation_category,
+        ticket_summary=conv.ticket_summary,
+        conversation_topic=conv.conversation_topic,
+        first_response_at=conv.first_response_at,
+        first_human_response_at=conv.first_human_response_at,
+        solved_at=conv.solved_at,
+        sla_due_at=conv.sla_due_at,
+        reopened_count=conv.reopened_count or 0
     )
 
 
@@ -1234,97 +1343,3 @@ async def update_ticket_status(
     }
 
 
-@router.get("/metrics", response_model=TicketMetricsResponse)
-async def get_ticket_metrics(
-    days: int = Query(30, ge=1, le=365, description="Período em dias para calcular métricas"),
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    """Retorna métricas de atendimento estilo Zendesk."""
-    from sqlalchemy import func
-    from datetime import timedelta
-    
-    start_date = datetime.utcnow() - timedelta(days=days)
-    
-    total = db.query(func.count(Conversation.id)).filter(
-        Conversation.created_at >= start_date
-    ).scalar() or 0
-    
-    solved = db.query(Conversation).filter(
-        Conversation.ticket_status == TicketStatusV2.SOLVED.value,
-        Conversation.solved_at >= start_date
-    ).all()
-    
-    bot_resolved = len([c for c in solved if c.escalation_level == EscalationLevel.T0_BOT.value])
-    human_resolved = len([c for c in solved if c.escalation_level == EscalationLevel.T1_HUMAN.value])
-    
-    escalated = db.query(func.count(Conversation.id)).filter(
-        Conversation.escalation_level == EscalationLevel.T1_HUMAN.value,
-        Conversation.created_at >= start_date
-    ).scalar() or 0
-    
-    first_response_times = []
-    resolution_times = []
-    
-    for conv in solved:
-        if conv.first_response_at and conv.created_at:
-            diff = (conv.first_response_at - conv.created_at).total_seconds() / 60
-            first_response_times.append(diff)
-        if conv.solved_at and conv.created_at:
-            diff = (conv.solved_at - conv.created_at).total_seconds() / 60
-            resolution_times.append(diff)
-    
-    avg_first_response = sum(first_response_times) / len(first_response_times) if first_response_times else None
-    avg_resolution = sum(resolution_times) / len(resolution_times) if resolution_times else None
-    escalation_rate = (escalated / total * 100) if total > 0 else None
-    bot_rate = (bot_resolved / len(solved) * 100) if solved else None
-    
-    return TicketMetricsResponse(
-        total_tickets=total,
-        bot_resolved=bot_resolved,
-        human_resolved=human_resolved,
-        escalated=escalated,
-        avg_first_response_minutes=round(avg_first_response, 1) if avg_first_response else None,
-        avg_resolution_minutes=round(avg_resolution, 1) if avg_resolution else None,
-        escalation_rate=round(escalation_rate, 1) if escalation_rate else None,
-        bot_resolution_rate=round(bot_rate, 1) if bot_rate else None
-    )
-
-
-@router.get("/stream")
-async def stream_conversations(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user_sse)
-):
-    """
-    SSE endpoint para receber notificações em tempo real sobre conversas.
-    Requer autenticação via token SSE (query param, cookie ou header).
-    Use /api/auth/sse-token para obter um token de curta duração para este endpoint.
-    """
-    sse_manager = get_sse_manager()
-    queue = await sse_manager.subscribe("conversations")
-    
-    async def event_generator():
-        try:
-            yield f"data: {json.dumps({'type': 'connected', 'message': 'SSE conectado'})}\n\n"
-            
-            while True:
-                try:
-                    message = await asyncio.wait_for(queue.get(), timeout=30.0)
-                    yield f"data: {json.dumps(message)}\n\n"
-                except asyncio.TimeoutError:
-                    yield f"data: {json.dumps({'type': 'ping'})}\n\n"
-        except asyncio.CancelledError:
-            pass
-        finally:
-            sse_manager.unsubscribe("conversations", queue)
-    
-    return StreamingResponse(
-        event_generator(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no"
-        }
-    )
