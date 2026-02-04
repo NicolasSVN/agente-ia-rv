@@ -14,7 +14,8 @@ import json
 from database.database import get_db, SessionLocal
 from database.models import (
     WhatsAppMessage, MessageDirection, MessageType, MessageStatus,
-    Conversation, ConversationStatus, SenderType, Assessor, RetrievalLog
+    Conversation, ConversationStatus, SenderType, Assessor, RetrievalLog,
+    EscalationLevel, TicketStatusV2
 )
 from database import crud
 from services.whatsapp_client import zapi_client
@@ -383,7 +384,6 @@ async def process_text_message(phone: str, message: str, db: Session, message_re
                 print(f"[WEBHOOK] Escalação V2.1 completa - categoria: {conversation.escalation_category}")
             except Exception as e:
                 print(f"[WEBHOOK] Erro na análise de escalação, usando fallback: {e}")
-                from database.models import EscalationLevel, TicketStatusV2
                 conversation.escalation_category = "other"
                 conversation.escalation_reason_detail = str(transfer_reason) if transfer_reason else "Transferência automática"
                 conversation.ticket_summary = normalized_message[:200] if normalized_message else "Solicitação de atendimento"
