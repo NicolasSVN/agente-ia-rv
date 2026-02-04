@@ -407,8 +407,9 @@
                                 <span class="px-2 py-1 bg-amber-100 text-amber-700 text-xs rounded-full">Pendente</span>
                             </div>
                             ${doc.processing_error ? `<p class="text-xs text-red-600 truncate" title="${doc.processing_error}">${doc.processing_error.substring(0, 40)}${doc.processing_error.length > 40 ? '...' : ''}</p>` : ''}
+                            <div class="process-log hidden mt-2 p-2 bg-gray-50 rounded-lg text-xs max-h-20 overflow-y-auto border border-gray-200"></div>
                             <div class="flex gap-2">
-                                <button onclick="processDocument(${doc.id}, ${doc.product_id})" class="flex-1 px-3 py-1.5 bg-amber-100 hover:bg-amber-200 text-amber-800 text-xs font-medium rounded-lg flex items-center justify-center gap-1 transition-colors">
+                                <button onclick="processDocument(${doc.id}, ${doc.product_id})" class="process-btn flex-1 px-3 py-1.5 bg-amber-100 hover:bg-amber-200 text-amber-800 text-xs font-medium rounded-lg flex items-center justify-center gap-1 transition-colors disabled:opacity-60 disabled:cursor-not-allowed">
                                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
@@ -454,23 +455,66 @@
             }
         }
 
+        function setCardProcessing(materialId, isProcessing, logMessage = '') {
+            const card = document.querySelector(`.doc-card[data-id="${materialId}"]`);
+            if (!card) return;
+            
+            const processBtn = card.querySelector('.process-btn');
+            const logArea = card.querySelector('.process-log');
+            
+            if (isProcessing) {
+                if (processBtn) {
+                    processBtn.disabled = true;
+                    processBtn.innerHTML = `
+                        <svg class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        Processando...
+                    `;
+                }
+                if (logArea && logMessage) {
+                    logArea.classList.remove('hidden');
+                    const isSuccess = logMessage.includes('sucesso');
+                    const colorClass = isSuccess ? 'text-green-600' : 'text-gray-600';
+                    logArea.innerHTML += `<div class="text-xs ${colorClass}">${new Date().toLocaleTimeString('pt-BR')} - ${logMessage}</div>`;
+                    logArea.scrollTop = logArea.scrollHeight;
+                }
+            } else {
+                if (processBtn) {
+                    processBtn.disabled = false;
+                    processBtn.innerHTML = `
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                        </svg>
+                        Processar
+                    `;
+                }
+            }
+        }
+
         function processDocument(materialId, productId) {
             showConfirmModal(
                 'Reprocessar documento',
                 'Deseja reprocessar este documento? Isso pode demorar alguns segundos.',
                 false,
                 async () => {
+                    setCardProcessing(materialId, true, 'Iniciando reprocessamento...');
                     try {
+                        setCardProcessing(materialId, true, 'Enviando para reindexação...');
                         const response = await fetch(`/api/products/${productId}/materials/${materialId}/reindex`, {
                             method: 'POST',
                             credentials: 'include'
                         });
                         if (!response.ok) throw new Error('Erro ao processar');
-                        showNotification('Documento enviado para processamento!', 'success');
-                        loadDocuments();
+                        setCardProcessing(materialId, true, 'Documento reindexado com sucesso!');
+                        toast.success('Documento reprocessado com sucesso!');
+                        setTimeout(() => loadDocuments(), 1500);
                     } catch (error) {
                         console.error('Erro:', error);
-                        showNotification('Erro ao processar documento', 'error');
+                        setCardProcessing(materialId, false);
+                        toast.error('Erro ao processar documento');
                     }
                 }
             );
@@ -488,11 +532,11 @@
                             credentials: 'include'
                         });
                         if (!response.ok) throw new Error('Erro ao excluir');
-                        showNotification('Documento excluído com sucesso!', 'success');
+                        toast.success('Documento excluído com sucesso!');
                         loadDocuments();
                     } catch (error) {
                         console.error('Erro:', error);
-                        showNotification('Erro ao excluir documento', 'error');
+                        toast.error('Erro ao excluir documento');
                     }
                 }
             );
