@@ -14,8 +14,9 @@ import json
 import base64
 import requests
 from typing import Dict, Any, List, Optional, Tuple
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, field
 import unicodedata
+from difflib import SequenceMatcher
 
 import fitz
 from openai import OpenAI
@@ -71,6 +72,18 @@ KNOWN_GESTORAS = [
 
 TICKER_PATTERN = re.compile(r'\b([A-Z]{4})(11|12|13)\b')
 
+STOPWORDS_PRODUTOS = {
+    "fii", "fundo", "de", "investimento", "imobiliario", "imobiliário",
+    "fundo de investimento", "fundo imobiliario", "fundo imobiliário",
+    "s/a", "sa", "ltda", "eireli", "asset", "management", "gestora",
+    "feeder", "master", "br", "brasil"
+}
+
+ROMAN_NUMERALS = {
+    "i": "1", "ii": "2", "iii": "3", "iv": "4", "v": "5",
+    "vi": "6", "vii": "7", "viii": "8", "ix": "9", "x": "10"
+}
+
 DOCUMENT_TYPE_KEYWORDS = {
     "material_publicitario": ["material publicitário", "material de divulgação", "oferta pública"],
     "relatorio_gerencial": ["relatório gerencial", "report mensal", "informe mensal", "relatório mensal"],
@@ -88,6 +101,84 @@ def normalize_text(text: str) -> str:
         return ""
     nfkd = unicodedata.normalize('NFKD', text)
     return ''.join(c for c in nfkd if not unicodedata.combining(c)).lower().strip()
+
+
+def normalize_product_name(text: str) -> str:
+    """
+    Normalização avançada de nomes de produtos para matching.
+    Remove acentos, stopwords, converte números romanos, e mantém tokens relevantes.
+    """
+    if not text:
+        return ""
+    
+    normalized = normalize_text(text)
+    normalized = re.sub(r'[^\w\s]', ' ', normalized)
+    
+    tokens = normalized.split()
+    
+    cleaned_tokens = []
+    for token in tokens:
+        if token in STOPWORDS_PRODUTOS:
+            continue
+        if token in ROMAN_NUMERALS:
+            token = ROMAN_NUMERALS[token]
+        cleaned_tokens.append(token)
+    
+    return ' '.join(cleaned_tokens).strip()
+
+
+def tokenize_product_name(text: str) -> set:
+    """Extrai tokens únicos do nome normalizado do produto."""
+    normalized = normalize_product_name(text)
+    return set(normalized.split())
+
+
+def calculate_similarity_score(name1: str, name2: str) -> dict:
+    """
+    Calcula múltiplas métricas de similaridade entre dois nomes de produtos.
+    
+    Returns:
+        dict com:
+        - sequence_ratio: similaridade SequenceMatcher (0-1)
+        - token_jaccard: overlap de tokens (0-1)
+        - composite_score: score combinado (0-1)
+        - tokens_matched: número de tokens em comum
+    """
+    norm1 = normalize_product_name(name1)
+    norm2 = normalize_product_name(name2)
+    
+    if not norm1 or not norm2:
+        return {
+            "sequence_ratio": 0.0,
+            "token_jaccard": 0.0,
+            "composite_score": 0.0,
+            "tokens_matched": 0,
+            "normalized_names": (norm1, norm2)
+        }
+    
+    sequence_ratio = SequenceMatcher(None, norm1, norm2).ratio()
+    
+    tokens1 = set(norm1.split())
+    tokens2 = set(norm2.split())
+    
+    if tokens1 and tokens2:
+        intersection = tokens1 & tokens2
+        union = tokens1 | tokens2
+        token_jaccard = len(intersection) / len(union) if union else 0.0
+        tokens_matched = len(intersection)
+    else:
+        token_jaccard = 0.0
+        tokens_matched = 0
+    
+    composite_score = (sequence_ratio * 0.4) + (token_jaccard * 0.6)
+    
+    return {
+        "sequence_ratio": round(sequence_ratio, 3),
+        "token_jaccard": round(token_jaccard, 3),
+        "composite_score": round(composite_score, 3),
+        "tokens_matched": tokens_matched,
+        "normalized_names": (norm1, norm2)
+    }
 
 
 def extract_pages_as_images(pdf_path: str, pages: List[int], max_size: int = 1024) -> List[Tuple[int, str]]:
@@ -335,38 +426,110 @@ Responda APENAS em JSON válido com este formato:
     def _match_to_existing_product(
         self,
         result: ExtractionResult,
-        existing_products: List[Dict[str, Any]]
+        existing_products: List[Dict[str, Any]],
+        similarity_threshold: float = 0.65,
+        min_tokens_match: int = 2
     ) -> Optional[Dict[str, Any]]:
-        """Tenta fazer match com produto existente."""
+        """
+        Tenta fazer match com produto existente usando:
+        1. Match exato por ticker (prioridade máxima)
+        2. Match fuzzy por nome com scoring composto
+        
+        Args:
+            result: Resultado da extração de metadados
+            existing_products: Lista de produtos existentes
+            similarity_threshold: Score mínimo para aceitar match (0-1)
+            min_tokens_match: Mínimo de tokens em comum para considerar candidato
+        
+        Returns:
+            Produto matched ou None
+        """
+        match_log = {
+            "extracted_name": result.fund_name,
+            "extracted_ticker": result.ticker,
+            "candidates_evaluated": [],
+            "best_match": None,
+            "match_reason": None
+        }
         
         if result.ticker:
+            ticker_normalized = normalize_text(result.ticker)
             for product in existing_products:
-                if product.get("ticker") and normalize_text(product["ticker"]) == normalize_text(result.ticker):
+                product_ticker = product.get("ticker")
+                if product_ticker and normalize_text(product_ticker) == ticker_normalized:
+                    match_log["best_match"] = product.get("name")
+                    match_log["match_reason"] = f"ticker_exact_match ({result.ticker})"
+                    print(f"[ProductMatcher] Match por ticker exato: {result.ticker} -> {product.get('name')}")
                     return product
         
         if result.fund_name:
-            result_name_normalized = normalize_text(result.fund_name)
-            result_name_normalized = result_name_normalized.replace("fii", "").replace("fundo", "").strip()
-            
-            best_match = None
-            best_score = 0
+            candidates = []
             
             for product in existing_products:
                 product_name = product.get("name", "")
-                product_name_normalized = normalize_text(product_name)
-                product_name_normalized = product_name_normalized.replace("fii", "").replace("fundo", "").strip()
-                
-                if not product_name_normalized:
+                if not product_name:
                     continue
                 
-                if result_name_normalized in product_name_normalized or product_name_normalized in result_name_normalized:
-                    score = len(set(result_name_normalized.split()) & set(product_name_normalized.split()))
-                    if score > best_score:
-                        best_score = score
-                        best_match = product
+                similarity = calculate_similarity_score(result.fund_name, product_name)
+                
+                candidate_info = {
+                    "product_id": product.get("id"),
+                    "product_name": product_name,
+                    "product_ticker": product.get("ticker"),
+                    "similarity": similarity
+                }
+                
+                if similarity["tokens_matched"] >= min_tokens_match or similarity["composite_score"] >= similarity_threshold:
+                    candidates.append({
+                        "product": product,
+                        "score": similarity["composite_score"],
+                        "tokens_matched": similarity["tokens_matched"],
+                        "details": similarity
+                    })
+                
+                match_log["candidates_evaluated"].append(candidate_info)
             
-            if best_match and best_score >= 2:
-                return best_match
+            if candidates:
+                candidates.sort(key=lambda x: (x["score"], x["tokens_matched"]), reverse=True)
+                best_candidate = candidates[0]
+                
+                should_accept = (
+                    best_candidate["score"] >= similarity_threshold or
+                    (best_candidate["tokens_matched"] >= 3 and best_candidate["score"] >= 0.5)
+                )
+                
+                match_log["best_candidate"] = {
+                    "product_name": best_candidate["product"].get("name"),
+                    "score": best_candidate["score"],
+                    "tokens_matched": best_candidate["tokens_matched"],
+                    "accepted": should_accept
+                }
+                match_log["all_candidates"] = [
+                    {"name": c["product"].get("name"), "score": c["score"], "tokens": c["tokens_matched"]} 
+                    for c in candidates[:5]
+                ]
+                
+                if should_accept:
+                    match_log["best_match"] = best_candidate["product"].get("name")
+                    match_log["match_reason"] = f"fuzzy_match (score={best_candidate['score']}, tokens={best_candidate['tokens_matched']})"
+                    
+                    print(f"[ProductMatcher] Match fuzzy: '{result.fund_name}' -> '{best_candidate['product'].get('name')}' "
+                          f"(score={best_candidate['score']}, tokens={best_candidate['tokens_matched']})")
+                    
+                    if len(candidates) > 1:
+                        print(f"[ProductMatcher] Outros candidatos: {[(c['product'].get('name'), c['score']) for c in candidates[1:3]]}")
+                    
+                    if hasattr(result, 'raw_extraction') and result.raw_extraction is not None:
+                        result.raw_extraction["product_match_log"] = match_log
+                    
+                    return best_candidate["product"]
+                else:
+                    match_log["rejection_reason"] = f"score ({best_candidate['score']}) < threshold ({similarity_threshold}) and tokens ({best_candidate['tokens_matched']}) < 3"
+                    print(f"[ProductMatcher] Nenhum match acima do threshold ({similarity_threshold}). "
+                          f"Melhor candidato: '{best_candidate['product'].get('name')}' com score={best_candidate['score']}, tokens={best_candidate['tokens_matched']}")
+            else:
+                match_log["rejection_reason"] = "no_candidates_found"
+                print(f"[ProductMatcher] Nenhum candidato encontrado para: '{result.fund_name}'")
         
         return None
     
