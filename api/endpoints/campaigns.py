@@ -848,8 +848,17 @@ async def preview_campaign(
                 result = re.sub(pattern, replacer, result)
                 return result
             
+            nome_assessor = assessor_data.get("nome_assessor", "") or assessor_data.get("nome", "")
+            primeiro_nome = str(nome_assessor).split()[0] if nome_assessor else ""
+            
+            extra_vars = {
+                "nome_assessor": nome_assessor,
+                "primeiro_nome": primeiro_nome,
+                "nome": nome_assessor
+            }
+            
             header_rendered = replace_vars(header_template, assessor_data)
-            header_rendered = replace_vars(header_rendered, {"nome_assessor": assessor_data.get("nome_assessor", "")})
+            header_rendered = replace_vars(header_rendered, extra_vars)
             
             content_lines = []
             total_recs = 0
@@ -860,13 +869,14 @@ async def preview_campaign(
                     for rec in recommendations:
                         line = replace_vars(content_template, rec)
                         line = replace_vars(line, assessor_data)
+                        line = replace_vars(line, extra_vars)
                         if line.strip():
                             content_lines.append(f"• {line}")
                         total_recs += 1
                     content_lines.append("")
             
             footer_rendered = replace_vars(footer_template, assessor_data)
-            footer_rendered = replace_vars(footer_rendered, {"nome_assessor": assessor_data.get("nome_assessor", "")})
+            footer_rendered = replace_vars(footer_rendered, extra_vars)
             
             first_example = {
                 "assessor_name": assessor_data.get("nome_assessor", "Assessor"),
