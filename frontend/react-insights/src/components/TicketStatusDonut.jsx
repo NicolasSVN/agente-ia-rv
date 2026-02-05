@@ -95,31 +95,31 @@ export default function TicketStatusDonut({ data }) {
         <InfoTooltip text="Visualização da distribuição dos chamados por status atual. Permite identificar gargalos no atendimento." />
       </div>
       
-      <div className="flex items-center gap-8">
-        <div className="relative w-64 h-64">
+      <div className="flex flex-col lg:flex-row items-center gap-6 lg:gap-8">
+        <div className="relative w-48 h-48 lg:w-64 lg:h-64 flex-shrink-0">
           <Doughnut data={chartData} options={options} />
           <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-            <span className="text-3xl font-bold text-foreground">{total}</span>
-            <span className="text-sm text-muted">Total</span>
+            <span className="text-2xl lg:text-3xl font-bold text-foreground">{total}</span>
+            <span className="text-xs lg:text-sm text-muted">Total</span>
           </div>
         </div>
         
-        <div className="flex-1 grid grid-cols-2 gap-4">
-          <div className="bg-background rounded-xl p-4 border border-border">
-            <div className="text-2xl font-bold text-primary">{data.summary?.new || 0}</div>
-            <div className="text-sm text-muted">Novos</div>
+        <div className="w-full grid grid-cols-2 gap-3 lg:gap-4">
+          <div className="bg-background rounded-xl p-3 lg:p-4 border border-border">
+            <div className="text-xl lg:text-2xl font-bold text-primary">{data.summary?.new || 0}</div>
+            <div className="text-xs lg:text-sm text-muted">Novos</div>
           </div>
-          <div className="bg-background rounded-xl p-4 border border-border">
-            <div className="text-2xl font-bold text-warning">{data.summary?.open || 0}</div>
-            <div className="text-sm text-muted">Abertos</div>
+          <div className="bg-background rounded-xl p-3 lg:p-4 border border-border">
+            <div className="text-xl lg:text-2xl font-bold text-warning">{data.summary?.open || 0}</div>
+            <div className="text-xs lg:text-sm text-muted">Abertos</div>
           </div>
-          <div className="bg-background rounded-xl p-4 border border-border">
-            <div className="text-2xl font-bold text-accent">{data.summary?.in_progress || 0}</div>
-            <div className="text-sm text-muted">Em Andamento</div>
+          <div className="bg-background rounded-xl p-3 lg:p-4 border border-border">
+            <div className="text-xl lg:text-2xl font-bold text-accent">{data.summary?.in_progress || 0}</div>
+            <div className="text-xs lg:text-sm text-muted">Em Andamento</div>
           </div>
-          <div className="bg-background rounded-xl p-4 border border-border">
-            <div className="text-2xl font-bold text-success">{data.summary?.solved || 0}</div>
-            <div className="text-sm text-muted">Resolvidos</div>
+          <div className="bg-background rounded-xl p-3 lg:p-4 border border-border">
+            <div className="text-xl lg:text-2xl font-bold text-success">{data.summary?.solved || 0}</div>
+            <div className="text-xs lg:text-sm text-muted">Resolvidos</div>
           </div>
         </div>
       </div>

@@ -2,7 +2,8 @@ import { motion } from 'framer-motion';
 import InfoTooltip from './InfoTooltip';
 
 function GaugeCircle({ value, maxValue, label, color, unit = 'min' }) {
-  const percentage = Math.min((value / maxValue) * 100, 100);
+  const safeValue = Number(value) || 0;
+  const percentage = Math.min((safeValue / maxValue) * 100, 100);
   const circumference = 2 * Math.PI * 45;
   const strokeDashoffset = circumference - (percentage / 100) * circumference;
   
@@ -34,7 +35,7 @@ function GaugeCircle({ value, maxValue, label, color, unit = 'min' }) {
           />
         </svg>
         <div className="absolute inset-0 flex flex-col items-center justify-center">
-          <span className="text-2xl font-bold text-foreground">{value.toFixed(1)}</span>
+          <span className="text-2xl font-bold text-foreground">{safeValue.toFixed(1)}</span>
           <span className="text-xs text-muted">{unit}</span>
         </div>
       </div>
