@@ -441,6 +441,94 @@ Responda APENAS com o JSON, sem markdown ou explicações."""
             })
         
         return chunks
+    
+    def generate_document_summary_and_themes(
+        self,
+        processed_data: Dict[str, Any],
+        document_title: str = "",
+        product_name: str = "",
+        gestora: str = ""
+    ) -> Dict[str, Any]:
+        """
+        Gera um resumo conceitual e identifica temas principais do documento.
+        Usa GPT-4o-mini para custo-benefício otimizado.
+        
+        Args:
+            processed_data: Dados processados do documento (output de process_pdf)
+            document_title: Título do documento
+            product_name: Nome do produto associado
+            gestora: Nome da gestora
+            
+        Returns:
+            Dict com 'summary' (str) e 'themes' (list de str)
+        """
+        if not self.client:
+            return {"summary": "", "themes": [], "error": "OpenAI não configurado"}
+        
+        page_summaries = []
+        for page in processed_data.get("pages", []):
+            if page.get("summary"):
+                page_summaries.append(f"Página {page.get('page_number', '?')}: {page['summary']}")
+        
+        all_facts = processed_data.get("all_facts", [])
+        facts_text = "\n".join([f"- {fact}" for fact in all_facts[:20]])
+        
+        if not page_summaries and not facts_text:
+            return {"summary": "", "themes": [], "error": "Sem conteúdo para resumir"}
+        
+        context = f"""DOCUMENTO: {document_title}
+PRODUTO: {product_name}
+GESTORA: {gestora}
+
+RESUMOS POR PÁGINA:
+{chr(10).join(page_summaries)}
+
+PRINCIPAIS FATOS EXTRAÍDOS:
+{facts_text}
+"""
+        
+        prompt = """Analise o conteúdo do documento abaixo e gere:
+
+1. RESUMO CONCEITUAL (2-3 frases): Explique o propósito e conteúdo principal do documento de forma clara e objetiva. Foque no que é mais importante para um assessor financeiro entender rapidamente.
+
+2. TEMAS PRINCIPAIS (1-3 temas): Liste os principais tópicos abordados no documento. Cada tema deve ser uma palavra ou frase curta (ex: "rentabilidade", "alocação de ativos", "taxas de administração").
+
+Responda APENAS em JSON no formato:
+{
+  "summary": "Resumo conceitual aqui...",
+  "themes": ["tema1", "tema2", "tema3"]
+}
+"""
+        
+        try:
+            response = self.client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": "Você é um analista de documentos financeiros. Gere resumos concisos e identifique temas relevantes para assessores de investimentos."},
+                    {"role": "user", "content": prompt + "\n\n" + context}
+                ],
+                temperature=0.3,
+                max_tokens=500
+            )
+            
+            content = response.choices[0].message.content
+            
+            if "```json" in content:
+                content = content.split("```json")[1].split("```")[0]
+            elif "```" in content:
+                content = content.split("```")[1].split("```")[0]
+            
+            result = json.loads(content.strip())
+            
+            return {
+                "summary": result.get("summary", ""),
+                "themes": result.get("themes", [])
+            }
+            
+        except json.JSONDecodeError as e:
+            return {"summary": "", "themes": [], "error": f"Erro ao parsear resposta: {str(e)}"}
+        except Exception as e:
+            return {"summary": "", "themes": [], "error": str(e)}
 
 
 _document_processor = None

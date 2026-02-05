@@ -157,7 +157,15 @@ def _build_global_context_for_block(material, product) -> str:
         if material.created_at:
             parts.append(f"Data: {material.created_at.strftime('%Y-%m-%d')}")
         
+        if material.ai_summary:
+            parts.append(f"Resumo: {material.ai_summary}")
+        
         all_themes = []
+        try:
+            ai_themes = json.loads(material.ai_themes or "[]")
+            all_themes.extend(ai_themes)
+        except:
+            pass
         try:
             tags = json.loads(material.tags or "[]")
             all_themes.extend(tags)
@@ -169,8 +177,9 @@ def _build_global_context_for_block(material, product) -> str:
         except:
             pass
         
-        if all_themes:
-            parts.append(f"Temas: {', '.join(all_themes)}")
+        unique_themes = list(dict.fromkeys(all_themes))
+        if unique_themes:
+            parts.append(f"Temas: {', '.join(unique_themes)}")
     
     return "\n".join(parts)
 

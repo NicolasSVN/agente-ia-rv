@@ -761,6 +761,8 @@ class Material(Base):
     processing_status = Column(String(30), default=ProcessingStatus.PENDING.value)
     processing_error = Column(Text, nullable=True)
     extracted_metadata = Column(Text, nullable=True)  # JSON com metadados extraídos (fund_name, ticker, gestora, confidence)
+    ai_summary = Column(Text, nullable=True)  # Resumo conceitual do documento gerado por GPT
+    ai_themes = Column(Text, default="[]")  # JSON array de temas principais identificados por GPT
     created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())

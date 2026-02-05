@@ -202,6 +202,29 @@ class ProductIngestor:
         charts_count = sum(1 for p in processed.get("pages", []) 
                           if p.get("content_type") == "infographic")
         
+        material = db.query(Material).filter(Material.id == material_id).first()
+        if material:
+            from database.models import Product
+            product = db.query(Product).filter(Product.id == material.product_id).first()
+            product_name = product.name if product else ""
+            gestora = product.manager if product else ""
+            
+            summary_result = self.doc_processor.generate_document_summary_and_themes(
+                processed_data=processed,
+                document_title=document_title,
+                product_name=product_name,
+                gestora=gestora
+            )
+            
+            if summary_result.get("summary"):
+                material.ai_summary = summary_result["summary"]
+            if summary_result.get("themes"):
+                material.ai_themes = json.dumps(summary_result["themes"], ensure_ascii=False)
+            
+            db.commit()
+            stats["ai_summary_generated"] = bool(summary_result.get("summary"))
+            stats["ai_themes"] = summary_result.get("themes", [])
+        
         ingestion_log = IngestionLog(
             material_id=material_id,
             document_name=os.path.basename(pdf_path),
@@ -805,6 +828,12 @@ class ProductIngestor:
         except:
             material_categories = []
         
+        ai_themes = []
+        try:
+            ai_themes = json.loads(material.ai_themes or "[]")
+        except:
+            ai_themes = []
+        
         global_context = self._build_global_context(
             product_name=product_name,
             product_ticker=product_ticker,
@@ -814,7 +843,9 @@ class ProductIngestor:
             material_type=material.material_type,
             material_tags=material_tags,
             material_categories=material_categories,
-            created_at=material.created_at
+            created_at=material.created_at,
+            ai_summary=material.ai_summary,
+            ai_themes=ai_themes
         )
         
         for block in blocks:
@@ -889,7 +920,9 @@ class ProductIngestor:
         material_type: str,
         material_tags: List[str],
         material_categories: List[str],
-        created_at: Optional[datetime]
+        created_at: Optional[datetime],
+        ai_summary: Optional[str] = None,
+        ai_themes: Optional[List[str]] = None
     ) -> str:
         """
         Constrói o contexto global que será prefixado em todos os chunks.
@@ -903,6 +936,7 @@ class ProductIngestor:
         Documento: Relatório Gerencial - Janeiro 2024
         Tipo: relatório gerencial
         Data: 2024-01-15
+        Resumo: Este documento apresenta o relatório gerencial do fundo...
         Temas: renda fixa, hedge, crédito privado
         """
         parts = ["[CONTEXTO GLOBAL]"]
@@ -936,9 +970,13 @@ class ProductIngestor:
         if created_at:
             parts.append(f"Data: {created_at.strftime('%Y-%m-%d')}")
         
-        all_themes = material_tags + material_categories
-        if all_themes:
-            parts.append(f"Temas: {', '.join(all_themes)}")
+        if ai_summary:
+            parts.append(f"Resumo: {ai_summary}")
+        
+        all_themes = (ai_themes or []) + material_tags + material_categories
+        unique_themes = list(dict.fromkeys(all_themes))
+        if unique_themes:
+            parts.append(f"Temas: {', '.join(unique_themes)}")
         
         return "\n".join(parts)
     
@@ -963,9 +1001,75 @@ class ProductIngestor:
         material_id: int,
         product_name: str,
         product_ticker: Optional[str],
-        db: Session
+        db: Session,
+        backfill_summary: bool = True
     ) -> Dict[str, Any]:
-        """Remove indexação antiga e reindexa o material."""
+        """
+        Remove indexação antiga e reindexa o material.
+        
+        Args:
+            material_id: ID do material
+            product_name: Nome do produto
+            product_ticker: Ticker do produto
+            db: Sessão do banco
+            backfill_summary: Se True, gera resumo/temas se estiver faltando
+        """
+        from database.models import Product
+        
+        material = db.query(Material).filter(Material.id == material_id).first()
+        if not material:
+            return {"success": False, "error": "Material não encontrado"}
+        
+        if backfill_summary and not material.ai_summary:
+            blocks = db.query(ContentBlock).filter(
+                ContentBlock.material_id == material_id,
+                ContentBlock.status.in_([
+                    ContentBlockStatus.APPROVED.value,
+                    ContentBlockStatus.AUTO_APPROVED.value
+                ])
+            ).all()
+            
+            if blocks:
+                product = db.query(Product).filter(Product.id == material.product_id).first()
+                gestora = product.manager if product else ""
+                
+                processed_data = {
+                    "pages": [],
+                    "all_facts": []
+                }
+                
+                for block in blocks:
+                    page_summary = ""
+                    if block.block_type == ContentBlockType.TEXT.value:
+                        page_summary = block.content[:500]
+                    elif block.block_type == ContentBlockType.TABLE.value:
+                        try:
+                            table_data = json.loads(block.content)
+                            page_summary = f"Tabela com dados: {', '.join(table_data.get('headers', []))}"
+                        except:
+                            page_summary = "Tabela com dados estruturados"
+                    
+                    if page_summary:
+                        processed_data["pages"].append({
+                            "page_number": block.source_page,
+                            "summary": page_summary
+                        })
+                
+                summary_result = self.doc_processor.generate_document_summary_and_themes(
+                    processed_data=processed_data,
+                    document_title=material.name or "",
+                    product_name=product_name,
+                    gestora=gestora
+                )
+                
+                if summary_result.get("summary"):
+                    material.ai_summary = summary_result["summary"]
+                if summary_result.get("themes"):
+                    material.ai_themes = json.dumps(summary_result["themes"], ensure_ascii=False)
+                
+                db.commit()
+                print(f"[REINDEX] Backfill de resumo/temas para material {material_id}")
+        
         blocks = db.query(ContentBlock).filter(
             ContentBlock.material_id == material_id
         ).all()
