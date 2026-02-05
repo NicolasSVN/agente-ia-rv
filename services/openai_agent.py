@@ -1246,7 +1246,16 @@ REGRAS PARA INFORMAÇÕES DA INTERNET:
         elif categoria == "FORA_ESCOPO":
             print(f"[OpenAI] Fora de escopo - NÃO consultando documentos")
         elif categoria == "MERCADO":
-            print(f"[OpenAI] Categoria MERCADO - priorizando busca na web")
+            print(f"[OpenAI] Categoria MERCADO - priorizando busca na web (sem consulta interna)")
+        elif categoria == "PITCH" and vs:
+            print(f"[OpenAI] Categoria PITCH - buscando documentos para criar texto de venda")
+            if extracted_products:
+                for product in extracted_products:
+                    product_docs = vs.search_by_product(product, n_results=15)
+                    print(f"[OpenAI] Encontrados {len(product_docs)} docs para pitch do produto '{product}'")
+                    for doc in product_docs:
+                        if doc not in context_documents:
+                            context_documents.append(doc)
         elif vs:
             if extracted_products:
                 for product in extracted_products:
@@ -1420,12 +1429,35 @@ NOTA: {material_note}
         if conversation_history:
             messages.extend(conversation_history[-6:])
         
-        user_content = f"""CONTEXTO DA BASE DE CONHECIMENTO:
+        if categoria == "MERCADO" and web_context:
+            user_content = f"""PERGUNTA SOBRE MERCADO - PRIORIZE AS INFORMAÇÕES DA WEB:
+
+{web_context}
+
+{self._get_fact_extraction_prompt()}
+
+INSTRUÇÃO: Responda com base nas informações da web acima. Cite as fontes com nome do site e data."""
+        elif categoria == "PITCH":
+            user_content = f"""SOLICITAÇÃO DE PITCH/TEXTO DE VENDA:
+
+O assessor pediu para criar um texto comercial/pitch para o produto. Use as informações abaixo para criar um argumento de vendas convincente:
+
+CONTEXTO DO PRODUTO:
+{context}
+
+INSTRUÇÕES PARA O PITCH:
+- Crie um texto persuasivo mas profissional
+- Destaque os principais diferenciais e racional do produto
+- Inclua números relevantes (rentabilidade, prazo, taxa)
+- Indique o público-alvo ideal
+- Formato adequado para WhatsApp (conciso e impactante)"""
+        else:
+            user_content = f"""CONTEXTO DA BASE DE CONHECIMENTO:
 {context}"""
 
-        if web_context:
-            user_content += f"\n\n{web_context}"
-            user_content += f"\n\n{self._get_fact_extraction_prompt()}"
+            if web_context:
+                user_content += f"\n\n{web_context}"
+                user_content += f"\n\n{self._get_fact_extraction_prompt()}"
 
         if similar_tickers_suggestion:
             suggestions = similar_tickers_suggestion['suggestions']
