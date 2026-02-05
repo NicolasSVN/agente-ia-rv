@@ -54,20 +54,25 @@ class VectorStore:
     
     def _generate_embedding(self, text: str) -> List[float]:
         """
-        Gera um embedding para o texto usando o modelo text-embedding-3-small.
+        Gera um embedding para o texto usando text-embedding-3-large.
+        
+        NOTA: O upgrade de 3-small para 3-large oferece +15-30% de precisão semântica.
+        Todos os novos documentos serão indexados com 3-large.
+        Documentos existentes devem ser reindexados para evitar dimensões incompatíveis.
         
         Args:
             text: Texto para gerar embedding
             
         Returns:
-            Lista de floats representando o embedding
+            Lista de floats representando o embedding (3072 dimensões para 3-large)
         """
         if not self.openai_client:
             raise ValueError("OpenAI API key não configurada")
         
         response = self.openai_client.embeddings.create(
-            model="text-embedding-3-small",
-            input=text
+            model="text-embedding-3-large",
+            input=text,
+            dimensions=3072
         )
         return response.data[0].embedding
     
@@ -124,6 +129,46 @@ class VectorStore:
             print(f"[VECTOR_STORE] Erro ao deletar documento {doc_id}: {e}")
             return False
     
+    def reset_collection_for_migration(self) -> dict:
+        """
+        Reseta a collection para migração de modelo de embeddings.
+        ATENÇÃO: Isso deleta todos os vetores existentes!
+        Após chamar, é necessário reindexar todos os materiais.
+        
+        USAR QUANDO:
+        - Mudar modelo de embeddings (ex: 3-small → 3-large)
+        - Mudar dimensões dos vetores
+        - Resolver problemas de dimensões incompatíveis
+        
+        Returns:
+            dict com status da operação
+        """
+        try:
+            old_count = self.collection.count()
+            
+            self.chroma_client.delete_collection(name="knowledge_base")
+            
+            self.collection = self.chroma_client.create_collection(
+                name="knowledge_base",
+                metadata={
+                    "description": "Base de conhecimento do Notion",
+                    "embedding_model": "text-embedding-3-large",
+                    "dimensions": 3072,
+                    "migrated_at": __import__("datetime").datetime.now().isoformat()
+                }
+            )
+            
+            return {
+                "success": True,
+                "old_count": old_count,
+                "message": f"Collection resetada. {old_count} documentos removidos. Reindexação necessária."
+            }
+        except Exception as e:
+            return {
+                "success": False,
+                "error": str(e)
+            }
+    
     def _classify_query_type(self, query: str) -> str:
         """
         Classifica o tipo de pergunta para re-ranking apropriado.
@@ -153,7 +198,12 @@ class VectorStore:
     def search(self, query: str, n_results: int = 3, product_filter: str = None, 
                similarity_threshold: float = 0.8) -> List[dict]:
         """
-        Busca documentos relevantes para a consulta.
+        Busca documentos relevantes para a consulta usando ranking híbrido.
+        
+        MELHORIA: Ranking híbrido com score composto:
+        - Vetor (70%): similaridade semântica
+        - Recência (20%): documentos mais novos
+        - Match exato (10%): ticker/produto exato na query
         
         Args:
             query: Pergunta ou consulta do usuário
@@ -192,47 +242,150 @@ class VectorStore:
         documents = []
         if results and results['documents']:
             from datetime import datetime
-            now = datetime.now().isoformat()
+            now = datetime.now()
+            
+            query_upper = query.upper()
             
             for i, doc in enumerate(results['documents'][0]):
                 metadata = results['metadatas'][0][i] if results['metadatas'] else {}
                 
-                valid_until = metadata.get("valid_until", "")
-                if valid_until and valid_until < now:
-                    continue
+                valid_until_str = metadata.get("valid_until", "")
+                if valid_until_str:
+                    try:
+                        if 'T' in valid_until_str:
+                            valid_until = datetime.fromisoformat(valid_until_str.replace('Z', '+00:00'))
+                            if valid_until.tzinfo:
+                                valid_until = valid_until.replace(tzinfo=None)
+                        else:
+                            valid_until = datetime.strptime(valid_until_str[:10], "%Y-%m-%d")
+                        if valid_until < now:
+                            continue
+                    except Exception:
+                        pass
                 
                 publish_status = metadata.get("publish_status", "publicado")
                 if publish_status in ["rascunho", "arquivado"]:
                     continue
                 
-                distance = results['distances'][0][i] if results['distances'] else 0
+                original_distance = results['distances'][0][i] if results['distances'] else 0
                 
-                if distance > similarity_threshold:
+                if original_distance > similarity_threshold:
                     continue
+                
+                vector_score = 1.0 - min(original_distance, 1.0)
+                
+                recency_score = self._calculate_recency_score(metadata.get("created_at", ""), now)
+                
+                exact_match_score = self._calculate_exact_match_score(
+                    query_upper,
+                    metadata.get("product_ticker", ""),
+                    metadata.get("product_name", ""),
+                    metadata.get("gestora", "")
+                )
+                
+                composite_score = (
+                    vector_score * 0.70 +
+                    recency_score * 0.20 +
+                    exact_match_score * 0.10
+                )
                 
                 material_type = metadata.get("material_type", "")
                 block_type = metadata.get("block_type", "text")
                 live_types = ["one_page", "atualizacao_taxas", "argumentos_comerciais"]
                 
                 if material_type in live_types:
-                    distance = distance * 0.8
+                    composite_score *= 1.15
                 
                 if query_type == 'numeric' and block_type == 'table':
-                    distance = distance * 0.7
+                    composite_score *= 1.20
                 elif query_type == 'conceptual' and block_type == 'text':
-                    distance = distance * 0.9
+                    composite_score *= 1.05
+                
+                composite_score = min(composite_score, 1.0)
                 
                 documents.append({
                     "content": doc,
                     "metadata": metadata,
-                    "distance": distance,
-                    "original_distance": results['distances'][0][i] if results['distances'] else 0,
+                    "distance": 1.0 - composite_score,
+                    "original_distance": original_distance,
+                    "composite_score": composite_score,
+                    "vector_score": vector_score,
+                    "recency_score": recency_score,
+                    "exact_match_score": exact_match_score,
                     "query_type": query_type
                 })
         
-        documents.sort(key=lambda x: x.get("distance", 0))
+        documents.sort(key=lambda x: x.get("composite_score", 0), reverse=True)
         
         return documents[:n_results]
+    
+    def _calculate_recency_score(self, created_at_str: str, now: 'datetime') -> float:
+        """
+        Calcula score de recência (0-1).
+        Documentos mais recentes recebem score maior.
+        
+        Escala:
+        - Últimos 7 dias: 1.0
+        - Últimos 30 dias: 0.8
+        - Últimos 90 dias: 0.6
+        - Últimos 180 dias: 0.4
+        - Mais antigo: 0.2
+        """
+        if not created_at_str:
+            return 0.3
+        
+        try:
+            from datetime import datetime
+            if 'T' in created_at_str:
+                created_at = datetime.fromisoformat(created_at_str.replace('Z', '+00:00'))
+                if created_at.tzinfo:
+                    created_at = created_at.replace(tzinfo=None)
+            else:
+                created_at = datetime.strptime(created_at_str[:10], "%Y-%m-%d")
+            
+            days_old = (now - created_at).days
+            
+            if days_old <= 7:
+                return 1.0
+            elif days_old <= 30:
+                return 0.8
+            elif days_old <= 90:
+                return 0.6
+            elif days_old <= 180:
+                return 0.4
+            else:
+                return 0.2
+        except Exception:
+            return 0.3
+    
+    def _calculate_exact_match_score(
+        self, 
+        query_upper: str, 
+        ticker: str, 
+        product_name: str,
+        gestora: str
+    ) -> float:
+        """
+        Calcula score de match exato (0-1).
+        Bonus para quando o ticker, produto ou gestora aparecem na query.
+        """
+        score = 0.0
+        
+        if ticker and ticker.upper() in query_upper:
+            score += 0.6
+        
+        if product_name:
+            product_words = product_name.upper().split()
+            matches = sum(1 for w in product_words if len(w) >= 4 and w in query_upper)
+            if matches >= 2:
+                score += 0.3
+            elif matches >= 1:
+                score += 0.15
+        
+        if gestora and gestora.upper() in query_upper:
+            score += 0.1
+        
+        return min(score, 1.0)
     
     def search_by_product(self, product_name: str, n_results: int = 10) -> List[dict]:
         """
@@ -257,14 +410,24 @@ class VectorStore:
             documents = []
             if results and results['documents']:
                 from datetime import datetime
-                now = datetime.now().isoformat()
+                now = datetime.now()
                 
                 for i, doc in enumerate(results['documents']):
                     metadata = results['metadatas'][i] if results['metadatas'] else {}
                     
-                    valid_until = metadata.get("valid_until", "")
-                    if valid_until and valid_until < now:
-                        continue
+                    valid_until_str = metadata.get("valid_until", "")
+                    if valid_until_str:
+                        try:
+                            if 'T' in valid_until_str:
+                                valid_until = datetime.fromisoformat(valid_until_str.replace('Z', '+00:00'))
+                                if valid_until.tzinfo:
+                                    valid_until = valid_until.replace(tzinfo=None)
+                            else:
+                                valid_until = datetime.strptime(valid_until_str[:10], "%Y-%m-%d")
+                            if valid_until < now:
+                                continue
+                        except Exception:
+                            pass
                     
                     publish_status = metadata.get("publish_status", "publicado")
                     if publish_status in ["rascunho", "arquivado"]:
