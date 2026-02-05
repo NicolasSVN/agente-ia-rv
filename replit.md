@@ -1,7 +1,7 @@
 # Agente IA - RV - Agente de IA para Assessores Financeiros
 
 ## Overview
-This project is a comprehensive FastAPI application serving as an AI agent named Stevan, designed for financial advisors. Its core purpose is to enhance efficiency in financial advisory services by streamlining communication, knowledge retrieval, and client management. Key capabilities include WhatsApp integration, semantic search on a Product CMS knowledge base, and an administrative dashboard with analytics, user management, and campaign tools. The project aims to centralize information, automate routine tasks, and improve client interaction within advisory operations.
+This project is a comprehensive FastAPI application named Stevan, an AI agent designed for financial advisors. Its primary goal is to enhance efficiency in financial advisory services by centralizing information, automating routine tasks, and improving client interaction. Key capabilities include WhatsApp integration, semantic search on a Product CMS knowledge base, and an administrative dashboard with analytics, user management, and campaign tools.
 
 ## User Preferences
 I prefer detailed explanations.
@@ -13,188 +13,42 @@ I prefer a clean and minimalist UI design.
 Ensure all user-facing texts are in grammatically correct Portuguese with proper accentuation.
 **CRITICAL: NEVER lose existing functionality when making changes.** Always verify that previously implemented features remain intact. Before modifying any component, review what features exist and ensure they are preserved. Call architect to validate UX changes.
 
-## Agent Development Process (Mandatory)
-
-### Pre-Edit Checklist
-Before editing any file, the agent MUST:
-1. **Read the full context** - Read at least 50 lines around the target code to understand all variable names and dependencies
-2. **Identify all references** - When renaming or modifying a variable/function, grep for ALL usages across the file before editing
-3. **Understand scope** - Map which functions/blocks use the modified element
-
-### Post-Edit Verification (Mandatory)
-After ANY code edit:
-1. **Grep for orphaned references** - Search for the OLD variable/function name to ensure no references remain
-2. **Verify imports** - If adding new functionality (like `timezone`), verify the import exists at file level
-3. **Check related endpoints** - When fixing one endpoint, verify similar endpoints don't have the same issue
-4. **Restart and check logs** - Always check server logs for syntax/runtime errors before marking complete
-
-### Common Error Prevention
-- **Renaming variables**: ALWAYS grep for ALL occurrences before and after rename
-- **Timezone/datetime**: Use consistent pattern throughout - either all naive UTC or all aware UTC
-- **Copy-paste edits**: When applying same fix to multiple places, verify EACH location individually
-
-### Quality Gate
-No task is complete until:
-1. Server starts without errors
-2. No `NameError`, `TypeError`, or `ImportError` in logs
-3. The specific functionality has been tested (manually or via curl)
-
 ## System Architecture
 The application is built using FastAPI with a modular architecture.
 
-**UI/UX Decisions:** The design system features a minimizable vertical sidebar, a light theme, and the Inter font. Global CSS centralizes styling, navigation is dynamic based on user roles, and a custom toast notification system provides consistent feedback. Modern React + Tailwind screens follow strict isolation rules, utilizing Tailwind Preflight and utilities exclusively for spacing and styling to ensure a modern SaaS-like user experience.
+**UI/UX Decisions:** The design system features a minimizable vertical sidebar, a light theme, and the Inter font. Global CSS centralizes styling, navigation is dynamic based on user roles, and a custom toast notification system provides consistent feedback. Modern React + Tailwind screens utilize Tailwind Preflight and utilities exclusively for spacing and styling, ensuring a modern SaaS-like user experience.
 
 **Technical Implementations:**
-- **AI Agent (Stevan):** Integrates OpenAI for chat and embeddings, configurable for personality, rules, and model parameters. It acts as an internal support broker, explaining strategies and products, and escalating to human specialists when necessary.
-- **Semantic Search (V3.0 Enhanced RAG):** Employs ChromaDB and OpenAI text-embedding-3-large (3072 dimensions) for semantic search. Features hybrid ranking with composite score = vector(70%) + recency(20%) + exact_match(10%). Chunks include global context (product, ticker, gestora, category, document name, type, date, tags). Migration endpoint `/api/products/admin/migrate-embeddings` to upgrade all embeddings. Date comparisons use proper datetime parsing.
-- **Semantic Transformer (3-Layer Architecture):** Implements a 3-layer content processing system: (1) Technical Extraction - GPT-4 Vision extracts raw JSON from PDFs; (2) Semantic Model - Normalizes table data into hierarchical structure (classe → gestora → fundo) with attribute standardization; (3) Narrative Chunks - Generates natural language text for RAG indexing (e.g., "O fundo ALIAR, da gestora TG Core, é um FII Cetip de prazo determinado..."). Review Queue displays human-readable hierarchical content instead of raw JSON.
-- **FII External Lookup:** Automatically fetches public FII data from FundsExplorer.com.br when not available in the knowledge base.
-- **WhatsApp Integration:** Uses Z-API for various message types, logs interactions, and provides a "Central de Mensagens" interface with real-time updates and conversation identification. Features full media support: audio transcription via Whisper, image analysis via GPT-4 Vision, document processing, and a modern UI with WhatsApp-style audio player (waveform visualization), image lightbox, and type indicators in conversation list.
-- **Authentication & Authorization:** JWT-based with role-based access control (`admin`, `gestao_rv`, `broker`, `client`).
-- **Database:** PostgreSQL (or SQLite for development) with SQLAlchemy ORM for models including users, tickets, agent configurations, message templates, campaigns, and knowledge documents.
-- **Admin Dashboard:** Provides tools for user management, integration management, advisor base management (with bulk import), campaign management (4-step wizard for mass personalized WhatsApp messages, templates, attachments, SSE for progress), "Central de Mensagens" (WhatsApp Web-style interface with human takeover), and knowledge base management (upload, index, categorize documents).
-- **Product CMS:** Manages products, materials, and content blocks. Features include PDF upload with GPT-4 Vision for block extraction, a Fast Lane/High-Risk Lane approval system, semantic indexing, WhatsApp scripts per product, versioning, validity control, publication statuses, expiration filtering, visual badges, and version rollback.
-- **Smart Upload with Metadata Extraction:** `DocumentMetadataExtractor` service uses GPT-4 Vision to analyze first 3 pages of PDFs before processing. Automatically extracts fund_name, ticker (pattern: 4 letters + 11/12/13), gestora (fuzzy matches against known list: TG Core, Manatí, XP, BTG, Kinea, etc.), and document_type. Materials track `processing_status` (pending/processing/success/failed), `processing_error`, and `extracted_metadata` (JSON). On extraction success with confidence >= 0.5, auto-matches to existing products by ticker or creates new products. On processing failure with 0 blocks, material is deleted to avoid orphans.
-- **Observability and Auditing:** Includes `RetrievalLog` for RAG search audits, `IngestionLog` for document ingestion, RAG analytics metrics, intelligent re-ranking, similarity thresholds, and content block tracking.
-- **AI Agent Response Framework:** Utilizes a `ConversationState` machine, message normalization, flexible contact identification, and AI-driven intent classification (Greeting, Scope, Documental, Out of Scope) to determine human transfer. Features conversation context accumulation and AI-driven ticker search.
-- **V2.1 Escalation Intelligence:** GPT-powered analysis on every escalation with 11 categories (out_of_scope, info_not_found, technical_complexity, commercial_request, explicit_human_request, emotional_friction, stalled_conversation, recurring_issue, sensitive_topic, investment_decision, other). Auto-generates ticket_summary, conversation_topic. Records transferred_at, first_human_response_at, solved_at timestamps. Greeting variations when agent assumes ticket. Frontend shows needs_attention filter by default, header with assessor info (Name - Unit - Broker), amber sticky note for ticket summary.
-- **V2.2 Bot Resolution Tracking:** Tracks conversations resolved by the bot without human escalation. New fields: `bot_resolved_at`, `awaiting_confirmation`, `last_bot_response_at`, `confirmation_sent_at`. Background scheduler checks every 60 seconds for pending confirmations. After 5 minutes without assessor response, sends confirmation message ("Seria só isso, {nome}?" with 7 variations). Detects 10+ positive confirmation patterns (sim, ok, obrigado, resolvido, thumbs up, etc.). On positive confirmation: marks `bot_resolved_at`, sends farewell message, calculates "time saved" metric. Insights endpoint includes `bot_metrics` section with `bot_resolved_count`, `bot_resolution_rate`, and `avg_time_saved_minutes`.
-- **V2.3 Separated Ticket Architecture:** `Conversation` and `ConversationTicket` are now separate models. A `Conversation` is a continuous chat session unique per phone number. Each escalation creates a new `ConversationTicket` instance, preserving complete historical data for each human intervention. Key fields: `active_ticket_id` on Conversation links to the current open ticket. Each ticket tracks: `ticket_number` (sequential per conversation), `resolution_time_seconds` (auto-calculated as solved_at - transferred_at), `resolution_category` (8 categories: information_provided, document_sent, redirected_to_specialist, issue_resolved, client_satisfied, no_further_action, escalated_internally, other), `resolution_notes`, `contributed_to_kb`. This architecture enables complete ticket history analysis, resolution metrics per ticket, and knowledge base contribution tracking.
-- **Insights Dashboard:** A management dashboard for Variable Income with `ConversationInsight` model, automatic GPT-based post-conversation analysis, 12 classification categories, dynamic filters, KPI cards (Total Interactions, Active Advisors, AI Resolution Rate), 5 Chart.js graphs (Daily Activity, Categories, Trending Products, AI vs. Humans, Volume by Unit), rankings (Top 5 Units, Top 10 Advisors), campaign summaries, and restricted access. New `/api/insights/tickets` endpoint provides ticket volume by status/unidade/broker/category, resolution rates, avg response/resolution times with consistent filter application.
+- **AI Agent (Stevan):** Integrates OpenAI for chat and embeddings, configurable for personality, rules, and model parameters. It acts as an internal support broker, explaining strategies and products, and escalating to human specialists.
+- **Semantic Search (V3.0 Enhanced RAG):** Employs ChromaDB and OpenAI text-embedding-3-large with hybrid ranking (vector, recency, exact_match). Chunks include global context.
+- **AI Document Summaries:** Automatic generation of conceptual summaries and themes for each document using GPT-4o-mini, stored in the material model.
+- **Semantic Transformer (3-Layer Architecture):** Processes content through technical extraction (GPT-4 Vision), semantic model (data normalization), and narrative chunk generation for RAG indexing.
+- **FII External Lookup:** Automatically fetches public FII data from FundsExplorer.com.br.
+- **WhatsApp Integration:** Uses Z-API for various message types, logs interactions, and provides a "Central de Mensagens" interface with real-time updates and conversation identification, including full media support (audio transcription, image analysis, document processing).
+- **Authentication & Authorization:** JWT-based with role-based access control.
+- **Database:** PostgreSQL (or SQLite for development) with SQLAlchemy ORM.
+- **Admin Dashboard:** Provides tools for user, integration, advisor, and campaign management, a "Central de Mensagens", and knowledge base management.
+- **Product CMS:** Manages products, materials, and content blocks, featuring PDF upload with GPT-4 Vision extraction, an approval system, semantic indexing, WhatsApp scripts, versioning, and validity control.
+- **Smart Upload with Metadata Extraction:** `DocumentMetadataExtractor` service uses GPT-4 Vision to analyze PDFs, extracting metadata like fund_name, ticker, gestora, and document_type, with automated product matching or creation.
+- **Observability and Auditing:** Includes `RetrievalLog` for RAG search, `IngestionLog` for document ingestion, RAG analytics, intelligent re-ranking, and content block tracking.
+- **AI Agent Response Framework:** Utilizes a `ConversationState` machine, message normalization, contact identification, and AI-driven intent classification for human transfer.
+- **V2.1 Escalation Intelligence:** GPT-powered analysis on every escalation with 11 categories, auto-generating ticket summaries and conversation topics, and tracking key timestamps.
+- **V2.2 Bot Resolution Tracking:** Tracks conversations resolved by the bot, includes `bot_resolved_at` and `awaiting_confirmation` fields, a background scheduler for confirmation messages, and metrics on bot resolution.
+- **V2.3 Separated Ticket Architecture:** `Conversation` and `ConversationTicket` are separate models, allowing continuous chat sessions with distinct historical data for each human intervention, tracking resolution metrics per ticket.
+- **Insights Dashboard:** A management dashboard for Variable Income with `ConversationInsight` model, GPT-based post-conversation analysis, 12 classification categories, dynamic filters, KPI cards, Chart.js graphs, rankings, and campaign summaries.
 
 **Feature Specifications:** Dynamic control over AI behavior parameters, real-time campaign dispatch with SSE, background document processing, customizable fields, and automated admin user creation.
 
 ## External Dependencies
-- **OpenAI API:** For AI agent interactions and text embeddings.
-- **Z-API:** For WhatsApp messaging integration.
+- **OpenAI API:** AI agent interactions and text embeddings.
+- **Z-API:** WhatsApp messaging integration.
 - **PostgreSQL:** Primary relational database.
 - **ChromaDB:** Vector database for semantic search.
-- **Jinja2:** Templating engine for frontend rendering.
-- **Inter Font (Google Fonts):** Standardized typography.
+- **Jinja2:** Templating engine.
+- **Inter Font (Google Fonts):** Typography.
 - **Tailwind CSS:** Utility-first CSS framework.
-- **React 18 + Vite + React Router DOM:** For the modern Knowledge Base UI.
-- **Radix UI:** For UI components (Dialog, Tabs, Select, Tooltip).
-- **Framer Motion:** For animations and transitions.
-- **Lucide React:** For icons.
-- **react-dropzone:** For file uploads.
-
-## Contrato Técnico de Front-End — SVN
-
-**Padrão Oficial para Telas React + Tailwind**
-
-Este documento define as regras obrigatórias para qualquer tela construída em React + Tailwind no projeto SVN.
-
-**Objetivo:** Garantir UX moderna, consistência visual, isolamento de legado e evitar conflitos de CSS.
-
-### 1. Isolamento Total de CSS (Regra Mais Importante)
-
-**PROIBIDO - Nunca usar em telas React:**
-```css
-* { margin: 0; padding: 0; box-sizing: border-box; }
-```
-
-**Nunca carregar:**
-- `global.css` legado
-- `style.css` legado
-- Classes genéricas: `.btn`, `.form-group`, `.page-*`, `.container`, `.sidebar-*`
-
-**OBRIGATÓRIO:**
-- Tailwind Preflight como único reset
-- Spacing controlado EXCLUSIVAMENTE por Tailwind
-- Exemplo correto: `<div className="p-4 space-y-4">`
-
-### 2. Regra de Arquitetura por Rota
-
-| Tipo | Exemplo |
-|------|---------|
-| Jinja legado | `/conversas` |
-| React moderno | `/conversas-react` |
-| React moderno | `/base-conhecimento` |
-
-**Regras:**
-- Nunca misturar Jinja + React no mesmo layout
-- Cada rota React deve ter HTML base mínimo
-
-### 3. Template HTML Base para React
-
-O template que serve React deve conter SOMENTE:
-- Sidebar (se necessário)
-- `<div id="root"></div>`
-- Nenhum reset CSS
-- Nenhum global.css
-- Nenhum style inline genérico
-
-**Exemplo mínimo:**
-```html
-<body>
-  <div id="root"></div>
-  <script src="react-bundle.js"></script>
-</body>
-```
-
-### 4. Design System (Fonte da Verdade)
-
-**Fonte única de UI:**
-- Tailwind tokens
-- Variáveis no `tailwind.config.js` ou `@theme` no CSS
-
-**Não duplicar cores no CSS legado. Não criar novo sistema paralelo.**
-
-### 5. Componentes Obrigatórios (Padrão UX)
-
-Toda tela React moderna deve usar:
-- Cards com hover
-- Skeleton loaders
-- Drawer ou modal (Radix UI)
-- Inline edit (sem reload)
-- Search com debounce
-- Filtros dinâmicos
-- Empty states visuais
-
-### 6. Spacing & Layout
-
-**PROIBIDO - Margens no CSS:**
-```css
-.card { margin: 12px; }
-```
-
-**OBRIGATÓRIO - Tailwind utilities:**
-```jsx
-<div className="mt-3 px-4 gap-2 grid">
-```
-
-### 7. Animações e Feedback
-
-Sempre que houver Load, Save, Open drawer, Hover, usar **Framer Motion** para:
-- Fade
-- Slide
-- Microfeedback
-
-**Objetivo:** Sensação de app moderno, não sistema legado.
-
-### 8. Checklist Técnico para Nova Tela React
-
-Antes de marcar como "pronto", validar:
-- Não carrega global.css
-- Não existe seletor `* {}`
-- Nenhuma classe `.btn`, `.form-group`, `.page-*`
-- Spacing 100% Tailwind
-- Skeleton loaders implementados
-- Empty state desenhado
-- Drawer ou modal Radix funcional
-- Search + filtro funcionando
-- UX testado sem refresh de página
-
-### 9. Regra de Ouro
-
-> Se a tela parecer sistema legado, está errada.
-> Se parecer SaaS moderno, está certa.
-> **UX vem antes de "funcionar".**
-
-### 10. Objetivo Estratégico
-
-Esse padrão existe para:
-- Evitar regressão visual
-- Garantir evolução real de UX
-- Evitar CSS fantasma
-- Garantir que o usuário veja valor
+- **React 18 + Vite + React Router DOM:** Modern Knowledge Base UI.
+- **Radix UI:** UI components (Dialog, Tabs, Select, Tooltip).
+- **Framer Motion:** Animations and transitions.
+- **Lucide React:** Icons.
+- **react-dropzone:** File uploads.
