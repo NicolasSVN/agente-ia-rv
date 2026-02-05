@@ -1,0 +1,48 @@
+{
+  "metadata": {
+    "product_ticker": "TICKER11",
+    "product_name": "Nome do Produto",
+    "description": "Descrição do golden set para este produto",
+    "created_at": "2025-02-05",
+    "version": "1.0",
+    "notes": "Use o comando --discover para listar os chunk IDs disponíveis para este produto"
+  },
+  "questions": [
+    {
+      "question_id": "TICKER_001",
+      "question_text": "fale sobre o TICKER11",
+      "question_type": "aberta_com_ticker",
+      "expected_chunk_ids": ["chunk_id_1", "chunk_id_2"],
+      "ideal_answer_summary": "Resumo da resposta ideal esperada"
+    },
+    {
+      "question_id": "TICKER_002",
+      "question_text": "qual o dividendo do TICKER11?",
+      "question_type": "direta_com_ticker",
+      "expected_chunk_ids": ["chunk_id_3"],
+      "ideal_answer_summary": "O dividendo é X"
+    },
+    {
+      "question_id": "TICKER_003",
+      "question_text": "quem é o gestor?",
+      "question_type": "especifica_sem_ticker",
+      "expected_chunk_ids": ["chunk_id_1"],
+      "ideal_answer_summary": "O gestor é Y"
+    },
+    {
+      "question_id": "TICKER_004",
+      "question_text": "ticker11 rendeu qto?",
+      "question_type": "linguagem_informal",
+      "expected_chunk_ids": ["chunk_id_4", "chunk_id_5"],
+      "ideal_answer_summary": "A rentabilidade foi Z%"
+    }
+  ],
+  "question_types": {
+    "aberta_com_ticker": "Perguntas abertas mencionando o ticker explicitamente",
+    "direta_com_ticker": "Perguntas específicas sobre dados com ticker",
+    "especifica_sem_ticker": "Perguntas sobre dados específicos sem mencionar ticker",
+    "linguagem_informal": "Perguntas com gírias, abreviações ou erros de digitação",
+    "contextual": "Perguntas que dependem do contexto da conversa anterior",
+    "comparativa": "Perguntas comparando múltiplos produtos"
+  }
+}

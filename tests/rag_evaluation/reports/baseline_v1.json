@@ -1,0 +1,335 @@
+{
+  "metadata": {
+    "product_ticker": "MANA11",
+    "evaluated_at": "2026-02-05T20:19:55.404145",
+    "top_k": 5,
+    "total_questions": 15
+  },
+  "aggregated_metrics": {
+    "total_questions": 15,
+    "hit_rate": 0.4667,
+    "mean_precision": 0.1333,
+    "mean_recall": 0.3889,
+    "mrr": 0.19,
+    "by_question_type": {
+      "direta_com_ticker": {
+        "count": 6,
+        "hit_rate": 0.8333,
+        "mean_precision": 0.2,
+        "mean_recall": 0.7222,
+        "mrr": 0.275
+      },
+      "aberta_sem_ticker": {
+        "count": 1,
+        "hit_rate": 0.0,
+        "mean_precision": 0.0,
+        "mean_recall": 0.0,
+        "mrr": 0.0
+      },
+      "aberta_com_ticker": {
+        "count": 1,
+        "hit_rate": 1.0,
+        "mean_precision": 0.6,
+        "mean_recall": 1.0,
+        "mrr": 1.0
+      },
+      "linguagem_informal": {
+        "count": 3,
+        "hit_rate": 0.3333,
+        "mean_precision": 0.0667,
+        "mean_recall": 0.1667,
+        "mrr": 0.0667
+      },
+      "direta_sem_ticker": {
+        "count": 2,
+        "hit_rate": 0.0,
+        "mean_precision": 0.0,
+        "mean_recall": 0.0,
+        "mrr": 0.0
+      },
+      "especifica_sem_ticker": {
+        "count": 2,
+        "hit_rate": 0.0,
+        "mean_precision": 0.0,
+        "mean_recall": 0.0,
+        "mrr": 0.0
+      }
+    }
+  },
+  "individual_results": [
+    {
+      "question_id": "MANA_001",
+      "question_text": "fale sobre o MANA11",
+      "question_type": "aberta_com_ticker",
+      "expected_chunk_ids": [
+        "product_block_49",
+        "product_block_50",
+        "product_block_47"
+      ],
+      "retrieved_chunk_ids": [
+        "product_block_47",
+        "product_block_48",
+        "product_block_49",
+        "product_block_50",
+        "product_block_51"
+      ],
+      "is_hit": true,
+      "precision": 0.6,
+      "recall": 1.0,
+      "reciprocal_rank": 1.0,
+      "first_relevant_position": 1
+    },
+    {
+      "question_id": "MANA_002",
+      "question_text": "qual foi o dividendo do MANA11 em 2025?",
+      "question_type": "direta_com_ticker",
+      "expected_chunk_ids": [
+        "product_block_64",
+        "product_block_55",
+        "product_block_51"
+      ],
+      "retrieved_chunk_ids": [
+        "product_block_47",
+        "product_block_48",
+        "product_block_49",
+        "product_block_50",
+        "product_block_51"
+      ],
+      "is_hit": true,
+      "precision": 0.2,
+      "recall": 0.3333,
+      "reciprocal_rank": 0.2,
+      "first_relevant_position": 5
+    },
+    {
+      "question_id": "MANA_003",
+      "question_text": "qual o CNPJ do Manatí Hedge Fund?",
+      "question_type": "direta_sem_ticker",
+      "expected_chunk_ids": [
+        "product_block_49",
+        "product_block_48"
+      ],
+      "retrieved_chunk_ids": [],
+      "is_hit": false,
+      "precision": 0.0,
+      "recall": 0.0,
+      "reciprocal_rank": 0.0,
+      "first_relevant_position": -1
+    },
+    {
+      "question_id": "MANA_004",
+      "question_text": "mana11 rendeu quanto?",
+      "question_type": "linguagem_informal",
+      "expected_chunk_ids": [
+        "product_block_51",
+        "product_block_54"
+      ],
+      "retrieved_chunk_ids": [
+        "product_block_47",
+        "product_block_48",
+        "product_block_49",
+        "product_block_50",
+        "product_block_51"
+      ],
+      "is_hit": true,
+      "precision": 0.2,
+      "recall": 0.5,
+      "reciprocal_rank": 0.2,
+      "first_relevant_position": 5
+    },
+    {
+      "question_id": "MANA_005",
+      "question_text": "o fundo tem taxa de performance?",
+      "question_type": "especifica_sem_ticker",
+      "expected_chunk_ids": [
+        "product_block_49",
+        "product_block_48"
+      ],
+      "retrieved_chunk_ids": [],
+      "is_hit": false,
+      "precision": 0.0,
+      "recall": 0.0,
+      "reciprocal_rank": 0.0,
+      "first_relevant_position": -1
+    },
+    {
+      "question_id": "MANA_006",
+      "question_text": "quem é o gestor do MANA11?",
+      "question_type": "direta_com_ticker",
+      "expected_chunk_ids": [
+        "product_block_49",
+        "product_block_48"
+      ],
+      "retrieved_chunk_ids": [
+        "product_block_47",
+        "product_block_48",
+        "product_block_49",
+        "product_block_50",
+        "product_block_51"
+      ],
+      "is_hit": true,
+      "precision": 0.4,
+      "recall": 1.0,
+      "reciprocal_rank": 0.5,
+      "first_relevant_position": 2
+    },
+    {
+      "question_id": "MANA_007",
+      "question_text": "qual o administrador do fundo?",
+      "question_type": "especifica_sem_ticker",
+      "expected_chunk_ids": [
+        "product_block_48"
+      ],
+      "retrieved_chunk_ids": [],
+      "is_hit": false,
+      "precision": 0.0,
+      "recall": 0.0,
+      "reciprocal_rank": 0.0,
+      "first_relevant_position": -1
+    },
+    {
+      "question_id": "MANA_008",
+      "question_text": "qual o patrimônio líquido do MANA11?",
+      "question_type": "direta_com_ticker",
+      "expected_chunk_ids": [
+        "product_block_50"
+      ],
+      "retrieved_chunk_ids": [
+        "product_block_47",
+        "product_block_48",
+        "product_block_49",
+        "product_block_50",
+        "product_block_51"
+      ],
+      "is_hit": true,
+      "precision": 0.2,
+      "recall": 1.0,
+      "reciprocal_rank": 0.25,
+      "first_relevant_position": 4
+    },
+    {
+      "question_id": "MANA_009",
+      "question_text": "quantos cotistas tem o MANA11?",
+      "question_type": "direta_com_ticker",
+      "expected_chunk_ids": [
+        "product_block_51"
+      ],
+      "retrieved_chunk_ids": [
+        "product_block_47",
+        "product_block_48",
+        "product_block_49",
+        "product_block_50",
+        "product_block_51"
+      ],
+      "is_hit": true,
+      "precision": 0.2,
+      "recall": 1.0,
+      "reciprocal_rank": 0.2,
+      "first_relevant_position": 5
+    },
+    {
+      "question_id": "MANA_010",
+      "question_text": "me faz um resumo do mana 11",
+      "question_type": "linguagem_informal",
+      "expected_chunk_ids": [
+        "product_block_51",
+        "product_block_49",
+        "product_block_50",
+        "product_block_47"
+      ],
+      "retrieved_chunk_ids": [],
+      "is_hit": false,
+      "precision": 0.0,
+      "recall": 0.0,
+      "reciprocal_rank": 0.0,
+      "first_relevant_position": -1
+    },
+    {
+      "question_id": "MANA_011",
+      "question_text": "quando foi criado o fundo Manatí?",
+      "question_type": "direta_sem_ticker",
+      "expected_chunk_ids": [
+        "product_block_49",
+        "product_block_48"
+      ],
+      "retrieved_chunk_ids": [],
+      "is_hit": false,
+      "precision": 0.0,
+      "recall": 0.0,
+      "reciprocal_rank": 0.0,
+      "first_relevant_position": -1
+    },
+    {
+      "question_id": "MANA_012",
+      "question_text": "qual a classificação Anbima do MANA11?",
+      "question_type": "direta_com_ticker",
+      "expected_chunk_ids": [
+        "product_block_48"
+      ],
+      "retrieved_chunk_ids": [
+        "product_block_47",
+        "product_block_48",
+        "product_block_49",
+        "product_block_50",
+        "product_block_51"
+      ],
+      "is_hit": true,
+      "precision": 0.2,
+      "recall": 1.0,
+      "reciprocal_rank": 0.5,
+      "first_relevant_position": 2
+    },
+    {
+      "question_id": "MANA_013",
+      "question_text": "comentário do gestor sobre o fundo",
+      "question_type": "aberta_sem_ticker",
+      "expected_chunk_ids": [
+        "product_block_53",
+        "product_block_54"
+      ],
+      "retrieved_chunk_ids": [],
+      "is_hit": false,
+      "precision": 0.0,
+      "recall": 0.0,
+      "reciprocal_rank": 0.0,
+      "first_relevant_position": -1
+    },
+    {
+      "question_id": "MANA_014",
+      "question_text": "quanto o MANA11 paga de dividendo por cota?",
+      "question_type": "direta_com_ticker",
+      "expected_chunk_ids": [
+        "product_block_64",
+        "product_block_55",
+        "product_block_65"
+      ],
+      "retrieved_chunk_ids": [
+        "product_block_47",
+        "product_block_48",
+        "product_block_49",
+        "product_block_50",
+        "product_block_51"
+      ],
+      "is_hit": false,
+      "precision": 0.0,
+      "recall": 0.0,
+      "reciprocal_rank": 0.0,
+      "first_relevant_position": -1
+    },
+    {
+      "question_id": "MANA_015",
+      "question_text": "taxa de administração do mana",
+      "question_type": "linguagem_informal",
+      "expected_chunk_ids": [
+        "product_block_62",
+        "product_block_48"
+      ],
+      "retrieved_chunk_ids": [],
+      "is_hit": false,
+      "precision": 0.0,
+      "recall": 0.0,
+      "reciprocal_rank": 0.0,
+      "first_relevant_position": -1
+    }
+  ]
+}
