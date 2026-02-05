@@ -196,7 +196,7 @@ class VectorStore:
         return 'conceptual'
     
     def search(self, query: str, n_results: int = 3, product_filter: str = None, 
-               similarity_threshold: float = 0.8) -> List[dict]:
+               similarity_threshold: float = 1.5) -> List[dict]:
         """
         Busca documentos relevantes para a consulta usando ranking híbrido.
         

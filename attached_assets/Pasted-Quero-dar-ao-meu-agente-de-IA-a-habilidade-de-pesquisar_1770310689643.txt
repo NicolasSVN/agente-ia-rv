@@ -1,0 +1,26 @@
+Quero dar ao meu agente de IA a habilidade de pesquisar na internet para encontrar informações atuais e factuais sobre o mercado de Renda Variável. Ele precisa se tornar um verdadeiro assistente de pesquisa, mas de forma segura e confiável.
+
+**O Novo Comportamento do Agente:**
+
+Quando um assessor fizer uma pergunta, o agente deve seguir uma nova ordem de operações:
+1.  **Primeiro, ele deve procurar a resposta em sua base de conhecimento interna**, como já faz hoje.
+2.  **Somente se não encontrar uma resposta boa o suficiente**, ele deve então buscar na internet.
+
+**Como a Busca na Web Deve Funcionar (As Regras de Ouro):**
+
+-   **Busca em Fontes Confiáveis:** O agente não deve pesquisar em qualquer lugar. Ele deve dar prioridade máxima a uma lista de sites confiáveis que eu possa gerenciar. Comece com uma lista padrão incluindo InfoMoney, Status Invest, Funds Explorer, Valor Investe e o site da B3.
+-   **Foco em Fatos, Não em Opiniões:** Instrua o agente a ser um "extrator de fatos". Ele deve ser treinado para ignorar opiniões, previsões e linguagem de recomendação ("compre agora!", "potencial de alta"). Ele deve focar em dados concretos: números, datas, eventos e descrições de produtos.
+-   **Citar Todas as Fontes:** Esta é uma regra inquebrável. Para cada informação que ele trouxer da internet, o agente **deve** citar de onde tirou, incluindo o link para a página original. Isso gera confiança e permite que o assessor verifique a informação.
+-   **Atenção às Datas:** O agente deve sempre procurar as informações mais recentes e, ao responder, mencionar a data da fonte (ex: "De acordo com um relatório do BTG de maio de 2024...").
+
+**O que o Agente Deve Ser Capaz de Buscar:**
+
+-   **Dados de Ativos:** Informações detalhadas sobre fundos imobiliários, fundos de investimento, ações, BDRs, etc. (ex: "Qual a taxa de administração do fundo Alaska Black?").
+-   **Notícias e Fatos Relevantes:** Eventos de mercado que impactam os ativos (ex: "Houve algum fato relevante sobre a Vale nos últimos dias?").
+
+**Implementação Técnica Sugerida:**
+
+-   Para implementar a busca, integre o sistema com uma API de busca otimizada para IA, como a **Tavily AI** ou a **Serper**. Isso é mais eficiente do que tentar construir um scraper do zero.
+-   Adicione uma nova seção no painel de administração chamada "Fontes Confiáveis da Web", onde eu possa adicionar ou remover os sites que o agente deve usar para suas pesquisas.
+
+Por favor, implemente esta funcionalidade, modificando a lógica do agente para incorporar este novo fluxo de pesquisa e garantindo que todas as regras de segurança e confiabilidade sejam seguidas.
