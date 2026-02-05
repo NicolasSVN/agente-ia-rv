@@ -88,12 +88,12 @@
 
 | ID | Teste | Status | Observações |
 |----|-------|--------|-------------|
-| D2.1 | Variáveis de assessor disponíveis | 🔄 | |
-| D2.2 | Variável {{nome}} funciona | 🔄 | |
-| D2.3 | Variável {{primeiro_nome}} funciona | ❌ | BUG CONHECIDO - não está substituindo |
+| D2.1 | Variáveis de assessor disponíveis | ✅ | Verificado via preview |
+| D2.2 | Variável {{nome}} funciona | ✅ | Substituído: "Nicolas Oliveira Garcia" |
+| D2.3 | Variável {{primeiro_nome}} funciona | 🔧 | CORRIGIDO - dispatch_campaign não verificava source_type |
 | D2.4 | Variável {{unidade}} funciona | 🔄 | |
 | D2.5 | Variável {{broker_responsavel}} funciona | 🔄 | |
-| D2.6 | Variável {{data_atual}} funciona | 🔄 | |
+| D2.6 | Variável {{data_atual}} funciona | ✅ | Substituído: "05/02/2026" |
 | D2.7 | Preview da mensagem com dados reais | 🔄 | |
 
 ---
@@ -255,3 +255,27 @@ O usuário pode estar usando um padrão diferente que não está coberto, ou o c
 - **SSE de progresso:** Streaming em tempo real
 - **Z-API:** Integração para envio WhatsApp
 - **Variáveis suportadas:** nome, primeiro_nome, email, telefone, unidade, equipe, broker_responsavel, data_atual
+
+---
+
+## CORREÇÕES IMPLEMENTADAS
+
+### 2026-02-05: BUG - Variáveis não substituídas em campanhas Base de Assessores
+
+**Problema:** Ao disparar campanhas do tipo "Base de Assessores", as variáveis como `{primeiro_nome}`, `{nome}`, `{data_atual}` não eram substituídas - a mensagem era enviada com os placeholders literais.
+
+**Causa Raiz:** O endpoint `dispatch_campaign` (linha 1466 de campaigns.py) não verificava o campo `source_type` da campanha. Independente do tipo, ele sempre seguia o caminho legacy que usa `column_mapping` e `group_recommendations_by_assessor`, que espera dados em formato CSV.
+
+**Solução:** Adicionada verificação de `source_type` no endpoint `dispatch_campaign`:
+```python
+source_type = getattr(campaign, 'source_type', 'upload') or 'upload'
+if source_type in ["base", "base_assessores"]:
+    return await dispatch_campaign_from_base(campaign, db)
+```
+
+**Arquivos Modificados:** `api/endpoints/campaigns.py`
+
+**Teste de Validação:**
+- Criada campanha 59 com template: "Olá, {primeiro_nome}! Seu nome completo é {nome}. Data: {data_atual}"
+- Mensagem recebida: "Olá, Nicolas! Este é um teste de campanha. Seu nome completo é Nicolas Oliveira Garcia. Data: 05/02/2026"
+- Status: ✅ CORRIGIDO

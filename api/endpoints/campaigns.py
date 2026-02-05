@@ -1509,6 +1509,12 @@ async def dispatch_campaign(
     if campaign.status == CampaignStatus.SENT.value:
         raise HTTPException(status_code=400, detail="Esta campanha já foi enviada")
     
+    # Check source_type to route to correct dispatch function
+    source_type = getattr(campaign, 'source_type', 'upload') or 'upload'
+    
+    if source_type in ["base", "base_assessores"]:
+        return await dispatch_campaign_from_base(campaign, db)
+    
     # Usa template customizado se existir, senao template salvo, senao mensagem padrao
     template_content = DEFAULT_TEMPLATE_CONTENT
     
@@ -1651,7 +1657,7 @@ async def dispatch_campaign_stream(
     
     source_type = getattr(campaign, 'source_type', 'upload') or 'upload'
     
-    if source_type == "base":
+    if source_type in ["base", "base_assessores"]:
         return await dispatch_campaign_from_base(campaign, db)
     
     template_content = DEFAULT_TEMPLATE_CONTENT
