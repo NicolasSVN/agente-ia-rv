@@ -5,26 +5,62 @@ Permite armazenar e buscar documentos usando embeddings.
 import chromadb
 import re
 from openai import OpenAI
-from typing import List, Optional, Set
+from typing import List, Optional, Set, Dict, Tuple
 from core.config import get_settings
 
 
-TICKER_PATTERN = re.compile(r'\b([A-Z]{4,5}11)\b', re.IGNORECASE)
+TICKER_PATTERN = re.compile(r'\b([A-Z]{4,5})\s*11\b', re.IGNORECASE)
+
+KNOWN_MANAGERS = {
+    "manati": "Manatí Capital",
+    "manatí": "Manatí Capital",
+    "tg core": "TG Core",
+    "tgcore": "TG Core",
+    "xp": "XP Asset",
+    "hglg": "CSHG",
+    "cshg": "CSHG",
+    "kinea": "Kinea",
+    "hedge": "Hedge Investments",
+    "bresco": "Bresco",
+    "vinci": "Vinci Partners",
+    "rbrp": "RBR",
+    "rbr": "RBR",
+}
 
 
 def extract_tickers_from_query(query: str) -> List[str]:
     """
     Extrai tickers de FIIs de uma query.
-    Padrão: 4-5 letras maiúsculas + 11 (ex: MANA11, XPLG11, TGRE11)
+    Padrão: 4-5 letras + 11 (com ou sem espaço)
+    Exemplos válidos: MANA11, mana 11, XPLG11, xplg 11
     
     Args:
         query: Texto da query do usuário
         
     Returns:
-        Lista de tickers encontrados (uppercase)
+        Lista de tickers encontrados (uppercase, sem espaço)
     """
     matches = TICKER_PATTERN.findall(query)
-    return [m.upper() for m in matches]
+    return [m.upper().replace(" ", "") + "11" for m in matches]
+
+
+def extract_manager_from_query(query: str) -> Optional[str]:
+    """
+    Detecta se a query menciona uma gestora conhecida.
+    
+    Args:
+        query: Texto da query do usuário
+        
+    Returns:
+        Nome normalizado da gestora ou None
+    """
+    query_lower = query.lower()
+    
+    for keyword, manager_name in KNOWN_MANAGERS.items():
+        if keyword in query_lower:
+            return manager_name
+    
+    return None
 
 
 def levenshtein_distance(s1: str, s2: str) -> int:
@@ -69,6 +105,117 @@ class VectorStore:
         self.openai_client = None
         if settings.OPENAI_API_KEY:
             self.openai_client = OpenAI(api_key=settings.OPENAI_API_KEY)
+        
+        # Cache de produtos por gestora (lazy loading)
+        self._products_cache = None
+    
+    def get_all_products(self) -> Dict[str, Dict]:
+        """
+        Retorna todos os produtos únicos indexados na base.
+        
+        Returns:
+            Dict[ticker, {name, gestora_inferred}]
+        """
+        if self._products_cache is not None:
+            return self._products_cache
+        
+        results = self.collection.get(limit=1000, include=['metadatas'])
+        
+        products = {}
+        for meta in results.get('metadatas', []):
+            if not meta:
+                continue
+            
+            ticker = meta.get('product_ticker', '')
+            name = meta.get('product_name', '')
+            
+            if ticker and ticker not in products:
+                gestora = self._infer_gestora_from_name(name)
+                products[ticker] = {
+                    'name': name,
+                    'gestora': gestora
+                }
+        
+        self._products_cache = products
+        return products
+    
+    def _infer_gestora_from_name(self, product_name: str) -> str:
+        """
+        Infere a gestora a partir do nome do produto.
+        Ex: "MANATÍ HEDGE FUND FII" -> "Manatí Capital"
+        """
+        name_lower = product_name.lower()
+        
+        for keyword, manager_name in KNOWN_MANAGERS.items():
+            if keyword in name_lower:
+                return manager_name
+        
+        return "Desconhecida"
+    
+    def get_products_by_manager(self, manager_name: str) -> List[Dict]:
+        """
+        Lista todos os produtos de uma gestora específica.
+        
+        Args:
+            manager_name: Nome normalizado da gestora
+            
+        Returns:
+            Lista de produtos [{ticker, name, gestora}]
+        """
+        all_products = self.get_all_products()
+        
+        matches = []
+        for ticker, info in all_products.items():
+            if info['gestora'] == manager_name:
+                matches.append({
+                    'ticker': ticker,
+                    'name': info['name'],
+                    'gestora': info['gestora']
+                })
+        
+        return matches
+    
+    def detect_ambiguous_query(self, query: str) -> Optional[Dict]:
+        """
+        Detecta se uma query é ambígua (menciona gestora sem ticker específico).
+        
+        Args:
+            query: Texto da query do usuário
+            
+        Returns:
+            Dict com info de desambiguação ou None se não ambígua
+            {
+                'type': 'manager_ambiguous',
+                'manager': 'Manatí Capital',
+                'products': [...]
+            }
+        """
+        tickers = extract_tickers_from_query(query)
+        if tickers:
+            return None
+        
+        manager = extract_manager_from_query(query)
+        if not manager:
+            return None
+        
+        products = self.get_products_by_manager(manager)
+        
+        if len(products) == 0:
+            return None
+        
+        if len(products) == 1:
+            return {
+                'type': 'manager_single',
+                'manager': manager,
+                'products': products,
+                'inferred_ticker': products[0]['ticker']
+            }
+        
+        return {
+            'type': 'manager_ambiguous',
+            'manager': manager,
+            'products': products
+        }
     
     def _generate_embedding(self, text: str) -> List[float]:
         """
@@ -742,13 +889,13 @@ class VectorStore:
         
         return tickers
     
-    def get_all_products(self) -> Set[str]:
+    def get_all_product_names(self) -> Set[str]:
         """
-        Extrai todos os produtos únicos dos metadados.
-        Inclui tickers e nomes de produtos.
+        Extrai todos os nomes/tickers de produtos únicos dos metadados.
+        Versão legada - retorna apenas nomes como strings.
         
         Returns:
-            Set de produtos encontrados
+            Set de nomes de produtos encontrados
         """
         products = set()
         
