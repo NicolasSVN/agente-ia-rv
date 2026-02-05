@@ -9,6 +9,24 @@ from typing import List, Optional, Set
 from core.config import get_settings
 
 
+TICKER_PATTERN = re.compile(r'\b([A-Z]{4,5}11)\b', re.IGNORECASE)
+
+
+def extract_tickers_from_query(query: str) -> List[str]:
+    """
+    Extrai tickers de FIIs de uma query.
+    Padrão: 4-5 letras maiúsculas + 11 (ex: MANA11, XPLG11, TGRE11)
+    
+    Args:
+        query: Texto da query do usuário
+        
+    Returns:
+        Lista de tickers encontrados (uppercase)
+    """
+    matches = TICKER_PATTERN.findall(query)
+    return [m.upper() for m in matches]
+
+
 def levenshtein_distance(s1: str, s2: str) -> int:
     """Calcula a distância de Levenshtein entre duas strings."""
     if len(s1) < len(s2):
@@ -198,9 +216,15 @@ class VectorStore:
     def search(self, query: str, n_results: int = 3, product_filter: str = None, 
                similarity_threshold: float = 1.5) -> List[dict]:
         """
-        Busca documentos relevantes para a consulta usando ranking híbrido.
+        Busca documentos relevantes para a consulta usando ranking híbrido inteligente.
         
-        MELHORIA: Ranking híbrido com score composto:
+        ESTRATÉGIA DE BUSCA HÍBRIDA:
+        1. Detecta tickers na query (ex: MANA11)
+        2. Se ticker detectado: busca PRIMEIRO por metadados (alta precisão)
+        3. Complementa com busca semântica (threshold ajustado)
+        4. Merge priorizando resultados de metadados
+        
+        RANKING HÍBRIDO:
         - Vetor (70%): similaridade semântica
         - Recência (20%): documentos mais novos
         - Match exato (10%): ticker/produto exato na query
@@ -209,7 +233,7 @@ class VectorStore:
             query: Pergunta ou consulta do usuário
             n_results: Número máximo de resultados
             product_filter: Filtrar por produto específico (opcional)
-            similarity_threshold: Threshold máximo de distância (default 0.8)
+            similarity_threshold: Threshold máximo de distância (default 1.5)
             
         Returns:
             Lista de documentos relevantes com scores
@@ -217,12 +241,22 @@ class VectorStore:
         if not self.openai_client:
             return []
         
+        detected_tickers = extract_tickers_from_query(query)
+        has_ticker = len(detected_tickers) > 0
+        
+        ticker_results = []
+        if has_ticker:
+            for ticker in detected_tickers[:2]:
+                ticker_docs = self.search_by_ticker(ticker, n_results=n_results * 2)
+                ticker_results.extend(ticker_docs)
+                print(f"[VECTOR_STORE] Busca por ticker {ticker}: {len(ticker_docs)} blocos encontrados")
+        
         query_embedding = self._generate_embedding(query)
         query_type = self._classify_query_type(query)
         
         where_filter = None
         if product_filter:
-            where_filter = {"products": {"$contains": product_filter.upper()}}
+            where_filter = {"product_ticker": {"$eq": product_filter.upper()}}
         
         fetch_count = n_results * 3
         
@@ -317,15 +351,37 @@ class VectorStore:
         
         documents.sort(key=lambda x: x.get("composite_score", 0), reverse=True)
         
-        deduplicated = self._deduplicate_results(documents)
+        all_documents = []
+        seen_ids = set()
+        
+        for doc in ticker_results:
+            doc_id = doc.get('chroma_id') or doc.get('metadata', {}).get('block_id') or f"ticker_{len(seen_ids)}"
+            if doc_id not in seen_ids:
+                seen_ids.add(doc_id)
+                if 'composite_score' not in doc:
+                    doc['composite_score'] = 0.95
+                all_documents.append(doc)
+        
+        for doc in documents:
+            doc_id = doc.get('chroma_id') or doc.get('metadata', {}).get('block_id') or f"semantic_{len(seen_ids)}"
+            if doc_id not in seen_ids:
+                seen_ids.add(doc_id)
+                all_documents.append(doc)
+        
+        all_documents.sort(key=lambda x: x.get("composite_score", 0), reverse=True)
+        
+        deduplicated = self._deduplicate_results(all_documents)
         
         final_results = deduplicated[:n_results]
+        
+        if has_ticker:
+            print(f"[VECTOR_STORE] Busca híbrida: {len(ticker_results)} por ticker + {len(documents)} semânticos = {len(final_results)} finais")
         
         self._log_retrieval(
             query=query,
             query_type=query_type,
             results=final_results,
-            total_candidates=len(documents),
+            total_candidates=len(all_documents),
             threshold=similarity_threshold
         )
         
@@ -354,24 +410,31 @@ class VectorStore:
             
             if "---" in content:
                 content = content.split("---", 1)[1]
-            short_content = content[:300].lower().strip()
+            short_content = content[:500].lower().strip()
             current_words = set(short_content.split())
+            current_block_id = metadata.get("block_id") or doc.get("metadata", {}).get("block_id")
             
             is_duplicate = False
             duplicate_idx = -1
             
             for idx, seen_doc in enumerate(deduplicated):
+                seen_block_id = seen_doc.get("metadata", {}).get("block_id")
+                if current_block_id and seen_block_id and current_block_id == seen_block_id:
+                    is_duplicate = True
+                    duplicate_idx = idx
+                    break
+                
                 seen_content = seen_doc.get("content", "")
                 if "---" in seen_content:
                     seen_content = seen_content.split("---", 1)[1]
-                seen_short = seen_content[:300].lower().strip()
+                seen_short = seen_content[:500].lower().strip()
                 
                 if short_content == seen_short:
                     is_duplicate = True
                     duplicate_idx = idx
                     break
                 
-                if len(current_words) > 10:
+                if len(current_words) > 15:
                     seen_words = set(seen_short.split())
                     intersection = len(current_words & seen_words)
                     union = len(current_words | seen_words)
@@ -379,18 +442,10 @@ class VectorStore:
                     if union > 0:
                         overlap = intersection / union
                         
-                        if overlap > 0.90:
+                        if overlap > 0.95:
                             is_duplicate = True
                             duplicate_idx = idx
                             break
-                        
-                        if overlap > similarity_threshold:
-                            seen_product = seen_doc.get("metadata", {}).get("product_id")
-                            current_product = metadata.get("product_id")
-                            if seen_product == current_product:
-                                is_duplicate = True
-                                duplicate_idx = idx
-                                break
             
             if is_duplicate:
                 if duplicate_idx >= 0 and current_score > deduplicated[duplicate_idx].get("composite_score", 0):
@@ -518,10 +573,79 @@ class VectorStore:
         
         return min(score, 1.0)
     
+    def search_by_ticker(self, ticker: str, n_results: int = 10) -> List[dict]:
+        """
+        Busca chunks pelo ticker do produto usando metadados.
+        Usa operador $eq no campo product_ticker para busca exata.
+        
+        Args:
+            ticker: Ticker do produto (ex: MANA11)
+            n_results: Número máximo de resultados
+            
+        Returns:
+            Lista de documentos do produto
+        """
+        try:
+            ticker_upper = ticker.upper().strip()
+            
+            results = self.collection.get(
+                where={"product_ticker": {"$eq": ticker_upper}},
+                limit=n_results
+            )
+            
+            documents = []
+            if results and results['documents']:
+                from datetime import datetime
+                now = datetime.now()
+                
+                for i, doc in enumerate(results['documents']):
+                    metadata = results['metadatas'][i] if results['metadatas'] else {}
+                    chroma_id = results['ids'][i] if results['ids'] else f"ticker_doc_{i}"
+                    
+                    valid_until_str = metadata.get("valid_until", "")
+                    if valid_until_str:
+                        try:
+                            if 'T' in valid_until_str:
+                                valid_until = datetime.fromisoformat(valid_until_str.replace('Z', '+00:00'))
+                                if valid_until.tzinfo:
+                                    valid_until = valid_until.replace(tzinfo=None)
+                            else:
+                                valid_until = datetime.strptime(valid_until_str[:10], "%Y-%m-%d")
+                            if valid_until < now:
+                                continue
+                        except Exception:
+                            pass
+                    
+                    publish_status = metadata.get("publish_status", "publicado")
+                    if publish_status in ["rascunho", "arquivado"]:
+                        continue
+                    
+                    priority = 0.1
+                    material_type = metadata.get("material_type", "")
+                    live_types = ["one_page", "atualizacao_taxas", "argumentos_comerciais"]
+                    if material_type in live_types:
+                        priority = 0.05
+                    
+                    documents.append({
+                        "content": doc,
+                        "metadata": metadata,
+                        "distance": priority,
+                        "original_distance": priority,
+                        "source": "ticker_metadata",
+                        "chroma_id": chroma_id
+                    })
+            
+            documents.sort(key=lambda x: x.get("distance", 0))
+            return documents
+            
+        except Exception as e:
+            print(f"[VECTOR_STORE] Erro ao buscar por ticker: {e}")
+            return []
+    
     def search_by_product(self, product_name: str, n_results: int = 10) -> List[dict]:
         """
         Busca TODOS os chunks que mencionam um produto específico.
-        Faz busca textual nos metadados, não semântica.
+        Primeiro tenta busca por ticker, depois fallback para busca textual.
         
         Args:
             product_name: Nome do produto para buscar
@@ -530,11 +654,17 @@ class VectorStore:
         Returns:
             Lista de documentos que mencionam o produto
         """
+        tickers = extract_tickers_from_query(product_name)
+        if tickers:
+            results = self.search_by_ticker(tickers[0], n_results)
+            if results:
+                return results
+        
         try:
             product_upper = product_name.upper().strip()
             
             results = self.collection.get(
-                where={"products": {"$contains": product_upper}},
+                where={"product_ticker": {"$eq": product_upper}},
                 limit=n_results
             )
             

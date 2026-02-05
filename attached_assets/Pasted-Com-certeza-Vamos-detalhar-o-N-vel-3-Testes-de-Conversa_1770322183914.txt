@@ -1,0 +1,88 @@
+Com certeza. Vamos detalhar o **Nível 3: Testes de Conversa (Avaliação Online com Humanos)**.
+
+Depois de validar que seu sistema de recuperação (RAG) está tecnicamente sólido com os testes offline (Nível 2), o Nível 3 foca em responder à pergunta mais importante: **"A conversa com o agente *parece* natural, inteligente e útil para um ser humano?"**.
+
+Este nível é menos sobre métricas numéricas e mais sobre a avaliação da qualidade da experiência do usuário (UX). É aqui que você descobre se o agente é um bom "atendente" de verdade.
+
+### O Objetivo do Nível 3
+
+O objetivo é avaliar o sistema de ponta a ponta (Interface do Usuário → Pergunta → RAG → LLM → Resposta → Interface do Usuário) em um fluxo de conversa contínuo e dinâmico. Queremos testar:
+
+*   **Compreensão Contextual:** O agente lembra do que foi dito anteriormente na conversa?
+*   **Robustez a Imprecisões:** Como ele lida com gírias, erros de digitação ou perguntas vagas?
+*   **Iniciativa e Clareza:** O agente faz perguntas para esclarecer ambiguidades? Suas respostas são fáceis de entender?
+*   **Gerenciamento de Tópico:** O agente consegue mudar de um assunto para outro (ex: de um fundo para outro) de forma coesa?
+
+### Passo a Passo para Estruturar os Testes de Conversa
+
+#### Passo 1: Preparar o Ambiente e os Testadores
+
+1.  **Ambiente de Teste:** Configure uma interface (pode ser um chat simples) onde os testadores possam interagir com o agente da forma mais próxima possível da experiência final do cliente.
+2.  **Selecionar os Testadores (Avaliadores Humanos):**
+    *   **Equipe Interna:** Pessoas do time de produto, engenharia ou negócios que conhecem o domínio.
+    *   **Usuários-Alvo (Ideal):** Se possível, recrute alguns investidores reais (iniciantes e experientes). Eles trarão uma perspectiva imparcial e farão perguntas que você talvez não tenha antecipado.
+3.  **Criar Personas e Cenários:** Não diga apenas "converse com o bot". Dê aos seus testadores um papel e um objetivo. Isso torna o teste mais realista e focado.
+
+    **Exemplo de Personas e Cenários:**
+
+    | Persona | Objetivo do Cenário | Exemplo de Diálogo Inicial |
+    | :--- | :--- | :--- |
+    | **"Investidor Iniciante"** | "Você ouviu falar de um fundo chamado 'Manatí' e quer entender se ele é bom para começar. Você não sabe o que é um 'hedge fund' e se preocupa com taxas." | *"Olá, um amigo me falou do MANA11. Pode me explicar o que é esse fundo? É seguro?"* |
+    | **"Analista Apressado"** | "Você precisa de dados específicos do MANA11 para um relatório e não tem tempo a perder. Você usa termos técnicos e espera respostas diretas." | *"Me passa o CNPJ, gestor, admin e taxa de perf do MANA11."* |
+    | **"Cliente Comparador"** | "Você já investe em outros fundos e quer comparar o MANA11 com um que você já conhece (ex: HGLG11) para decidir se vale a pena diversificar." | *"Qual foi a rentabilidade do MANA11 em 2025? E como isso se compara com a do HGLG11 no mesmo período?"* |
+
+#### Passo 2: Definir a Matriz de Avaliação Qualitativa
+
+Crie um formulário simples que os testadores preencherão após cada sessão de conversa. Isso estrutura o feedback e o torna comparável. A avaliação deve ser feita por conversa, não por pergunta individual.
+
+**Exemplo de Formulário de Feedback:**
+
+> **ID da Sessão:** `[Data]-[Persona]`
+> **Transcrição da Conversa:** `[Cole o diálogo completo aqui]`
+>
+> ---
+>
+> **Avalie de 1 (Muito Ruim) a 5 (Excelente):**
+>
+> 1.  **Relevância e Correção:** O agente forneceu informações corretas e relevantes para seus objetivos?
+>     `[ 1 ] [ 2 ] [ 3 ] [ 4 ] [ 5 ]`
+>     *Comentários:*
+>
+> 2.  **Compreensão de Contexto:** O agente lembrou de informações de perguntas anteriores? (ex: você disse "e a rentabilidade dele?" e ele entendeu que "ele" era o MANA11).
+>     `[ 1 ] [ 2 ] [ 3 ] [ 4 ] [ 5 ]`
+>     *Comentários:*
+>
+> 3.  **Naturalidade e Fluidez:** A conversa pareceu humana ou robótica e frustrante?
+>     `[ 1 ] [ 2 ] [ 3 ] [ 4 ] [ 5 ]`
+>     *Comentários:*
+>
+> 4.  **Completude:** A resposta do agente foi completa ou superficial? Ele usou todos os dados que pareciam estar disponíveis?
+>     `[ 1 ] [ 2 ] [ 3 ] [ 4 ] [ 5 ]`
+>     *Comentários:*
+>
+> ---
+>
+> **Perguntas Abertas:**
+>
+> *   **Qual foi o melhor momento da conversa? Por quê?**
+> *   **Qual foi o pior momento ou a maior frustração? Onde o agente falhou?**
+> *   **O agente fez algo inesperado (bom ou ruim)?**
+
+#### Passo 3: Executar as Sessões de Teste
+
+1.  **Briefing:** Explique a persona e o objetivo ao testador. Peça para ele "pensar em voz alta" durante a interação, verbalizando suas expectativas e frustrações em tempo real.
+2.  **Observação:** Grave a sessão (tela e áudio, se possível). Observe o comportamento do testador. Ele hesita? Ele reformula a pergunta várias vezes? Essas são pistas valiosas de que a busca ou a resposta não estão claras.
+3.  **Debriefing:** Logo após a sessão, passe pelo formulário de feedback com o testador para capturar suas impressões enquanto estão frescas.
+
+#### Passo 4: Analisar os Resultados e Iterar
+
+Depois de algumas sessões, você terá um rico conjunto de dados qualitativos.
+
+1.  **Procure por Padrões:**
+    *   O agente sempre falha ao responder sobre "taxas"? Talvez o chunk sobre taxas esteja mal formatado.
+    *   Todos os testadores acharam as respostas muito longas? Talvez o prompt do LLM precise ser ajustado para pedir mais concisão.
+    *   O agente se perde quando o usuário muda de assunto? Talvez seja necessário melhorar o gerenciamento de estado da conversa.
+2.  **Priorize as Correções:** Classifique os problemas encontrados por frequência e severidade. Uma falha de segurança ou fornecer um dado financeiro incorreto é mais grave do que uma resposta um pouco prolixa.
+3.  **Itere e Teste Novamente:** Faça as correções (seja no RAG, no prompt do LLM ou na própria interface) e realize uma nova rodada de testes para verificar se os problemas foram resolvidos e se novas falhas não foram introduzidas.
+
+Esta abordagem de testes com humanos é o "teste de fogo" final. Ela garante que a solução técnica que você construiu (Nível 1 e 2) se traduza em uma experiência de valor real para o cliente, tornando o agente um atendente eficaz e confiável.
