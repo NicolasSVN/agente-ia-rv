@@ -389,13 +389,21 @@ CLASSIFIQUE a mensagem em UMA das categorias:
 3. ESCOPO - Perguntas gerais sobre renda variável que não citam produto específico:
    "como funciona a estratégia de RV?", "quais setores estão aquecidos?", "o que é um FII?"
 
-4. ATENDIMENTO_HUMANO - Pedidos EXPLÍCITOS de atendimento humano, abrir chamado/ticket, falar com alguém:
-   "preciso de ajuda humana", "quero falar com alguém", "abre um chamado", "pode me transferir",
-   "preciso de atendimento", "chama um especialista", "quero suporte humano", "abre um ticket",
-   "preciso de um chamado", "cria um chamado", "abre chamado", "quero um ticket", "cria um ticket",
-   "preciso abrir um chamado", "me ajuda com um chamado", "ticket por favor"
+4. MERCADO - Perguntas sobre notícias, cotações, eventos, preços, fatos relevantes do mercado:
+   "o que aconteceu com a Petrobras hoje?", "qual a cotação do PETR4?", "como está o mercado?",
+   "quais as notícias de Vale?", "tem novidades sobre o IBOV?", "o que está acontecendo com ações?"
+   Use esta categoria para qualquer pergunta sobre DADOS EM TEMPO REAL ou NOTÍCIAS do mercado.
 
-5. FORA_ESCOPO - Perguntas fora do domínio: piadas, assuntos pessoais, outros temas NÃO relacionados a pedido de atendimento.
+5. PITCH - Pedido para criar texto de venda, pitch comercial, argumento de vendas para um produto:
+   "monta um pitch do TG Core", "cria um texto de venda para XPLG11", "me ajuda a vender TGRI"
+   EXTRAIR o produto mencionado.
+
+6. ATENDIMENTO_HUMANO - Pedidos EXPLÍCITOS de atendimento humano, abrir chamado/ticket, falar com alguém:
+   "preciso de ajuda humana", "quero falar com alguém", "abre um chamado", "pode me transferir",
+   "preciso de atendimento", "chama um especialista", "quero suporte humano", "abre um ticket"
+
+7. FORA_ESCOPO - APENAS piadas, assuntos pessoais, temas completamente não relacionados a finanças.
+   NÃO classifique perguntas sobre mercado, ações, fundos ou investimentos como FORA_ESCOPO.
 
 Retorne JSON: {"categoria": "XXXX", "produtos": ["PROD1", "PROD2"]}
 Se não houver produtos, retorne lista vazia.
@@ -404,10 +412,10 @@ Exemplos:
 "boa tarde" -> {"categoria": "SAUDACAO", "produtos": []}
 "qual o público do TG Core?" -> {"categoria": "DOCUMENTAL", "produtos": ["TG CORE"]}
 "como funciona renda variável?" -> {"categoria": "ESCOPO", "produtos": []}
+"o que aconteceu com a Petrobras?" -> {"categoria": "MERCADO", "produtos": ["PETROBRAS"]}
+"qual a cotação do PETR4?" -> {"categoria": "MERCADO", "produtos": ["PETR4"]}
+"monta um pitch do XPLG11" -> {"categoria": "PITCH", "produtos": ["XPLG11"]}
 "preciso de ajuda humana" -> {"categoria": "ATENDIMENTO_HUMANO", "produtos": []}
-"abre um chamado pra mim" -> {"categoria": "ATENDIMENTO_HUMANO", "produtos": []}
-"abre um ticket" -> {"categoria": "ATENDIMENTO_HUMANO", "produtos": []}
-"preciso de um chamado" -> {"categoria": "ATENDIMENTO_HUMANO", "produtos": []}
 "conta uma piada" -> {"categoria": "FORA_ESCOPO", "produtos": []}
 
 Retorne APENAS o JSON."""
@@ -787,6 +795,22 @@ O QUE STEVAN NUNCA FAZ:
 
 PROPÓSITO:
 Stevan existe para aumentar a eficiência do assessor e gerar mais valor ao cliente final por meio de informação correta, alinhada e bem estruturada.
+
+CAPACIDADE DE PITCH E TEXTOS DE VENDA:
+Quando o assessor pedir para montar um pitch, texto de venda ou argumento comercial para um produto:
+- Use o RACIONAL do produto (tese de investimento, diferenciais, contexto de mercado) para criar argumentos
+- Estruture de forma persuasiva mas técnica, adequada para apresentação a clientes
+- Inclua: gancho de abertura, principais diferenciais, números relevantes (rendimento, prazo, taxa), para quem é indicado
+- Mantenha tom profissional e convincente, sem exageros promocionais
+- Adapte o formato: para WhatsApp use texto mais curto e direto, para apresentações mais elaborado
+
+INFORMAÇÕES DE MERCADO EM TEMPO REAL:
+Quando o assessor perguntar sobre notícias, cotações, eventos ou fatos relevantes do mercado:
+- Use as informações obtidas da busca na web (se disponíveis) para responder
+- Sempre cite as FONTES das informações com nome do site e data
+- Seja objetivo e factual - não dê opiniões ou recomendações de compra/venda
+- Foque em FATOS: preços, eventos, anúncios, resultados, movimentações
+- Se não houver informação disponível, seja honesto e sugira que o assessor consulte diretamente as fontes de mercado
 
 IMPORTANTE - TICKERS/ATIVOS NÃO ENCONTRADOS:
 Quando um ticker ou ativo NÃO for encontrado na base de conhecimento:
@@ -1221,6 +1245,8 @@ REGRAS PARA INFORMAÇÕES DA INTERNET:
             )
         elif categoria == "FORA_ESCOPO":
             print(f"[OpenAI] Fora de escopo - NÃO consultando documentos")
+        elif categoria == "MERCADO":
+            print(f"[OpenAI] Categoria MERCADO - priorizando busca na web")
         elif vs:
             if extracted_products:
                 for product in extracted_products:
@@ -1345,7 +1371,7 @@ REGRAS PARA INFORMAÇÕES DA INTERNET:
         web_context = ""
         should_search_web, web_reason = self._should_web_search(context_documents, user_message)
         
-        if should_search_web and categoria not in ["SAUDACAO", "FORA_ESCOPO", "ATENDIMENTO_HUMANO"]:
+        if categoria == "MERCADO" or (should_search_web and categoria not in ["SAUDACAO", "FORA_ESCOPO", "ATENDIMENTO_HUMANO"]):
             print(f"[OpenAI] Ativando busca na web: {web_reason}")
             try:
                 from database.database import SessionLocal
