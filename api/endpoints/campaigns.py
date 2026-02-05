@@ -1960,6 +1960,9 @@ def build_assessor_variables(assessor: dict) -> dict:
     """
     variables = {}
     
+    print(f"[BUILD_VARS] Input assessor keys: {list(assessor.keys())}")
+    print(f"[BUILD_VARS] nome value: {assessor.get('nome', 'NOT_FOUND')}")
+    
     for key, value in assessor.items():
         str_value = str(value) if value is not None else ""
         variables[key] = str_value
@@ -1969,6 +1972,8 @@ def build_assessor_variables(assessor: dict) -> dict:
     variables["primeiro_nome"] = primeiro_nome
     variables["nome_assessor"] = str(nome) if nome else ""
     variables["assessor"] = str(nome) if nome else ""
+    
+    print(f"[BUILD_VARS] primeiro_nome calculated: '{primeiro_nome}' from nome: '{nome}'")
     
     telefone = assessor.get("telefone_whatsapp", "") or assessor.get("telefone", "")
     variables["telefone"] = str(telefone) if telefone else ""
