@@ -1673,7 +1673,7 @@ async def dispatch_campaign_stream(
     header_template = campaign.message_header or ""
     content_template = campaign.message_content_template or ""
     footer_template = campaign.message_footer or ""
-    use_blocks = bool(header_template.strip() or footer_template.strip())
+    use_blocks = bool(header_template.strip() or content_template.strip() or footer_template.strip())
     
     template_content = DEFAULT_TEMPLATE_CONTENT
     
@@ -1745,43 +1745,31 @@ async def dispatch_campaign_stream(
                 current_index += 1
                 
                 if use_blocks:
-                    nome = assessor_data.get("nome", "") or assessor_data.get("nome_assessor", "")
-                    primeiro_nome = str(nome).split()[0] if nome else ""
-                    block_vars = {
-                        "primeiro_nome": primeiro_nome,
-                        "nome": str(nome),
-                        "nome_assessor": str(nome),
-                        "codigo_ai": str(assessor_data.get("codigo_ai", "") or ""),
-                        "email": str(assessor_data.get("email", "") or ""),
-                        "telefone_whatsapp": str(assessor_data.get("telefone_whatsapp", "") or ""),
-                        "telefone": str(assessor_data.get("telefone", "") or ""),
-                        "unidade": str(assessor_data.get("unidade", "") or ""),
-                        "equipe": str(assessor_data.get("equipe", "") or ""),
-                        "broker_responsavel": str(assessor_data.get("broker_responsavel", "") or ""),
-                        "data_atual": datetime.now().strftime("%d/%m/%Y"),
-                    }
-                    for key, value in assessor_data.items():
-                        if key not in block_vars:
-                            block_vars[key] = str(value) if value is not None else ""
+                    variables = build_assessor_variables(assessor_data)
+                    
+                    custom_fields = assessor_data.get("custom_fields", {})
+                    for var_name, value in custom_fields.items():
+                        if var_name not in variables:
+                            variables[var_name] = str(value) if value else ""
                     
                     clients = assessor_data.get("clients", {})
                     if clients:
                         clients_block = build_clients_block(clients, content_line_template)
-                        block_vars["lista_clientes"] = clients_block
+                        variables["lista_clientes"] = clients_block
                     
                     message_parts = []
-                    header_rendered = replace_variables_generic(header_template, block_vars)
+                    header_rendered = replace_variables_generic(header_template, variables)
                     if header_rendered.strip():
                         message_parts.append(header_rendered.strip())
                     
                     content_main = content_template
                     if "{{lista_clientes}}" in content_main and clients:
-                        content_main = content_main.replace("{{lista_clientes}}", block_vars.get("lista_clientes", ""))
-                    content_rendered = replace_variables_generic(content_main, block_vars)
+                        content_main = content_main.replace("{{lista_clientes}}", variables.get("lista_clientes", ""))
+                    content_rendered = replace_variables_generic(content_main, variables)
                     if content_rendered.strip():
                         message_parts.append(content_rendered.strip())
                     
-                    footer_rendered = replace_variables_generic(footer_template, block_vars)
+                    footer_rendered = replace_variables_generic(footer_template, variables)
                     if footer_rendered.strip():
                         message_parts.append(footer_rendered.strip())
                     
