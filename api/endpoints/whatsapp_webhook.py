@@ -296,17 +296,14 @@ async def process_text_message(phone: str, message: str, db: Session, message_re
             print(f"[WEBHOOK] Conversa não encontrada para {phone}")
             return
         
-        conv_state = conversation.conversation_state or ConversationState.IDENTIFICATION_PENDING.value
+        # Bot NÃO responde apenas quando ticket_status = 'open' (atendimento humano ativo)
+        is_human_active = conversation.ticket_status == TicketStatusV2.OPEN.value
         
-        is_human_mode = (
-            conv_state == ConversationState.HUMAN_TAKEOVER.value or 
-            conversation.status == ConversationStatus.HUMAN_TAKEOVER.value
-        )
-        if is_human_mode:
-            print(f"[WEBHOOK] Conversa em HUMAN_TAKEOVER - bot não responde, aguardando humano")
+        if is_human_active:
+            print(f"[WEBHOOK] Ticket OPEN (atendimento humano ativo) - bot não responde")
             if message_record:
                 message_record.ai_response = None
-                message_record.ai_intent = "blocked_human_takeover"
+                message_record.ai_intent = "blocked_ticket_open"
                 db.commit()
             return
         
@@ -971,7 +968,10 @@ async def zapi_webhook(
         conversation = db.query(Conversation).filter(Conversation.lid == sender_lid).first()
     if not conversation and phone:
         conversation = db.query(Conversation).filter(Conversation.phone == phone).first()
-    is_human_takeover = conversation and conversation.status == ConversationStatus.HUMAN_TAKEOVER.value
+    
+    # Bot NÃO responde apenas quando ticket_status = 'open' (atendimento humano ativo)
+    # Em qualquer outro status (None, new, solved, closed), o bot responde normalmente
+    is_human_active = conversation and conversation.ticket_status == TicketStatusV2.OPEN.value
     
     message_type = get_message_type_zapi(payload)
     
@@ -1028,14 +1028,14 @@ async def zapi_webhook(
         print(f"[WEBHOOK] Erro ao salvar mensagem: {e}")
         message_record = None
     
-    if is_human_takeover:
-        print(f"[WEBHOOK] Conversa em modo humano, não respondendo automaticamente: {phone}")
+    if is_human_active:
+        print(f"[WEBHOOK] Ticket OPEN (atendimento humano ativo), não respondendo automaticamente: {phone}")
         return {
             "status": "received",
             "message_type": message_type,
             "message_id": message_record.id if message_record else None,
             "auto_response": False,
-            "reason": "human_takeover"
+            "reason": "ticket_open_human_active"
         }
     
     if message_type == MessageType.TEXT.value:
