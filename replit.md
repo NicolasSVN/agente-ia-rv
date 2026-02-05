@@ -20,7 +20,8 @@ A aplicação é construída usando FastAPI com arquitetura modular.
 
 **Implementações Técnicas:**
 - **Agente de IA (Stevan):** Integra OpenAI para chat e embeddings, configurável para personalidade, regras e parâmetros do modelo. Atua como um broker de suporte interno, explicando estratégias e produtos, e escalando para especialistas humanos.
-- **Busca Semântica (RAG V3.0 Aprimorado):** Utiliza ChromaDB e OpenAI text-embedding-3-large com ranking híbrido (vetor, recência, correspondência_exata). Chunks incluem contexto global.
+- **Busca Semântica (RAG V3.1 Aprimorado):** Utiliza ChromaDB e OpenAI text-embedding-3-large com ranking híbrido (vetor, recência, correspondência_exata). Chunks incluem contexto global. Detecção inteligente de ticker com variações (ex: "mana 11" → MANA11). Sistema de avaliação RAG (Nível 2) em `tests/rag_evaluation/` para medir qualidade de busca.
+- **Desambiguação de Gestora:** Quando usuário menciona uma gestora (ex: "Manatí", "TG Core") sem ticker específico, o sistema detecta automaticamente, lista os produtos disponíveis dessa gestora e pergunta qual o usuário deseja. Suporta respostas ordinais ("o primeiro", "segundo") e por nome/ticker.
 - **Resumos de Documentos por IA:** Geração automática de resumos conceituais e temas para cada documento usando GPT-4o-mini, armazenados no modelo de material.
 - **Transformador Semântico (Arquitetura de 3 Camadas):** Processa conteúdo através de extração técnica (GPT-4 Vision), modelo semântico (normalização de dados) e geração de chunks narrativos para indexação RAG.
 - **Consulta Externa de FIIs:** Busca automaticamente dados públicos de FIIs do FundsExplorer.com.br.

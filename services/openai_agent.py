@@ -996,6 +996,127 @@ REGRAS PARA INFORMAÇÕES DA INTERNET:
 5. SEJA TRANSPARENTE: Deixe claro quando a informação vem da internet e não da base oficial.
 """
     
+    def _check_pending_manager_selection(
+        self, 
+        user_message: str, 
+        conversation_history: Optional[List[dict]]
+    ) -> Optional[Tuple[str, bool, dict]]:
+        """
+        Verifica se o usuário está respondendo a uma pergunta de desambiguação de gestora.
+        
+        Se o histórico mostra que oferecemos múltiplos produtos de uma gestora,
+        detectamos qual produto o usuário escolheu e retornamos uma resposta
+        que força a busca por esse ticker específico.
+        """
+        if not conversation_history:
+            return None
+        
+        for hist in reversed(conversation_history[-4:]):
+            metadata = hist.get('metadata', {})
+            if metadata.get('intent') == 'manager_disambiguation':
+                pending_products = metadata.get('products', [])
+                if not pending_products:
+                    return None
+                
+                msg_lower = user_message.lower().strip()
+                msg_upper = user_message.upper().strip()
+                
+                ordinal_map = {
+                    'primeiro': 0, 'primeira': 0, '1': 0, 'o primeiro': 0, 'a primeira': 0,
+                    'segundo': 1, 'segunda': 1, '2': 1, 'o segundo': 1, 'a segunda': 1,
+                    'terceiro': 2, 'terceira': 2, '3': 2, 'o terceiro': 2, 'a terceira': 2,
+                    'quarto': 3, 'quarta': 3, '4': 3,
+                    'quinto': 4, 'quinta': 4, '5': 4,
+                }
+                
+                for ordinal, idx in ordinal_map.items():
+                    if ordinal in msg_lower and idx < len(pending_products):
+                        chosen = pending_products[idx]
+                        print(f"[OpenAI] Usuário escolheu produto por ordinal '{ordinal}': {chosen['ticker']}")
+                        return (
+                            f"__TICKER_OVERRIDE__{chosen['ticker']}",
+                            False,
+                            {"intent": "manager_selection_resolved", "selected_ticker": chosen['ticker']}
+                        )
+                
+                for product in pending_products:
+                    ticker = product.get('ticker', '')
+                    name = product.get('name', '')
+                    
+                    if ticker and (ticker in msg_upper or ticker.replace('11', ' 11') in msg_upper):
+                        print(f"[OpenAI] Usuário escolheu produto por ticker: {ticker}")
+                        return (
+                            f"__TICKER_OVERRIDE__{ticker}",
+                            False,
+                            {"intent": "manager_selection_resolved", "selected_ticker": ticker}
+                        )
+                    
+                    if name:
+                        name_words = [w for w in name.split() if len(w) > 3]
+                        if any(word.upper() in msg_upper for word in name_words[:2]):
+                            print(f"[OpenAI] Usuário escolheu produto pelo nome: {name} -> {ticker}")
+                            return (
+                                f"__TICKER_OVERRIDE__{ticker}",
+                                False,
+                                {"intent": "manager_selection_resolved", "selected_ticker": ticker}
+                            )
+                
+                break
+        
+        return None
+    
+    def _check_manager_disambiguation(
+        self, 
+        user_message: str
+    ) -> Optional[Tuple[str, bool, dict]]:
+        """
+        Verifica se a query menciona uma gestora sem ticker específico.
+        Se a gestora tem múltiplos produtos, pergunta qual o usuário quer.
+        """
+        vs = get_vector_store()
+        if not vs:
+            return None
+        
+        disambiguation = vs.detect_ambiguous_query(user_message)
+        
+        if not disambiguation:
+            return None
+        
+        if disambiguation['type'] == 'manager_single':
+            inferred_ticker = disambiguation['inferred_ticker']
+            print(f"[OpenAI] Gestora detectada com 1 produto: {inferred_ticker}")
+            return (
+                f"__MANAGER_SINGLE__{inferred_ticker}",
+                False,
+                {"intent": "manager_single_inferred", "inferred_ticker": inferred_ticker}
+            )
+        
+        if disambiguation['type'] == 'manager_ambiguous':
+            products = disambiguation['products']
+            manager = disambiguation['manager']
+            
+            product_list = []
+            for p in products:
+                product_list.append(f"• {p['ticker']} - {p['name']}")
+            
+            products_text = "\n".join(product_list)
+            
+            response = f"Encontrei {len(products)} ativos da {manager} na nossa base:\n\n{products_text}\n\nQual deles você quer saber mais?"
+            
+            print(f"[OpenAI] Gestora {manager} tem {len(products)} produtos - perguntando ao usuário")
+            
+            return (
+                response,
+                False,
+                {
+                    "intent": "manager_disambiguation",
+                    "manager": manager,
+                    "products": products
+                }
+            )
+        
+        return None
+    
     def _build_context(self, documents: List[dict]) -> str:
         """Constrói o contexto a partir dos documentos encontrados."""
         if not documents:
@@ -1195,6 +1316,30 @@ REGRAS PARA INFORMAÇÕES DA INTERNET:
         max_tokens = config.get("max_tokens", 500) if config else 500
         
         categoria, extracted_products = self._classify_message(user_message)
+        
+        pending_manager_selection = self._check_pending_manager_selection(user_message, conversation_history)
+        if pending_manager_selection:
+            response_text, should_ticket, context_info = pending_manager_selection
+            if response_text.startswith("__TICKER_OVERRIDE__"):
+                selected_ticker = context_info.get('selected_ticker')
+                if selected_ticker:
+                    user_message = f"fale sobre o {selected_ticker}"
+                    extracted_products = [selected_ticker]
+                    print(f"[OpenAI] Query substituída para buscar ticker: {selected_ticker}")
+            else:
+                return pending_manager_selection
+        
+        manager_disambiguation = self._check_manager_disambiguation(user_message)
+        if manager_disambiguation:
+            response_text, should_ticket, context_info = manager_disambiguation
+            if context_info.get('intent') == 'manager_single_inferred':
+                inferred_ticker = context_info.get('inferred_ticker')
+                if inferred_ticker:
+                    user_message = f"fale sobre o {inferred_ticker}"
+                    extracted_products = [inferred_ticker]
+                    print(f"[OpenAI] Ticker inferido automaticamente: {inferred_ticker}")
+            else:
+                return manager_disambiguation
         
         is_followup = self._is_followup_question(user_message)
         
