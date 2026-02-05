@@ -1745,36 +1745,20 @@ async def dispatch_campaign_stream(
                 current_index += 1
                 
                 if use_blocks:
-                    variables = build_assessor_variables(assessor_data)
+                    wrapper_parts = []
+                    if header_template.strip():
+                        wrapper_parts.append(header_template.strip())
                     
-                    custom_fields = assessor_data.get("custom_fields", {})
-                    for var_name, value in custom_fields.items():
-                        if var_name not in variables:
-                            variables[var_name] = str(value) if value else ""
+                    if content_template.strip() and "{{lista_clientes}}" in content_template:
+                        wrapper_parts.append(content_template.strip())
+                    else:
+                        wrapper_parts.append("{{lista_clientes}}")
                     
-                    clients = assessor_data.get("clients", {})
-                    if clients:
-                        clients_block = build_clients_block(clients, content_line_template)
-                        variables["lista_clientes"] = clients_block
+                    if footer_template.strip():
+                        wrapper_parts.append(footer_template.strip())
                     
-                    message_parts = []
-                    header_rendered = replace_variables_generic(header_template, variables)
-                    if header_rendered.strip():
-                        message_parts.append(header_rendered.strip())
-                    
-                    content_main = content_template
-                    if "{{lista_clientes}}" in content_main and clients:
-                        content_main = content_main.replace("{{lista_clientes}}", variables.get("lista_clientes", ""))
-                    content_rendered = replace_variables_generic(content_main, variables)
-                    if content_rendered.strip():
-                        message_parts.append(content_rendered.strip())
-                    
-                    footer_rendered = replace_variables_generic(footer_template, variables)
-                    if footer_rendered.strip():
-                        message_parts.append(footer_rendered.strip())
-                    
-                    message = "\n\n".join(message_parts)
-                    message = re.sub(r'\{\{[^}]+\}\}', '', message)
+                    wrapper_template = "\n\n".join(wrapper_parts)
+                    message = build_message(wrapper_template, assessor_data, custom_mapping, content_line_template)
                 else:
                     message = build_message(template_content, assessor_data, custom_mapping, content_line_template)
                 
