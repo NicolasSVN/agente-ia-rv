@@ -1,0 +1,29 @@
+{
+  "nome_completo": "Compra de Call Up and In",
+  "descricao_detalhada": "A estrutura de derivativos 'Call Up and In' oferecida pela XP Investimentos é uma estratégia que visa proporcionar ganhos em cenários de alta de um ativo subjacente. Esta estratégia é baseada na compra de uma opção de compra (Call) que só se torna ativa se o preço do ativo atingir um nível pré-determinado, conhecido como 'Knock-in'. Essa característica faz com que a 'Call Up and In' seja mais barata do que uma opção de compra tradicional, pois o prêmio pago é menor devido à condição adicional de ativação. O objetivo principal é capturar ganhos significativos quando há uma expectativa de alta acentuada no preço do ativo. O investidor que adquire essa estrutura participa dos ganhos acima de um preço de exercício específico, desde que o preço de Knock-in tenha sido atingido durante o período de vigência da opção. A estrutura é ideal para investidores com perfil moderado agressivo, que buscam maximizar seus retornos em cenários de alta, mas que também estão dispostos a aceitar o risco de perder o prêmio pago caso o preço de Knock-in não seja atingido. A estratégia não requer chamada de margem, o que a torna acessível para investidores que desejam limitar sua exposição ao risco. O ganho máximo é ilimitado, dependendo da alta do ativo, enquanto a perda máxima é limitada ao prêmio pago pela opção. O ponto de equilíbrio ocorre quando o preço final do ativo é igual ao preço de exercício mais o prêmio pago. Um exemplo hipotético apresentado no material ilustra a operação com o dólar, onde o investidor acredita na alta do dólar frente ao real e adquire uma opção de compra com preço de exercício e Knock-in definidos. A análise de cenários mostra que, se o Knock-in não for atingido, o investidor perde o prêmio pago, mas se for atingido, ele participa dos ganhos acima do preço de exercício.",
+  "objetivo": "Gerar ganhos em caso de alta significativa de um ativo.",
+  "perfil_investidor": "Moderado agressivo",
+  "cenario_ideal": "Expectativa de alta significativa no preço do ativo subjacente.",
+  "componentes": [
+    {
+      "instrumento": "Opção de compra (Call)",
+      "descricao": "Direito de comprar um ativo a um preço predeterminado, ativado apenas se o preço de Knock-in for atingido."
+    }
+  ],
+  "como_funciona": "O investidor compra uma opção de compra com um preço de exercício e um preço de Knock-in. A opção só pode ser exercida se o preço de Knock-in for atingido durante o período de vigência. No vencimento, se o preço do ativo estiver acima do preço de exercício, o investidor participa dos ganhos acima desse nível.",
+  "custo": "Prêmio pago pela opção, que é menor do que o de uma Call tradicional devido à condição de Knock-in.",
+  "riscos": "Perda do prêmio pago caso o preço de Knock-in não seja atingido.",
+  "ganho_maximo": "Ilimitado, dependendo da alta do ativo.",
+  "perda_maxima": "Prêmio pago na compra da opção.",
+  "breakeven": "Preço final do ativo igual ao preço de exercício mais o prêmio pago.",
+  "exemplo_numerico": "Investidor compra uma Call com strike de R$ 3,60 e Knock-in de R$ 4,20. Se o dólar atingir R$ 4,20, a opção é ativada. No vencimento, se o dólar estiver acima de R$ 3,60, o investidor participa dos ganhos.",
+  "payoff_descricao": "Participação nos ganhos acima do preço de exercício, desde que o Knock-in seja atingido.",
+  "observacoes": "Produto destinado a clientes com perfil de investimento moderado agressivo e agressivo.",
+  "palavras_chave": [
+    "Call Up and In",
+    "opção de compra",
+    "Knock-in",
+    "derivativos",
+    "XP Investimentos"
+  ]
+}

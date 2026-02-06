@@ -1,0 +1,33 @@
+{
+  "nome_completo": "Compra de Straddle",
+  "descricao_detalhada": "A Compra de Straddle é uma estratégia de derivativos utilizada quando se espera que um ativo subjacente apresente movimentos significativos, seja de alta ou de baixa. Essa estratégia envolve a compra simultânea de uma opção de compra (call) e uma opção de venda (put) com o mesmo preço de exercício e data de vencimento. O objetivo principal é lucrar com a volatilidade do ativo, independentemente da direção do movimento do preço. O investidor que adota essa estratégia acredita que o ativo subjacente terá uma oscilação significativa antes do vencimento das opções. Se o preço do ativo subir ou descer significativamente, o investidor pode obter um lucro considerável. No entanto, se o preço do ativo permanecer estável, o investidor pode incorrer em uma perda limitada ao prêmio pago pelas opções. A Compra de Straddle é particularmente útil em mercados onde se espera alta volatilidade, mas a direção do movimento do preço é incerta. A estratégia é considerada de risco moderado a agressivo, pois envolve a possibilidade de perda total do prêmio pago se o mercado não se mover conforme esperado. Além disso, não há chamada de margem, o que significa que o investidor não precisa fornecer garantias adicionais além do prêmio pago. O ganho máximo é ilimitado, pois o preço do ativo pode subir ou descer indefinidamente. A perda máxima é limitada ao prêmio pago pelas opções. O ponto de equilíbrio (breakeven) é alcançado quando o movimento do preço do ativo cobre o custo total do prêmio pago. A estratégia é ideal para investidores que esperam eventos de mercado que possam causar grandes oscilações nos preços dos ativos, como anúncios de resultados financeiros, mudanças regulatórias ou eventos macroeconômicos significativos.",
+  "objetivo": "Obter ganhos com movimentos significativos no preço de um ativo, independentemente da direção.",
+  "perfil_investidor": "Moderado a agressivo",
+  "cenario_ideal": "Mercado com alta volatilidade e possibilidade de movimentos significativos no preço do ativo.",
+  "componentes": [
+    {
+      "instrumento": "Opção de compra (Call)",
+      "descricao": "Direito de comprar um ativo a um preço predeterminado."
+    },
+    {
+      "instrumento": "Opção de venda (Put)",
+      "descricao": "Direito de vender um ativo a um preço predeterminado."
+    }
+  ],
+  "como_funciona": "O investidor compra uma opção de compra e uma opção de venda com o mesmo preço de exercício e vencimento, pagando um prêmio inicial. O ganho máximo é ilimitado, enquanto a perda máxima é limitada ao prêmio pago.",
+  "custo": "Limitado ao prêmio pago pelas opções.",
+  "riscos": "Perda total do prêmio pago se o mercado não se mover conforme esperado.",
+  "ganho_maximo": "Ilimitado",
+  "perda_maxima": "Limitada ao prêmio pago",
+  "breakeven": "Quando o movimento do preço do ativo cobre o custo total do prêmio pago.",
+  "exemplo_numerico": "Ação: YFZ. Preço inicial: R$ 10,00. Prêmio gasto: R$ 1,40. Ganho máximo: ilimitado. Perda máxima: R$ 1,40.",
+  "payoff_descricao": "O resultado financeiro depende do movimento do preço do ativo em relação ao preço de exercício das opções.",
+  "observacoes": "Produto destinado a clientes com perfil de investimento moderado a agressivo.",
+  "palavras_chave": [
+    "derivativos",
+    "opções",
+    "volatilidade",
+    "estratégia",
+    "investimento"
+  ]
+}

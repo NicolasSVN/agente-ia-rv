@@ -1,0 +1,29 @@
+{
+  "nome_completo": "Compra de Put Down and Out",
+  "descricao_detalhada": "A estrutura de derivativos 'Put Down and Out' é uma estratégia de investimento que envolve a compra de uma opção de venda (Put) com um mecanismo de 'knock-out'. Esta estratégia é projetada para investidores que esperam uma queda moderada no preço de um ativo subjacente. A principal característica desta estrutura é que ela permite ao investidor lucrar com a queda do ativo, desde que o preço de 'knock-out' não seja atingido durante o período de vigência da opção. Caso o preço do ativo atinja o nível de 'knock-out', o direito de venda é extinto, tornando a opção inválida. Isso faz com que a 'Put Down and Out' seja geralmente mais barata do que uma put tradicional, pois incorpora o risco de perda total do prêmio pago caso o 'knock-out' seja atingido. O objetivo é proteger o investidor contra quedas no preço do ativo abaixo de um determinado nível, enquanto limita o risco máximo à perda do prêmio pago pela opção. A estrutura é ideal para cenários onde se espera uma queda parcial do ativo, mas não uma queda acentuada que atinja o nível de 'knock-out'.",
+  "objetivo": "Gerar ganhos em caso de queda moderada de um ativo, sem atingir o preço de knock-out.",
+  "perfil_investidor": "Moderado a agressivo",
+  "cenario_ideal": "Expectativa de queda moderada no mercado, sem atingir o preço de knock-out.",
+  "componentes": [
+    {
+      "instrumento": "Opção de venda (Put)",
+      "descricao": "Direito de vender um ativo a um preço predeterminado, com um mecanismo de knock-out."
+    }
+  ],
+  "como_funciona": "O investidor compra uma opção de venda com um preço de exercício e um nível de knock-out. Se o preço do ativo cair abaixo do preço de exercício, mas não atingir o nível de knock-out, o investidor lucra com a diferença entre o preço de exercício e o preço final do ativo.",
+  "custo": "Prêmio pago pela opção, que é mais baixo devido ao risco de knock-out.",
+  "riscos": "Perda total do prêmio pago se o preço de knock-out for atingido.",
+  "ganho_maximo": "Diferença entre o preço de exercício e o preço de knock-out, menos o prêmio pago.",
+  "perda_maxima": "Prêmio pago pela opção.",
+  "breakeven": "Preço de exercício menos o prêmio pago.",
+  "exemplo_numerico": "Se o preço inicial do ativo XYZ é R$ 10,00, com um strike de R$ 10,00 e knock-out de R$ 8,00, e o prêmio pago é R$ 0,20, o investidor lucra se o preço final estiver abaixo de R$ 10,00 e acima de R$ 8,00.",
+  "payoff_descricao": "O payoff é positivo se o preço final do ativo estiver entre o preço de exercício e o nível de knock-out, menos o prêmio pago.",
+  "observacoes": "O encerramento antecipado pode resultar em um resultado diferente do esperado.",
+  "palavras_chave": [
+    "opção de venda",
+    "knock-out",
+    "derivativos",
+    "proteção",
+    "queda moderada"
+  ]
+}

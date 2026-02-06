@@ -1,0 +1,30 @@
+{
+  "nome_completo": "NDF - Termo de Moeda",
+  "descricao_detalhada": "NDF, ou Non-Deliverable Forward, é um contrato a termo de moedas negociado em mercado de balcão. Seu principal objetivo é fixar, antecipadamente, uma taxa de câmbio para uma data futura. No vencimento do contrato, a liquidação ocorre pela diferença entre a taxa a termo contratada e a taxa de mercado definida como referência. Este tipo de derivativo é amplamente utilizado por empresas que desejam proteger-se contra oscilações cambiais ou participar ativamente da variação de uma moeda. Importadores e exportadores frequentemente utilizam NDFs como instrumentos de hedge. As características principais incluem a negociação de valor, vencimento e preço futuro no início da operação, sem necessidade de desembolso inicial de caixa. Não há ajustes diários, apenas no vencimento, e há flexibilidade de valor e prazo. A liquidação é feita por ajuste financeiro, e há possibilidade de encerramento total ou parcial mediante acordo entre as partes. A chamada de margem é um aspecto importante, pois corresponde ao valor que a BM&FBovespa considera necessário para garantir a operação. Este valor é debitado diariamente e pode variar conforme a oscilação do mercado. A XP Investimentos pode exigir garantias adicionais para a manutenção da operação. A Carta Fiança pode ser utilizada como garantia para a chamada de margem, substituindo a retenção em dinheiro. O custo de alocação da Carta Fiança é debitado diretamente da conta do cliente. Este produto é destinado a clientes com perfil de investimento agressivo, que estejam cientes dos riscos envolvidos. A rentabilidade não é garantida e os custos operacionais estão disponíveis para consulta no site da XP Investimentos.",
+  "objetivo": "Fixar uma taxa de câmbio para uma data futura e proteger contra oscilações cambiais.",
+  "perfil_investidor": "Moderado-agressivo e Agressivo",
+  "cenario_ideal": "Proteção contra oscilações cambiais ou participação ativa na variação de uma moeda.",
+  "componentes": [
+    {
+      "instrumento": "Contrato a termo de moedas",
+      "descricao": "Negociado em mercado de balcão para fixar taxa de câmbio futura."
+    }
+  ],
+  "como_funciona": "O investidor trava uma taxa de câmbio para uma data futura. No início, define-se financeiro, vencimento e preço futuro. No vencimento, paga-se ou recebe-se ajuste com base na diferença entre a taxa contratada e a taxa de mercado.",
+  "custo": "Zero, mas há chamada de margem.",
+  "riscos": "Oscilações cambiais podem afetar o ajuste financeiro. Há risco de perda superior ao capital investido.",
+  "ganho_maximo": "Não especificado.",
+  "perda_maxima": "Não especificado, mas pode ser superior ao capital investido.",
+  "breakeven": "Quando a taxa de mercado no vencimento é igual à taxa contratada.",
+  "exemplo_numerico": "Empresa precisa pagar USD 500.000,00 em 15/09/2015. Trava taxa de compra a 3,20. Se dólar a 3,32, recebe ajuste de R$ 60.000,00.",
+  "payoff_descricao": "Ajuste financeiro com base na diferença entre taxa contratada e taxa de mercado no vencimento.",
+  "observacoes": "Produto destinado a investidores com perfil agressivo. Rentabilidade não garantida.",
+  "palavras_chave": [
+    "NDF",
+    "derivativos",
+    "câmbio",
+    "hedge",
+    "mercado de balcão",
+    "chamada de margem"
+  ]
+}

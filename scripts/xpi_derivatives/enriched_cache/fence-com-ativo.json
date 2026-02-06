@@ -1,0 +1,39 @@
+{
+  "nome_completo": "Fence com Ativo",
+  "descricao_detalhada": "A estrutura de derivativos 'Fence com Ativo' é uma estratégia utilizada para proteger o investidor que já possui um ativo ou deseja comprá-lo com proteção. Esta estrutura oferece uma defesa parcial da posição, geralmente a custo zero. O investidor garante proteção contra quedas significativas no preço do ativo, enquanto limita o ganho máximo a um determinado nível de preço. A estratégia é composta por três componentes principais: a compra de uma opção de venda (Put) próxima ao preço do ativo, a venda de uma opção de venda com strike inferior, e a venda de uma opção de compra (Call) fora do dinheiro. O objetivo é proteger o investidor em cenários de queda, enquanto permite participação em valorizações até um certo ponto. No vencimento, se o mercado cair, o investidor está protegido até determinado ponto, e em caso de alta, o ganho é limitado. A estrutura é ideal para cenários de mercado com possibilidade de queda, mas com potencial de alta moderada. O custo da estrutura é geralmente zero, pois a soma dos valores das opções compradas e vendidas tende a se equilibrar. No entanto, há riscos associados, como a chamada de margem, que pode oscilar durante a operação, e a possibilidade de perda ilimitada além de um certo ponto. O ganho máximo é limitado pela diferença entre o ponto C e o preço inicial do ativo, enquanto a perda máxima é ilimitada além do ponto A.",
+  "objetivo": "Proteger o investidor contra quedas significativas no preço do ativo, enquanto permite participação em valorizações até um certo ponto.",
+  "perfil_investidor": "Moderado Agressivo e Agressivo",
+  "cenario_ideal": "Cenários com possibilidade de queda do ativo, mas com potencial de alta moderada.",
+  "componentes": [
+    {
+      "instrumento": "Compra de Put Strike B",
+      "descricao": "Próxima ao preço do ativo, oferece proteção."
+    },
+    {
+      "instrumento": "Venda de Put Strike A",
+      "descricao": "Com strike inferior, limita a proteção."
+    },
+    {
+      "instrumento": "Venda de Call Strike C",
+      "descricao": "Fora do dinheiro, limita o ganho máximo."
+    }
+  ],
+  "como_funciona": "1. O investidor possui ou adquire o ativo. 2. Compra uma opção de venda (Put) próxima ao preço do ativo. 3. Vende uma opção de venda com strike inferior. 4. Vende uma opção de compra (Call) fora do dinheiro.",
+  "custo": "Normalmente a soma do valor das opções é zero, desconsiderando custos de corretagem e emolumentos.",
+  "riscos": "Perda ilimitada além do ponto A, chamada de margem variável, e necessidade de recomprar a call vendida se o preço ultrapassar o strike C.",
+  "ganho_maximo": "Diferença entre o ponto C e o preço inicial do ativo.",
+  "perda_maxima": "Ilimitada além do ponto A.",
+  "breakeven": "Não especificado diretamente, mas ocorre quando o preço do ativo está entre os strikes A e C.",
+  "exemplo_numerico": "Ação XYZ, preço inicial R$ 10,00, proteção de 20% até R$ 8,00, valorização de até 20% até R$ 12,00.",
+  "payoff_descricao": "O gráfico de payoff mostra proteção até o ponto B, ganho limitado até o ponto C, e perda ilimitada além do ponto A.",
+  "observacoes": "Este produto é destinado a clientes com perfil de investimento moderado agressivo e agressivo.",
+  "palavras_chave": [
+    "Fence",
+    "Proteção",
+    "Derivativos",
+    "Opções",
+    "Investimento",
+    "Risco",
+    "Ganho Limitado"
+  ]
+}

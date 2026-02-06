@@ -1,0 +1,44 @@
+{
+  "nome_completo": "Compra e Venda de Opções",
+  "descricao_detalhada": "Opções são instrumentos financeiros que conferem aos seus titulares o direito de comprar (Call) ou vender (Put) um ativo em uma data futura por um preço predeterminado. Este documento da XP Investimentos detalha as características e funcionamento das operações de compra e venda de opções, tanto de Calls quanto de Puts. A compra de uma Call oferece ao investidor o direito de adquirir o ativo objeto pelo preço de strike, sendo vantajosa em cenários de alta do ativo. Já a compra de uma Put é utilizada para proteção em cenários de queda, permitindo ao investidor vender o ativo pelo preço de strike. A venda de Calls e Puts, por outro lado, envolve a obrigação de vender ou comprar o ativo, respectivamente, caso o preço do ativo atinja o strike. Essas operações são utilizadas para gerar receita adicional ou para estratégias de hedge. O documento também aborda a importância da chamada de margem, que é a garantia exigida para a manutenção das operações, e como ela pode variar de acordo com a volatilidade do mercado. Além disso, são explicados termos técnicos como 'opção no dinheiro', 'opção dentro do dinheiro' e 'opção fora do dinheiro', que descrevem a relação entre o preço do ativo e o preço de exercício da opção. O material é destinado a investidores com perfil moderado agressivo e agressivo, e enfatiza a necessidade de uma análise cuidadosa dos riscos e características das operações antes de investir.",
+  "objetivo": "Fornecer informações detalhadas sobre a estrutura e funcionamento das operações de compra e venda de opções.",
+  "perfil_investidor": "Moderado agressivo e agressivo",
+  "cenario_ideal": "Cenários de alta volatilidade ou quando há expectativas claras sobre a direção do mercado.",
+  "componentes": [
+    {
+      "instrumento": "Compra de Call",
+      "descricao": "Direito de comprar o ativo objeto pelo strike."
+    },
+    {
+      "instrumento": "Compra de Put",
+      "descricao": "Direito de vender o ativo objeto pelo strike."
+    },
+    {
+      "instrumento": "Venda de Call",
+      "descricao": "Obrigação de vender o ativo objeto pelo strike."
+    },
+    {
+      "instrumento": "Venda de Put",
+      "descricao": "Obrigação de comprar o ativo objeto pelo strike."
+    }
+  ],
+  "como_funciona": "O investidor compra ou vende opções de acordo com suas expectativas de mercado. A compra de uma Call é vantajosa em cenários de alta, enquanto a compra de uma Put é útil para proteção em cenários de queda. A venda de Calls e Puts é utilizada para gerar receita adicional ou para estratégias de hedge.",
+  "custo": "Prêmio pago na compra de opções e possíveis chamadas de margem.",
+  "riscos": "Perda do prêmio pago, chamadas de margem, e potencial de perdas ilimitadas na venda de opções.",
+  "ganho_maximo": "Ilimitado na compra de Call; prêmio na venda de Call e Put.",
+  "perda_maxima": "Prêmio pago na compra de opções; ilimitada na venda de opções.",
+  "breakeven": "Preço final do ativo igual ao strike mais o prêmio pago na compra de Call; strike menos o prêmio na compra de Put.",
+  "exemplo_numerico": "Se o preço de exercício de uma Call é R$50 e o prêmio pago é R$5, o breakeven é R$55.",
+  "payoff_descricao": "O resultado financeiro da operação, que pode variar substancialmente no vencimento ou no encerramento antecipado.",
+  "observacoes": "O encerramento antecipado pode resultar em um resultado diferente do esperado para o vencimento.",
+  "palavras_chave": [
+    "opções",
+    "Call",
+    "Put",
+    "strike",
+    "prêmio",
+    "chamada de margem",
+    "hedge",
+    "volatilidade"
+  ]
+}

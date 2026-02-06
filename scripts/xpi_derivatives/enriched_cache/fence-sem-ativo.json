@@ -1,0 +1,36 @@
+{
+  "nome_completo": "Fence sem o Ativo",
+  "descricao_detalhada": "A estrutura de derivativos 'Fence sem o Ativo' é uma estratégia financeira utilizada por investidores que acreditam na queda de um ativo-objeto e estão dispostos a assumir riscos de perda em caso de alta. Nesta estratégia, o investidor busca garantir ganhos limitados na queda entre dois pontos específicos, enquanto a perda pode ser ilimitada a partir de um ponto mais alto. O investidor vende uma opção de compra (Call) fora do dinheiro e uma opção de venda (Put) fora do dinheiro para financiar a compra de uma Put mais próxima do preço do ativo. O objetivo é se beneficiar da queda do ativo entre dois pontos, enquanto a perda é ilimitada se o ativo ultrapassar o preço de exercício da Call. A estrutura é ideal para investidores com expectativa de queda moderada do ativo, mas que não desejam gastar recursos na compra de uma Put. O ganho máximo é a diferença entre os preços de exercício das opções Put, enquanto a perda máxima é ilimitada a partir do preço de exercício da Call. A operação pode envolver chamadas de margem, que podem oscilar durante a operação. O custo da estrutura geralmente é zero, desconsiderando custos de corretagem e emolumentos. A estratégia é destinada a investidores com perfil moderado agressivo e agressivo, e é importante que o investidor esteja ciente dos riscos envolvidos, incluindo a possibilidade de perdas ilimitadas e a necessidade de atender chamadas de margem.",
+  "objetivo": "Garantir ganhos limitados na queda de um ativo entre dois pontos específicos.",
+  "perfil_investidor": "Moderado agressivo e agressivo.",
+  "cenario_ideal": "Expectativa de queda moderada do ativo sem gastar recursos na compra de uma Put.",
+  "componentes": [
+    {
+      "instrumento": "Call",
+      "descricao": "Opção de compra fora do dinheiro."
+    },
+    {
+      "instrumento": "Put",
+      "descricao": "Opção de venda fora do dinheiro."
+    }
+  ],
+  "como_funciona": "O investidor vende uma Call e uma Put fora do dinheiro para financiar a compra de uma Put mais próxima do preço do ativo.",
+  "custo": "Normalmente zero, desconsiderando custos de corretagem e emolumentos.",
+  "riscos": "Perda ilimitada se o ativo ultrapassar o preço de exercício da Call.",
+  "ganho_maximo": "Diferença entre os preços de exercício das opções Put.",
+  "perda_maxima": "Ilimitada a partir do preço de exercício da Call.",
+  "breakeven": "Não especificado.",
+  "exemplo_numerico": "Se o preço inicial do ativo é R$ 10, ganhos são limitados a R$ 2,00 se o preço cair abaixo de R$ 10,00.",
+  "payoff_descricao": "O resultado final depende da variação do preço do ativo em relação aos preços de exercício das opções.",
+  "observacoes": "A operação pode envolver chamadas de margem e é importante estar ciente dos riscos.",
+  "palavras_chave": [
+    "derivativos",
+    "opções",
+    "Call",
+    "Put",
+    "queda do ativo",
+    "risco",
+    "ganho limitado",
+    "perda ilimitada"
+  ]
+}

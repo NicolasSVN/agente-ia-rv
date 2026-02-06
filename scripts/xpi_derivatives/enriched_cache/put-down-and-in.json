@@ -1,0 +1,29 @@
+{
+  "nome_completo": "Compra de Put Down and In",
+  "descricao_detalhada": "A estrutura de derivativos 'Put Down and In' oferecida pela XP Investimentos é uma estratégia que visa gerar ganhos em cenários de queda de um ativo subjacente. Esta estratégia envolve a compra de uma opção de venda (Put) que só se torna ativa se o preço do ativo atingir um nível pré-determinado, conhecido como 'Knock-in'. A principal vantagem desta estrutura é que ela permite ao investidor participar de quedas significativas no preço do ativo, mas a um custo menor do que uma opção de venda tradicional, devido à condição de ativação do Knock-in. O funcionamento da 'Put Down and In' é tal que o investidor compra uma opção de venda com um preço de exercício (strike) A, e participa positivamente da queda do ativo abaixo deste preço, desde que o nível de Knock-in tenha sido atingido em algum momento entre a compra e o vencimento da opção. Se o preço do ativo no vencimento for inferior ao strike A, o ganho do investidor será a diferença entre A e o preço final do ativo. No entanto, se o Knock-in não for atingido, a opção não será exercida, e a perda máxima será o prêmio pago pela opção. Esta estrutura é ideal para investidores que esperam uma queda significativa no preço do ativo e estão dispostos a assumir o risco de que a opção não seja ativada. O ganho máximo é ilimitado, enquanto a perda máxima é limitada ao prêmio pago. O ponto de equilíbrio (breakeven) ocorre quando o preço final do ativo é igual ao strike A menos o prêmio pago. Um exemplo hipotético apresentado no material ilustra um cenário onde o ativo XYZ tem um preço inicial de R$ 10, um Knock-in de R$ 8,50, e um prêmio pago de R$ 0,13. Se o Knock-in for atingido e o preço final for inferior a R$ 10, o investidor lucra com a diferença. Caso contrário, a perda é limitada ao prêmio. A estratégia é destinada a investidores com perfil moderado agressivo a agressivo.",
+  "objetivo": "Gerar ganhos em caso de queda significativa de um ativo.",
+  "perfil_investidor": "Moderado agressivo a agressivo.",
+  "cenario_ideal": "Quando há expectativa de queda significativa no mercado.",
+  "componentes": [
+    {
+      "instrumento": "Opção de venda (Put)",
+      "descricao": "Direito de vender um ativo a um preço predeterminado."
+    }
+  ],
+  "como_funciona": "O investidor compra uma opção de venda com um preço de exercício A. A opção só é exercida se o preço do ativo atingir o nível de Knock-in durante o período de vigência. Se o preço final do ativo for inferior ao strike A, o investidor ganha a diferença entre A e o preço final.",
+  "custo": "Prêmio pago pela opção.",
+  "riscos": "A opção pode não ser exercida se o Knock-in não for atingido, resultando na perda do prêmio pago.",
+  "ganho_maximo": "Ilimitado (A - Preço final - prêmio pago).",
+  "perda_maxima": "Prêmio pago pela opção.",
+  "breakeven": "Preço final do ativo igual a A menos o prêmio pago.",
+  "exemplo_numerico": "Ativo XYZ com preço inicial de R$ 10, Knock-in de R$ 8,50, prêmio de R$ 0,13. Se o Knock-in for atingido e o preço final for inferior a R$ 10, o investidor lucra com a diferença.",
+  "payoff_descricao": "O resultado final depende do preço do ativo no vencimento e se o Knock-in foi atingido.",
+  "observacoes": "O encerramento antecipado da operação pode resultar em um resultado diferente do esperado.",
+  "palavras_chave": [
+    "opção de venda",
+    "Knock-in",
+    "queda de mercado",
+    "derivativos",
+    "investimento agressivo"
+  ]
+}

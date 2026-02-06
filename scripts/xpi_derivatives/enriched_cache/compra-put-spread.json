@@ -1,0 +1,34 @@
+{
+  "nome_completo": "Compra de Put Spread",
+  "descricao_detalhada": "A estratégia de Compra de Put Spread, também conhecida como Trava de Baixa, é uma técnica utilizada por investidores que esperam uma queda moderada no preço de um ativo subjacente. Esta estratégia permite que o investidor participe dos ganhos resultantes da queda do ativo, ao mesmo tempo em que limita o risco máximo ao valor do prêmio pago. A estrutura é composta por duas operações principais: a compra de uma opção de venda (Put) com um preço de exercício mais alto e a venda de uma opção de venda com um preço de exercício mais baixo, ambas com o mesmo vencimento. O objetivo é reduzir o custo da operação, já que o prêmio recebido pela venda da Put A ajuda a compensar o prêmio pago pela compra da Put B. O ganho máximo é alcançado quando o preço do ativo no vencimento está entre os preços de exercício das duas opções, enquanto a perda máxima é limitada ao prêmio líquido pago. Esta estratégia é particularmente útil em cenários onde o investidor deseja proteger uma posição comprada ou especular sobre uma queda moderada no preço do ativo. Além disso, não há chamada de margem, o que torna a estratégia acessível para investidores com diferentes perfis de risco. No entanto, é importante considerar que o valor de mercado da estratégia antes do vencimento não é linear e pode ser influenciado por fatores como volatilidade e liquidez. O encerramento antecipado da operação pode resultar em um resultado diferente do esperado no vencimento.",
+  "objetivo": "Participar dos ganhos em uma queda moderada do ativo e limitar o risco máximo.",
+  "perfil_investidor": "Moderado-agressivo",
+  "cenario_ideal": "Expectativa de desvalorização moderada do ativo subjacente.",
+  "componentes": [
+    {
+      "instrumento": "Put B",
+      "descricao": "Compra de uma opção de venda com preço de exercício mais alto."
+    },
+    {
+      "instrumento": "Put A",
+      "descricao": "Venda de uma opção de venda com preço de exercício mais baixo."
+    }
+  ],
+  "como_funciona": "O investidor compra uma Put B e vende uma Put A com preço de exercício inferior e mesmo vencimento para reduzir o custo da estratégia.",
+  "custo": "Prêmio pago pela Put B menos o prêmio recebido pela Put A.",
+  "riscos": "Perda máxima limitada ao prêmio líquido pago.",
+  "ganho_maximo": "Diferença entre os preços de exercício das Puts menos o prêmio pago.",
+  "perda_maxima": "Prêmio líquido pago.",
+  "breakeven": "Preço do ativo no vencimento igual ao preço de exercício da Put B menos o prêmio pago.",
+  "exemplo_numerico": "Ação XYZ, preço inicial R$ 10, Put B strike 10, prêmio R$ 1, Put A strike 8, prêmio R$ 0,40, prêmio pago R$ 0,60.",
+  "payoff_descricao": "Ganho máximo ocorre quando o preço do ativo está entre os strikes das Puts no vencimento.",
+  "observacoes": "O encerramento antecipado pode resultar em um resultado diferente do esperado.",
+  "palavras_chave": [
+    "Put Spread",
+    "Trava de Baixa",
+    "Opções",
+    "Derivativos",
+    "Proteção",
+    "Especulação"
+  ]
+}

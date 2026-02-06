@@ -1,0 +1,28 @@
+{
+  "nome_completo": "Compra de Condor",
+  "descricao_detalhada": "A Compra de Condor é uma estratégia de derivativos utilizada para se beneficiar de um cenário em que há alta probabilidade de que o ativo objeto esteja dentro de um determinado intervalo de preço no vencimento. Essa estratégia envolve um desembolso inicial para a compra da estrutura, e caso no vencimento o ativo objeto se encontre no intervalo estabelecido, o investidor recebe de volta o valor investido mais um prêmio. A estratégia é composta por quatro opções com diferentes preços de exercício, sendo duas compradas e duas vendidas. O ganho máximo ocorre quando o ativo está entre os preços de exercício intermediários, enquanto a perda máxima é limitada ao prêmio pago. A estratégia é flexível, podendo ser utilizada em cenários de alta, baixa ou lateralização do mercado. Não há chamada de margem na maioria dos mercados, o que a torna acessível para investidores com diferentes perfis de risco. O valor de mercado da estratégia antes do vencimento não é linear, pois depende de fatores como volatilidade e liquidez. O encerramento antecipado pode resultar em um resultado diferente do esperado.",
+  "objetivo": "Beneficiar-se de cenários onde o ativo objeto está dentro de um intervalo de preço no vencimento.",
+  "perfil_investidor": "Moderado Agressivo e Agressivo",
+  "cenario_ideal": "Alta probabilidade de o ativo estar em um determinado intervalo de preço no vencimento.",
+  "componentes": [
+    "Compra de opções com strike A e D",
+    "Venda de opções com strike B e C"
+  ],
+  "como_funciona": "O investidor compra opções strike A e D, e vende opções B e C para o mesmo vencimento. Pode ser feito com puts ou calls, sem alteração no preço. O ganho máximo ocorre se o ativo estiver entre B e C, igual à diferença entre B e A, menos o prêmio pago. Se o ativo estiver abaixo de A ou acima de D, a perda máxima é o prêmio gasto.",
+  "custo": "Prêmio pago pelas opções compradas.",
+  "riscos": "Perda máxima limitada ao prêmio pago. O encerramento antecipado pode resultar em um resultado diferente do esperado.",
+  "ganho_maximo": "B - A - Prêmio gasto",
+  "perda_maxima": "Prêmio gasto",
+  "breakeven": "Quando o ativo está entre os preços de exercício intermediários.",
+  "exemplo_numerico": "Ativo XYZ, compra Condor 10 (A) | 10,50 (B) | 11,50 (C) | 12,00 (D). Prêmio pago: R$ 0,16. Ganho máximo: R$ 0,34 se XYZ estiver entre 10,50 e 11,50.",
+  "payoff_descricao": "O resultado é positivo se o ativo estiver entre os preços de exercício intermediários, caso contrário, a perda é limitada ao prêmio pago.",
+  "observacoes": "O valor de mercado da estratégia antes do vencimento não é linear. Recomenda-se análise dos fatores de risco.",
+  "palavras_chave": [
+    "Compra de Condor",
+    "Estratégia de derivativos",
+    "Opções",
+    "Ganho máximo",
+    "Perda máxima",
+    "Intervalo de preço"
+  ]
+}

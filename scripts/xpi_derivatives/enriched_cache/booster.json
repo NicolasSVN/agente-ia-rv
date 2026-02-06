@@ -1,0 +1,33 @@
+{
+  "nome_completo": "Booster - Participação Dobrada na Alta",
+  "descricao_detalhada": "O Booster é uma estrutura de derivativos utilizada para dobrar a participação na alta de um ativo, com um limitador de lucro máximo. Na queda do ativo, o investidor participa normalmente da variação negativa. A estrutura é composta por uma combinação de compra e venda de opções de compra (calls), onde o investidor compra uma call próxima ao preço do ativo e vende duas calls com strike superior. Isso permite que, no vencimento, se o mercado subir além de um determinado ponto, o investidor obtenha um ganho dobrado até um limite. A estrutura é ideal para cenários de valorização moderada, onde o investidor deseja acelerar o ganho, especialmente para aqueles que já possuem posições compradas em ações com prejuízo. O ganho máximo é limitado, enquanto a perda máxima é ilimitada, pois o investidor participa da variação negativa do ativo de forma linear. A chamada de margem pode oscilar durante a operação, e o custo da estrutura é geralmente zero, desconsiderando custos de corretagem e emolumentos.",
+  "objetivo": "Dobrar a participação na alta de um ativo com um limitador de lucro máximo.",
+  "perfil_investidor": "Moderado Agressivo e Agressivo",
+  "cenario_ideal": "Valorização moderada do ativo, onde se deseja acelerar o ganho.",
+  "componentes": [
+    {
+      "instrumento": "Compra de Call ATM",
+      "descricao": "Compra de uma opção de compra próxima ao preço do ativo."
+    },
+    {
+      "instrumento": "Venda de 2 Calls OTM",
+      "descricao": "Venda de duas opções de compra com strike superior."
+    }
+  ],
+  "como_funciona": "1. O investidor compra o ativo. 2. Compra uma opção de compra (Call Strike A) próxima ao preço do ativo. 3. Vende duas opções de compra com Strike superior. 4. No vencimento, se o mercado subir além de B, há entrega da ação, com o mesmo efeito de a ação estar no preço C, o dobro de alta em relação a B.",
+  "custo": "Normalmente a soma do valor das opções é zero, desconsiderando custos de corretagem e emolumentos.",
+  "riscos": "Participação na variação negativa do ativo de forma linear. Chamada de margem pode oscilar.",
+  "ganho_maximo": "(B - A) x 2",
+  "perda_maxima": "Ilimitada, participação de 1 para 1 na variação negativa do ativo.",
+  "breakeven": "Não especificado diretamente.",
+  "exemplo_numerico": "Ação: XYZ, Preço Inicial: R$ 10 em Maio/2016, Vencimento: Dez/16. Alta: Participação de 2x na alta, limitado a 40%. Queda: Participação de 1 para 1 na variação negativa.",
+  "payoff_descricao": "O gráfico de payoff mostra que o ganho é dobrado até um ponto máximo, após o qual se estabiliza, enquanto a perda é linear na queda.",
+  "observacoes": "Produto destinado a clientes com perfil de investimento agressivo. A chamada de margem é variável e pode aumentar ou diminuir conforme a oscilação do mercado.",
+  "palavras_chave": [
+    "Booster",
+    "Participação Dobrada",
+    "Derivativos",
+    "Opções",
+    "Chamada de Margem"
+  ]
+}

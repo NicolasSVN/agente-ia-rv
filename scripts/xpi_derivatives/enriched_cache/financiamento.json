@@ -1,0 +1,29 @@
+{
+  "nome_completo": "Financiamento",
+  "descricao_detalhada": "O Financiamento é uma estratégia tradicional no mercado de renda variável que envolve a venda coberta de uma opção de compra. Seu principal objetivo é otimizar a carteira, oferecendo proteção parcial contra quedas e permitindo operações de taxa. A estratégia é utilizada por investidores que já possuem ações e desejam aliviar o custo de carregamento ou proteger suas posições. Além disso, é uma alternativa para investidores que compram ações com o objetivo de realizar a estratégia, buscando obter lucros acima das taxas de juros. A operação envolve a venda de uma opção de compra, geralmente com um strike superior ao preço atual da ação. Isso aumenta o prêmio recebido, oferecendo proteção contra quedas e aumentando a probabilidade de exercício. A estratégia assume o risco de entrega da ação caso o preço esteja acima do strike no vencimento. O ganho máximo é o prêmio recebido pela venda, enquanto a perda máxima é limitada à diferença entre o preço atual e o prêmio recebido. A chamada de margem é um fator a ser considerado, pois pode oscilar durante a operação. O exemplo hipotético apresentado ilustra a compra de uma ação XYZ por R$ 10,00 e a venda de uma call com o mesmo strike. O prêmio recebido é de R$ 0,90, e a taxa de juros prevista para o período é de 4%. Em caso de alta, a ação é vendida pelo preço de exercício, resultando em um ganho máximo de 9,8%. Em caso de queda, o investidor participa da queda, mas mantém o prêmio recebido como proteção, melhorando o preço médio de aquisição. A análise de cenários mostra variações de ganho e perda dependendo da variação do preço da ação no vencimento. A estrutura antes do vencimento não é linear, e o encerramento antecipado pode resultar em um resultado diferente do esperado. A chamada de margem é debitada diariamente e pode aumentar ou diminuir conforme a oscilação do mercado. A XP Investimentos oferece a possibilidade de alocação de Carta Fiança para cobrir a chamada de margem, conforme previsto na legislação.",
+  "objetivo": "Otimização da carteira, proteção parcial contra quedas e operações de taxa.",
+  "perfil_investidor": "Moderado Agressivo e Agressivo",
+  "cenario_ideal": "Investidores que já possuem ações e desejam aliviar o custo de carregamento ou proteger suas posições.",
+  "componentes": [
+    {
+      "instrumento": "Opção de compra (Call)",
+      "descricao": "Venda coberta de uma opção de compra com strike superior ao preço atual."
+    }
+  ],
+  "como_funciona": "O investidor vende uma opção de compra, geralmente com strike superior ao preço atual, aumentando o prêmio recebido e a proteção contra quedas.",
+  "custo": "Os custos operacionais estão disponíveis para consulta no site da XP Investimentos.",
+  "riscos": "Risco de entrega da ação caso o preço esteja acima do strike no vencimento e chamada de margem variável.",
+  "ganho_maximo": "Prêmio recebido pela venda.",
+  "perda_maxima": "Perda ilimitada abaixo do preço atual menos o prêmio recebido.",
+  "breakeven": "Preço atual menos o prêmio recebido.",
+  "exemplo_numerico": "Compra de ação XYZ por R$ 10,00, venda de call com mesmo strike, prêmio de R$ 0,90, taxa de juros de 4%.",
+  "payoff_descricao": "Resultado da operação varia conforme a variação do preço da ação no vencimento.",
+  "observacoes": "Produto destinado a clientes com perfil de investimento agressivo.",
+  "palavras_chave": [
+    "Financiamento",
+    "Opção de compra",
+    "Proteção",
+    "Chamada de margem",
+    "Carta Fiança"
+  ]
+}

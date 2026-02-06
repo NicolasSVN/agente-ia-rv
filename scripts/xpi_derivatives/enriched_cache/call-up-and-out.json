@@ -1,0 +1,35 @@
+{
+  "nome_completo": "Compra de Call Up and Out",
+  "descricao_detalhada": "A estrutura de derivativos 'Call Up and Out' é uma estratégia de investimento que envolve a compra de uma opção de compra (Call) com a adição de uma barreira de knock-out. Esta estrutura é projetada para investidores que buscam participar de uma alta moderada no preço de um ativo subjacente, mas com um custo menor em comparação com uma opção de compra tradicional. A principal característica do 'Call Up and Out' é que ele permite ganhos na alta do ativo até que o preço atinja um nível pré-determinado de knock-out. Se o preço do ativo atingir ou ultrapassar esse nível de knock-out em qualquer momento antes do vencimento, a opção é anulada e o investidor perde o prêmio pago pela opção. Essa estrutura é ideal para cenários onde o investidor acredita que o ativo subjacente irá subir, mas não atingirá o nível de knock-out. O ganho máximo é limitado à diferença entre o preço final do ativo e o preço de exercício, menos o prêmio pago, enquanto a perda máxima é limitada ao prêmio pago pela opção. Não há chamada de margem, o que significa que o investidor não precisa fornecer garantias adicionais além do prêmio pago. O 'Call Up and Out' é adequado para investidores com perfil moderado a agressivo, que estão confortáveis com o risco de perder o prêmio pago em troca de uma participação potencialmente lucrativa na alta do ativo subjacente. A estrutura é mais barata do que uma call tradicional devido à presença da barreira de knock-out, que limita o potencial de ganho, mas também reduz o custo inicial da opção.",
+  "objetivo": "Gerar ganhos em caso de alta moderada de um ativo.",
+  "perfil_investidor": "Moderado a agressivo.",
+  "cenario_ideal": "Alta moderada do ativo sem atingir o preço de knock-out.",
+  "componentes": [
+    {
+      "instrumento": "Opção de compra (Call)",
+      "descricao": "Direito de comprar um ativo a um preço predeterminado."
+    },
+    {
+      "instrumento": "Barreira de knock-out",
+      "descricao": "Nível de preço que, se atingido, anula a opção."
+    }
+  ],
+  "como_funciona": "O investidor compra uma opção de compra com um preço de exercício e uma barreira de knock-out. Se o preço do ativo subir acima do preço de exercício, mas não atingir a barreira de knock-out, o investidor lucra com a diferença entre o preço final e o preço de exercício, menos o prêmio pago.",
+  "custo": "Prêmio pago pela opção.",
+  "riscos": "Perda do prêmio pago se a barreira de knock-out for atingida.",
+  "ganho_maximo": "Diferença entre o preço final do ativo e o preço de exercício, menos o prêmio pago.",
+  "perda_maxima": "Prêmio pago pela opção.",
+  "breakeven": "Preço final do ativo igual ao preço de exercício mais o prêmio pago.",
+  "exemplo_numerico": "Investidor compra uma call com strike de 3,60 e knock-out de 4,00. Se o preço final for 3,75, o ganho é de 0,15 por unidade, menos o prêmio pago.",
+  "payoff_descricao": "Ganho limitado pela barreira de knock-out, perda limitada ao prêmio pago.",
+  "observacoes": "Estrutura não linear, encerramento antecipado pode resultar em resultados diferentes.",
+  "palavras_chave": [
+    "opção de compra",
+    "knock-out",
+    "derivativos",
+    "investimento moderado",
+    "risco",
+    "prêmio",
+    "payoff"
+  ]
+}

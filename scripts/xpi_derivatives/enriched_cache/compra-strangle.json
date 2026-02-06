@@ -1,0 +1,34 @@
+{
+  "nome_completo": "Compra de Strangle",
+  "descricao_detalhada": "A Compra de Strangle é uma estratégia de derivativos utilizada quando se acredita em movimentos intensos para um ativo, seja de alta ou de queda. Nesta estrutura, o investidor faz um investimento inicial na compra de opções de compra e de venda de um ativo, com o objetivo de obter ganhos após movimentos significativos no mercado ou, no vencimento, caso o ativo esteja acima ou abaixo dos pontos predeterminados. A estratégia é composta por duas opções: uma opção de compra (Call) e uma opção de venda (Put), ambas fora do dinheiro. O investidor espera que o ativo subjacente se mova significativamente em qualquer direção, permitindo que uma das opções se valorize o suficiente para cobrir o custo da outra e gerar lucro. O ganho máximo é ilimitado, ocorrendo quando o preço do ativo está acima do ponto B' ou abaixo do ponto A'. A perda máxima é limitada ao prêmio pago pelas opções. Não há chamada de margem, o que significa que o investidor não precisa depositar garantias adicionais. A estratégia é ideal para cenários de alta volatilidade, onde se espera que o ativo subjacente tenha grandes oscilações de preço. O encerramento antecipado é possível, permitindo que o investidor realize lucros antes do vencimento se o mercado se mover conforme esperado. No entanto, o valor de mercado da estratégia antes do vencimento não é linear, pois a precificação das opções depende de fatores como volatilidade e liquidez. O encerramento antecipado pode resultar em um resultado significativamente diferente do esperado para o vencimento.",
+  "objetivo": "Obter ganhos após movimentos significativos no mercado.",
+  "perfil_investidor": "Moderado-agressivo e Agressivo",
+  "cenario_ideal": "Cenários com possibilidade de movimentos intensos de mercado, de alta ou queda do ativo objeto.",
+  "componentes": [
+    {
+      "instrumento": "Opção de compra (Call)",
+      "descricao": "Direito de compra de um ativo em uma data futura, a um preço predeterminado."
+    },
+    {
+      "instrumento": "Opção de venda (Put)",
+      "descricao": "Direito de venda de um ativo em uma data futura, a um preço predeterminado."
+    }
+  ],
+  "como_funciona": "O investidor compra uma opção de compra (Call Strike B) e uma opção de venda (Put Strike A), ambas fora do dinheiro, pagando prêmio inicial.",
+  "custo": "Prêmio pago pelas opções.",
+  "riscos": "Perda máxima limitada ao prêmio gasto na compra das opções.",
+  "ganho_maximo": "Ilimitado acima de B' e abaixo de A'.",
+  "perda_maxima": "Limitada ao prêmio gasto na compra da estratégia.",
+  "breakeven": "Ponto B': Strike B + prêmio pago; Ponto A': Strike A - prêmio pago.",
+  "exemplo_numerico": "Ação: YFZ. Operação: Adquire a Put strike 8,50 (A) e a Call strike 12,00 (B). Preço Inicial: 10,00. Vencimento: Junho/16. Prêmio gasto: R$ 0,25. Alta: Ganho a partir de 12,25. Baixa: Abaixo de 8,25.",
+  "payoff_descricao": "O resultado final da operação pode variar substancialmente no vencimento ou no encerramento antecipado.",
+  "observacoes": "Este produto é destinado a clientes com perfil de investimento moderado agressivo e agressivo.",
+  "palavras_chave": [
+    "derivativos",
+    "opções",
+    "compra de strangle",
+    "volatilidade",
+    "ganho ilimitado",
+    "perda limitada"
+  ]
+}

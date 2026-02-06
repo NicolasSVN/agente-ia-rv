@@ -1,0 +1,30 @@
+{
+  "nome_completo": "Compra de Borboleta (FLY)",
+  "descricao_detalhada": "A estratégia de Compra de Borboleta, também conhecida como Fly, é uma técnica utilizada no mercado de derivativos para capitalizar em cenários onde se espera que o preço de um ativo permaneça dentro de um intervalo específico até o vencimento. Esta estratégia é composta por três opções: duas compradas e uma vendida em dobro, todas com diferentes preços de exercício. O objetivo principal é obter lucro quando o preço do ativo subjacente está próximo ao preço de exercício central no vencimento. A estrutura é geralmente de curto prazo e oferece um desembolso inicial relativamente baixo. O investidor se beneficia se o ativo permanecer dentro do intervalo estabelecido, recebendo de volta o valor investido mais um prêmio. A estratégia é versátil, podendo ser utilizada em cenários de alta, baixa ou lateralização do mercado. O ganho máximo ocorre quando o preço do ativo no vencimento é igual ao preço de exercício central, enquanto a perda máxima é limitada ao prêmio pago. Não há chamada de margem na maioria dos mercados para esta estratégia. A operação pode ser feita com opções de compra (calls) ou de venda (puts), sem alteração no preço. O encerramento antecipado da operação pode resultar em um resultado diferente do esperado.",
+  "objetivo": "Capitalizar em cenários onde o preço do ativo subjacente permanece dentro de um intervalo específico até o vencimento.",
+  "perfil_investidor": "Moderado-agressivo e Agressivo",
+  "cenario_ideal": "Alta probabilidade de o ativo estar dentro de um determinado intervalo de preço no vencimento.",
+  "componentes": [
+    "Compra de opções strike A",
+    "Venda dobrada de opções strike B",
+    "Compra de opções strike C"
+  ],
+  "como_funciona": "O investidor compra opções com strikes A e C e vende em dobro opções com strike B. O ganho máximo ocorre se o preço do ativo for igual a B no vencimento, enquanto a perda máxima é limitada ao prêmio pago.",
+  "custo": "Prêmio pago na entrada da operação.",
+  "riscos": "Perda máxima limitada ao prêmio pago. O encerramento antecipado pode resultar em resultados diferentes do esperado.",
+  "ganho_maximo": "Diferença entre B e A, menos o prêmio pago.",
+  "perda_maxima": "Prêmio gasto.",
+  "breakeven": "Preços de exercício A e C ajustados pelo prêmio pago.",
+  "exemplo_numerico": "Ativo XYZ, com operações em strikes 10,50 (A), 11,00 (B) e 11,50 (C). Prêmio pago de R$ 0,09 por unidade. Ganho máximo de R$ 0,41 se o preço for R$ 11,00 no vencimento.",
+  "payoff_descricao": "O resultado da operação varia conforme o preço do ativo no vencimento, com ganho máximo no preço central e perda máxima fora do intervalo.",
+  "observacoes": "O valor de mercado da estratégia antes do vencimento não é linear e depende de fatores como volatilidade e liquidez.",
+  "palavras_chave": [
+    "Derivativos",
+    "Opções",
+    "Estratégia de Borboleta",
+    "Fly",
+    "Investimento",
+    "Ganho Máximo",
+    "Perda Máxima"
+  ]
+}

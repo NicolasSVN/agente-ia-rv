@@ -1,0 +1,51 @@
+{
+  "nome_completo": "Compra de Condor com Venda de Strangle",
+  "descricao_detalhada": "A estratégia de Compra de Condor com Venda de Strangle é uma abordagem utilizada por investidores que buscam se beneficiar de cenários onde há baixa probabilidade de grandes variações no preço de um ativo. Essa estrutura é composta por uma combinação de opções que permite ao investidor receber um prêmio caso o ativo se mantenha dentro de um intervalo de preço predeterminado até o vencimento da operação. A estratégia é ideal para mercados laterais, onde se espera que o ativo não sofra movimentos bruscos. O investidor compra e vende opções de compra (calls) e venda (puts) em diferentes preços de exercício, criando um intervalo onde o ganho é maximizado. O ganho máximo ocorre quando o preço do ativo no vencimento está entre os preços de exercício das opções vendidas. No entanto, se o preço do ativo ultrapassar os limites do intervalo estabelecido, as perdas podem ser ilimitadas, exigindo uma gestão cuidadosa do risco. A chamada de margem é um aspecto importante, pois a margem necessária pode variar durante a operação, dependendo das condições de mercado. A XP Investimentos oferece suporte para a alocação de garantias, como a Carta Fiança, para cobrir as chamadas de margem. A estratégia é complexa e requer um entendimento detalhado dos riscos e das condições de mercado, sendo mais adequada para investidores com perfil agressivo que estão dispostos a assumir riscos significativos em troca de potenciais retornos.",
+  "objetivo": "Remunerar a carteira do investidor em cenários de baixa volatilidade.",
+  "perfil_investidor": "Agressivo",
+  "cenario_ideal": "Mercado lateral com baixa probabilidade de grandes variações de preço.",
+  "componentes": [
+    {
+      "instrumento": "Call B",
+      "descricao": "Compra de opção de compra."
+    },
+    {
+      "instrumento": "Call C",
+      "descricao": "Venda de opção de compra."
+    },
+    {
+      "instrumento": "Call D",
+      "descricao": "Venda de opção de compra."
+    },
+    {
+      "instrumento": "Call E",
+      "descricao": "Compra de opção de compra."
+    },
+    {
+      "instrumento": "Put A",
+      "descricao": "Venda de opção de venda."
+    },
+    {
+      "instrumento": "Call F",
+      "descricao": "Venda de opção de compra."
+    }
+  ],
+  "como_funciona": "O investidor compra e vende opções de compra e venda em diferentes preços de exercício, criando um intervalo de preço onde o ganho é maximizado.",
+  "custo": "Prêmio recebido à vista, se houver.",
+  "riscos": "Perdas ilimitadas se o preço do ativo ultrapassar os limites do intervalo.",
+  "ganho_maximo": "C - B + Prêmio recebido à vista, se houver.",
+  "perda_maxima": "Ilimitada",
+  "breakeven": "G = A - Prêmio à vista, se houver; H = F + Prêmio à vista, se houver.",
+  "exemplo_numerico": "Investidor acredita que XYZ estará entre 50 e 60 mil pontos no vencimento. Compra o condor 49 | 50 | 60 | 61 e financia a estratégia com a venda de uma Put 46 e uma Call 62 mil pontos. Nível inicial: 53 mil pontos em abril/16. Prêmio recebido à vista: 200 pontos por contrato. Vencimento: Ago/16. Ganho: R$ 1200 por contrato, entre 50 e 60 mil. Perda: ilimitada, de mil pontos por contrato a cada mil pontos acima de 62 mil ou abaixo de 46 mil pontos.",
+  "payoff_descricao": "O resultado final da operação pode variar substancialmente no vencimento ou no encerramento antecipado.",
+  "observacoes": "O valor de mercado da estratégia antes do vencimento não é linear e pode ser afetado por diversos fatores, como volatilidade e liquidez.",
+  "palavras_chave": [
+    "Condor",
+    "Strangle",
+    "Opções",
+    "Derivativos",
+    "Investimento Agressivo",
+    "Chamada de Margem",
+    "Carta Fiança"
+  ]
+}

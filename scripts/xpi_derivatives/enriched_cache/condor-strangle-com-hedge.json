@@ -1,0 +1,40 @@
+{
+  "nome_completo": "Compra de Condor e Venda de Strangle com hedge",
+  "descricao_detalhada": "A compra de condor com venda de strangle é uma estratégia utilizada para se beneficiar de um cenário no qual se atribua baixa probabilidade de grandes variações do preço de um ativo em um determinado período. Nessa estrutura, o investidor recebe um prêmio caso o ativo se encontre dentro de um intervalo predeterminado de preço no vencimento da operação. Haverá perdas se o ativo objeto estiver fora do intervalo do Strangle, limitadas por um hedge parcial. Essa operação estruturada combina três estratégias: compra de condor, venda de strangle e hedge parcial. O Condor consiste em uma operação com 4 opções distintas no qual o investidor acredita que o ativo base da opção estará dentro de um intervalo de preço determinado. O Strangle, por sua vez, consiste na venda de duas opções distintas, ambas fora do dinheiro, de forma a financiar a compra do Condor. O Hedge, por fim, consiste em uma segunda operação de Strangle, executada de forma a limitar a perda nas operações anteriores. No total são oito opções distintas - 4 compradas e 4 vendidas. O ganho se dá caso no vencimento o ativo esteja entre D e E, e será igual à diferença entre D e C. Entre os pontos B e C e os pontos F e G, estrutura no zero. Perdas abaixo de B ou acima de G, limitadas.",
+  "objetivo": "Beneficiar-se de cenários com baixa probabilidade de grandes variações de preço.",
+  "perfil_investidor": "Moderado-agressivo e Agressivo",
+  "cenario_ideal": "Mercado lateral com baixa probabilidade de movimentos intensos.",
+  "componentes": [
+    {
+      "instrumento": "Compra de Condor",
+      "descricao": "Operação com 4 opções distintas dentro de um intervalo de preço."
+    },
+    {
+      "instrumento": "Venda de Strangle",
+      "descricao": "Venda de duas opções distintas fora do dinheiro."
+    },
+    {
+      "instrumento": "Hedge parcial",
+      "descricao": "Segunda operação de Strangle para limitar perdas."
+    }
+  ],
+  "como_funciona": "O investidor compra um Condor (compra de C, venda de D, venda de E, compra de F) e vende um Strangle (venda de call G e de put B), além de comprar um strangle mais aberto (compra de Call H e put A).",
+  "custo": "Pode ser custo zero, mas pode haver custos de corretagem e emolumentos sobre as opções.",
+  "riscos": "Perdas abaixo de B ou acima de G, limitadas. Chamada de margem pode oscilar durante a operação.",
+  "ganho_maximo": "D - C",
+  "perda_maxima": "B - A",
+  "breakeven": "Entre os pontos B e C e os pontos F e G.",
+  "exemplo_numerico": "Índice XYZ, nível inicial R$ 10,00, vencimento em outubro/16. Ganho máximo de R$ 0,50 entre 9,50 e 10,50. Perda acima de 11,50 ou abaixo de 8,50, limitada a 1,50.",
+  "payoff_descricao": "O gráfico de payoff mostra lucro entre os pontos D e E, com perdas limitadas abaixo de B e acima de G.",
+  "observacoes": "Produto destinado a clientes com perfil de investimento agressivo. Chamada de Margem e Carta Fiança são aspectos importantes a considerar.",
+  "palavras_chave": [
+    "Condor",
+    "Strangle",
+    "Hedge",
+    "Opções",
+    "Derivativos",
+    "Mercado lateral",
+    "Chamada de Margem",
+    "Carta Fiança"
+  ]
+}

@@ -1,0 +1,33 @@
+{
+  "nome_completo": "Compra de Call Spread",
+  "descricao_detalhada": "A estratégia de Compra de Call Spread, também conhecida como Trava de Alta, é uma técnica utilizada por investidores que desejam participar da valorização de um ativo sem a necessidade de comprá-lo diretamente. Esta estratégia é composta por duas operações principais: a compra de uma opção de compra (Call) e a venda de outra opção de compra com preço de exercício superior, ambas com o mesmo vencimento. O objetivo é limitar o risco e o custo da operação, ao mesmo tempo em que se busca um ganho potencial em caso de alta do ativo subjacente. O investidor paga um prêmio inicial, que representa o custo máximo da operação. O ganho máximo é limitado pela diferença entre os preços de exercício das duas opções, menos o prêmio pago. A perda máxima é limitada ao prêmio pago. Esta estratégia é ideal para investidores com expectativa de alta moderada no ativo subjacente e que desejam limitar sua exposição ao risco. O comportamento da estrutura antes do vencimento não é linear, pois depende de fatores como volatilidade e liquidez. O encerramento antecipado da operação pode resultar em um resultado diferente do esperado para o vencimento. A XP Investimentos recomenda que os investidores analisem cuidadosamente as características e riscos antes de decidir pela aplicação nesta estratégia.",
+  "objetivo": "Participar da valorização do ativo objeto sem comprá-lo diretamente.",
+  "perfil_investidor": "Moderado-agressivo e Agressivo",
+  "cenario_ideal": "Expectativa de valorização do ativo objeto.",
+  "componentes": [
+    {
+      "instrumento": "Call A",
+      "descricao": "Compra de uma opção de compra com preço de exercício inferior."
+    },
+    {
+      "instrumento": "Call B",
+      "descricao": "Venda de uma opção de compra com preço de exercício superior."
+    }
+  ],
+  "como_funciona": "O investidor compra uma Call A e vende uma Call B com preço de exercício superior e mesmo vencimento. O prêmio pago pela Call A é superior ao recebido pela Call B, resultando em um custo líquido que representa a perda máxima.",
+  "custo": "Prêmio pago pela Call A menos o prêmio recebido pela Call B.",
+  "riscos": "Perda máxima limitada ao prêmio pago.",
+  "ganho_maximo": "Diferença entre os preços de exercício das Calls menos o prêmio pago.",
+  "perda_maxima": "Prêmio pago.",
+  "breakeven": "Preço de exercício da Call A mais o prêmio pago.",
+  "exemplo_numerico": "Compra de Call A com strike 11 por R$ 1,15 e venda de Call B com strike 13 por R$ 0,50. Prêmio pago: R$ 0,65.",
+  "payoff_descricao": "Ganho limitado pela diferença entre os strikes, perda limitada ao prêmio pago.",
+  "observacoes": "Produto destinado a clientes com perfil de investimento moderado-agressivo e agressivo.",
+  "palavras_chave": [
+    "Call Spread",
+    "Trava de Alta",
+    "Opções",
+    "Investimento",
+    "Risco Limitado"
+  ]
+}

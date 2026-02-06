@@ -1,0 +1,35 @@
+{
+  "nome_completo": "Compra de Collar com ativo",
+  "descricao_detalhada": "O Collar é uma estrutura de derivativos utilizada como defesa para o investidor que já possui um ativo ou deseja comprá-lo com proteção. Nesta estrutura, o investidor garante uma proteção da posição, limitando, porém, seu ganho máximo na ação. A estratégia é composta por uma combinação de opções que visa proteger o capital investido contra quedas no preço do ativo, ao mesmo tempo em que permite a participação em uma valorização limitada. O investidor compra uma opção de venda (Put) próxima ao preço do ativo, garantindo proteção contra quedas abaixo de um determinado ponto. Simultaneamente, vende uma opção de compra (Call) fora do dinheiro, que limita o ganho máximo. Esta estrutura é ideal para cenários onde há expectativa de desvalorização do ativo, mas o investidor ainda deseja participar de uma possível alta, embora de forma limitada. O custo da estrutura geralmente é zero, pois o valor das opções compradas e vendidas se compensam. No entanto, é importante considerar custos de corretagem e emolumentos. A operação pode envolver chamada de margem, que pode oscilar durante a operação, e o investidor deve estar ciente dos riscos associados, incluindo a possibilidade de entrega do papel no exercício.",
+  "objetivo": "Proteger o capital investido contra quedas no preço do ativo, permitindo participação limitada em uma valorização.",
+  "perfil_investidor": "Moderado Agressivo",
+  "cenario_ideal": "Cenários com possibilidade de desvalorização do ativo, mas com desejo de proteção contra quedas e participação limitada na alta.",
+  "componentes": [
+    {
+      "instrumento": "Compra de Put",
+      "descricao": "Protege contra quedas abaixo de um ponto específico."
+    },
+    {
+      "instrumento": "Venda de Call",
+      "descricao": "Limita o ganho máximo, vendida fora do dinheiro."
+    }
+  ],
+  "como_funciona": "1. O investidor possui ou compra o ativo. 2. Compra uma opção de venda (Put) próxima ao preço do ativo. 3. Vende uma opção de compra (Call) fora do dinheiro. 4. Protege contra quedas e limita ganhos.",
+  "custo": "Normalmente a soma do valor das opções é zero, desconsiderando custos de corretagem e emolumentos.",
+  "riscos": "Risco de entrega do papel no exercício, chamada de margem variável, e possibilidade de perda efetiva se o Strike da Put for inferior à cotação do ativo.",
+  "ganho_maximo": "B - Preço inicial do Ativo",
+  "perda_maxima": "Não há perdas abaixo do Ponto A.",
+  "breakeven": "Preço inicial do ativo.",
+  "exemplo_numerico": "Ação: XYZ, Preço Inicial: R$ 10,00, Vencimento: Abr/17, Proteção integral contra quedas, participação em alta de até 20% (R$ 12).",
+  "payoff_descricao": "O gráfico de payoff mostra que o investidor está protegido contra quedas abaixo do ponto A e participa de ganhos até o ponto B, onde o ganho é limitado.",
+  "observacoes": "Produto destinado a clientes com perfil de investimento agressivo. Recomenda-se leitura do Regulamento e Prospecto.",
+  "palavras_chave": [
+    "Collar",
+    "Proteção",
+    "Opções",
+    "Derivativos",
+    "Investimento",
+    "Risco",
+    "Ganho Limitado"
+  ]
+}

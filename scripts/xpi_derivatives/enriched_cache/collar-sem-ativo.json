@@ -1,0 +1,36 @@
+{
+  "nome_completo": "Compra de Collar sem Ativo",
+  "descricao_detalhada": "O Collar sem ativo é uma estratégia de derivativos utilizada por investidores que acreditam na queda do ativo-objeto e estão dispostos a assumir o risco de perda em caso de alta do mesmo. Nesta estratégia, o investidor garante ganhos abaixo de um ponto determinado, e sua perda começa a partir de um ponto mais alto, de forma ilimitada. A estrutura é composta por uma combinação de opções de compra e venda, onde o investidor compra uma opção de venda (Put) e vende uma opção de compra (Call) para financiar a compra da Put. O objetivo é proteger o investidor de quedas no preço do ativo, enquanto limita os ganhos em caso de alta. O Collar sem ativo é ideal para investidores com expectativa de queda, mas que não desejam gastar recursos com a compra de uma Put. A estratégia é caracterizada por um viés de baixa, com ganho máximo limitado ao preço final do ativo e perda máxima ilimitada a partir de um ponto específico. A chamada de margem pode oscilar durante a operação, e o custo da estrutura é geralmente zero, pois as opções são escolhidas de forma a não haver desembolso de caixa. O comportamento da estrutura antes do vencimento não é linear, pois depende de fatores como volatilidade e liquidez. O encerramento antecipado da operação pode resultar em um resultado diferente do esperado. A chamada de margem é um valor necessário para garantir a operação, debitado diariamente e pode variar conforme a oscilação do mercado. A XP Investimentos pode exigir garantias adicionais para a manutenção da operação. Caso o cliente não possua saldo disponível, a XP pode alocar uma Carta Fiança para cobrir a chamada de margem.",
+  "objetivo": "Proteger o investidor de quedas no preço do ativo enquanto limita os ganhos em caso de alta.",
+  "perfil_investidor": "Moderado-agressivo",
+  "cenario_ideal": "Expectativa de queda no preço do ativo sem desejo de gastar recursos com a compra de uma Put.",
+  "componentes": [
+    {
+      "instrumento": "Opção de venda (Put)",
+      "descricao": "Direito de vender um ativo a um preço predeterminado."
+    },
+    {
+      "instrumento": "Opção de compra (Call)",
+      "descricao": "Direito de comprar um ativo a um preço predeterminado."
+    }
+  ],
+  "como_funciona": "O investidor compra uma Put e vende uma Call para financiar a compra da Put, limitando os ganhos e expondo-se a perdas ilimitadas acima de um ponto específico.",
+  "custo": "Zero, pois as opções são escolhidas de forma a não haver desembolso de caixa.",
+  "riscos": "Perda ilimitada a partir de um ponto específico e chamada de margem variável.",
+  "ganho_maximo": "Preço final do ativo.",
+  "perda_maxima": "Ilimitada a partir de um ponto específico.",
+  "breakeven": "Não especificado.",
+  "exemplo_numerico": "Ação XYZ, preço inicial R$ 10, Put strike 9,50, Call strike 11,00. Ganhos abaixo de 9,50 e perdas ilimitadas acima de 11,00.",
+  "payoff_descricao": "O resultado final da operação pode variar substancialmente no vencimento ou no encerramento antecipado.",
+  "observacoes": "O valor de mercado da estratégia antes do vencimento não é linear e depende de vários fatores.",
+  "palavras_chave": [
+    "Collar",
+    "Derivativos",
+    "Opções",
+    "Put",
+    "Call",
+    "Proteção",
+    "Risco",
+    "Investimento"
+  ]
+}
