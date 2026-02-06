@@ -6,11 +6,89 @@ Todas as mídias passam pelo pipeline completo da IA após processamento.
 import httpx
 import tempfile
 import os
+import re
 from typing import Optional, Tuple
 from openai import OpenAI
 from core.config import get_settings
 
 settings = get_settings()
+
+WHISPER_FINANCIAL_PROMPT = (
+    "Conversa sobre mercado financeiro. "
+    "put seca, call seca, compra de put, compra de call, "
+    "venda coberta, lançamento coberto, trava de alta, trava de baixa, "
+    "straddle, strangle, collar, seagull, booster, butterfly, "
+    "call up and in, call down and out, knock-in, knock-out, "
+    "strike, prêmio, exercício, gregas, delta, gamma, theta, vega, "
+    "volatilidade implícita, hedge, margem de garantia, COE, "
+    "mini índice, mini dólar, swap, contrato futuro, "
+    "NTN-B, LFT, tesouro IPCA, tesouro Selic, CDB, LCI, CRI, CRA, debênture, "
+    "marcação a mercado, duration, carrego, spread de crédito, COPOM, Selic, "
+    "dividend yield, P/VP, ROE, EBITDA, free float, tag along, "
+    "FII, IFIX, Ibovespa, short squeeze, circuit breaker, "
+    "day trade, swing trade, stop loss, suitability, rebate, come-cotas, "
+    "assessor, broker, renda variável, renda fixa"
+)
+
+TRANSCRIPTION_CORRECTIONS = {
+    r'\bputi\s+seca\b': 'put seca',
+    r'\bpute\s+seca\b': 'put seca',
+    r'\bput\s+se\s*ca\b': 'put seca',
+    r'\bcoli\s+seca\b': 'call seca',
+    r'\bcol\s+seca\b': 'call seca',
+    r'\bcau\s+seca\b': 'call seca',
+    r'\bcoal\s+seca\b': 'call seca',
+    r'\bcall\s+se\s*ca\b': 'call seca',
+    r'\bestrai?ke?\b': 'strike',
+    r'\bestraque\b': 'strike',
+    r'\bestraique\b': 'strike',
+    r'\bstradou\b': 'straddle',
+    r'\bestradou\b': 'straddle',
+    r'\bstradle\b': 'straddle',
+    r'\bestrangou\b': 'strangle',
+    r'\bstrangle?\b': 'strangle',
+    r'\bcollar\b': 'collar',
+    r'\bcólar\b': 'collar',
+    r'\bseagul\b': 'seagull',
+    r'\bsigal\b': 'seagull',
+    r'\bsigou\b': 'seagull',
+    r'\bbúster\b': 'booster',
+    r'\bboster\b': 'booster',
+    r'\bbuister\b': 'booster',
+    r'\btrava\s+de\s+auta\b': 'trava de alta',
+    r'\btrava\s+de\s+baicha\b': 'trava de baixa',
+    r'\bhédge\b': 'hedge',
+    r'\bédge\b': 'hedge',
+    r'\bmarquete?\s+tumarket\b': 'mark to market',
+    r'\bmarca[çc][aã]o\s+a?\s*mercado\b': 'marcação a mercado',
+    r'\bdividende?\s*yield?\b': 'dividend yield',
+    r'\bduri?a[çc][aã]o\b': 'duration',
+    r'\bdiureichon\b': 'duration',
+    r'\bcopi?\s*on\b': 'COPOM',
+    r'\bséric\b': 'Selic',
+    r'\bselik\b': 'Selic',
+    r'\bcircuiti?\s*br[eé]a?ker\b': 'circuit breaker',
+    r'\bshorti?\s*squí?ze?\b': 'short squeeze',
+    r'\bsuita?bili?ti?\b': 'suitability',
+    r'\brebait\b': 'rebate',
+    r'\bcome\s*cotas?\b': 'come-cotas',
+    r'\banci?o[rn]de?\b': 'ANCORD',
+    r'\bknock\s*i?n\b': 'knock-in',
+    r'\bknock\s*a?out\b': 'knock-out',
+    r'\bcall\s+ape?\s*ande?\s*i?n\b': 'call up and in',
+    r'\bcall\s+daun?\s*ande?\s*a?out\b': 'call down and out',
+}
+
+
+def normalize_financial_transcription(text: str) -> str:
+    """
+    Normaliza termos financeiros comuns que o Whisper transcreve errado.
+    Aplica correções regex para converter erros fonéticos em termos corretos.
+    """
+    corrected = text
+    for pattern, replacement in TRANSCRIPTION_CORRECTIONS.items():
+        corrected = re.sub(pattern, replacement, corrected, flags=re.IGNORECASE)
+    return corrected
 
 
 class MediaProcessor:
@@ -75,11 +153,16 @@ class MediaProcessor:
                     transcript = self.client.audio.transcriptions.create(
                         model="whisper-1",
                         file=audio_file,
-                        language="pt"
+                        language="pt",
+                        prompt=WHISPER_FINANCIAL_PROMPT
                     )
                 
-                transcription = transcript.text.strip()
-                print(f"[MediaProcessor] Transcrição: {transcription[:100]}...")
+                raw_transcription = transcript.text.strip()
+                print(f"[MediaProcessor] Transcrição bruta: {raw_transcription[:100]}...")
+                
+                transcription = normalize_financial_transcription(raw_transcription)
+                if transcription != raw_transcription:
+                    print(f"[MediaProcessor] Transcrição corrigida: {transcription[:100]}...")
                 
                 return transcription, None
                 

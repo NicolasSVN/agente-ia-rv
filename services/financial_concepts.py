@@ -1183,6 +1183,910 @@ FINANCIAL_CONCEPTS = [
         "descricao": "Perspectivas são as projeções e expectativas da gestão do fundo para o futuro, incluindo cenário macroeconômico, estratégia e projeções de dividendos.",
         "temas_relacionados": ["guidance", "estrategia_investimento"]
     },
+    # =========================================================================
+    # CATEGORIA 8: OPÇÕES E DERIVATIVOS (ESTRATÉGIAS E CONCEITOS ADICIONAIS)
+    # =========================================================================
+    {
+        "id": "put_seca",
+        "categoria": "OPCOES_DERIVATIVOS",
+        "termos_usuario": [
+            "put seca", "put a seco", "compra de put", "comprar put",
+            "venda a descoberto com put"
+        ],
+        "termos_busca": [
+            "put seca", "put a seco", "compra de put", "opção de venda",
+            "aposta na queda", "risco limitado ao prêmio"
+        ],
+        "descricao": "Compra de put a seco é a aquisição de uma opção de venda sem possuir o ativo-objeto. O investidor aposta na queda do ativo. O risco é limitado ao prêmio pago e o ganho potencial é alto se o ativo cair significativamente.",
+        "temas_relacionados": ["put", "premio", "call_seca"]
+    },
+    {
+        "id": "call_seca",
+        "categoria": "OPCOES_DERIVATIVOS",
+        "termos_usuario": [
+            "call seca", "call a seco", "compra de call", "comprar call"
+        ],
+        "termos_busca": [
+            "call seca", "call a seco", "compra de call", "opção de compra",
+            "aposta na alta", "risco limitado ao prêmio"
+        ],
+        "descricao": "Compra de call a seco é a aquisição de uma opção de compra sem possuir o ativo-objeto. O investidor aposta na alta do ativo. O risco é limitado ao prêmio pago e o ganho potencial é ilimitado se o ativo subir.",
+        "temas_relacionados": ["call", "premio", "put_seca"]
+    },
+    {
+        "id": "venda_put",
+        "categoria": "OPCOES_DERIVATIVOS",
+        "termos_usuario": [
+            "vender put", "venda de put", "lançar put", "lançamento de put"
+        ],
+        "termos_busca": [
+            "venda de put", "lançamento de put", "obrigação de compra",
+            "exercício", "prêmio recebido"
+        ],
+        "descricao": "Venda de put (lançamento) é quando o investidor vende uma opção de venda, recebendo o prêmio. Se exercido, tem a obrigação de comprar o ativo pelo preço de exercício. Estratégia usada para comprar ações com desconto ou gerar renda.",
+        "temas_relacionados": ["put", "premio", "venda_call"]
+    },
+    {
+        "id": "venda_call",
+        "categoria": "OPCOES_DERIVATIVOS",
+        "termos_usuario": [
+            "vender call", "venda de call", "lançar call", "lançamento de call",
+            "lançamento coberto", "lançamento descoberto", "venda coberta"
+        ],
+        "termos_busca": [
+            "venda de call", "lançamento de call", "lançamento coberto",
+            "lançamento descoberto", "venda coberta", "obrigação de vender"
+        ],
+        "descricao": "Venda de call (lançamento) é quando o investidor vende uma opção de compra, recebendo o prêmio. Lançamento coberto = possui o ativo (risco limitado). Lançamento descoberto = não possui o ativo (risco ilimitado). Se exercido, tem obrigação de vender.",
+        "temas_relacionados": ["call", "premio", "covered_call", "venda_put"]
+    },
+    {
+        "id": "premio_opcao",
+        "categoria": "OPCOES_DERIVATIVOS",
+        "termos_usuario": [
+            "prêmio da opção", "custo da opção", "preço da opção",
+            "valor do prêmio"
+        ],
+        "termos_busca": [
+            "prêmio", "prêmio da opção", "valor intrínseco", "valor extrínseco",
+            "custo da opção", "preço da opção"
+        ],
+        "descricao": "Prêmio da opção é o valor pago pelo comprador ao vendedor da opção. É composto de valor intrínseco (diferença entre preço do ativo e strike quando favorável) + valor extrínseco (tempo restante + volatilidade implícita).",
+        "temas_relacionados": ["premio", "gregas_theta", "volatilidade_implicita"]
+    },
+    {
+        "id": "exercicio_opcao",
+        "categoria": "OPCOES_DERIVATIVOS",
+        "termos_usuario": [
+            "exercício", "exercer", "dia de exercício", "vencimento de opção",
+            "expiração", "data de vencimento"
+        ],
+        "termos_busca": [
+            "exercício", "exercer opção", "dia de exercício", "vencimento",
+            "expiração", "ITM", "OTM", "ATM"
+        ],
+        "descricao": "Exercício de opção é quando o titular utiliza seu direito de comprar (call) ou vender (put) o ativo pelo preço de exercício. Só faz sentido exercer opções ITM (in the money). Opções OTM expiram sem valor.",
+        "temas_relacionados": ["moneyness", "vencimento_opcao", "strike"]
+    },
+    {
+        "id": "opcao_americana_europeia",
+        "categoria": "OPCOES_DERIVATIVOS",
+        "termos_usuario": [
+            "opção americana", "opção europeia", "americana", "europeia",
+            "estilo da opção"
+        ],
+        "termos_busca": [
+            "opção americana", "opção europeia", "estilo americano",
+            "estilo europeu", "exercício antecipado"
+        ],
+        "descricao": "Opção americana pode ser exercida a qualquer momento até o vencimento. Opção europeia só pode ser exercida na data de vencimento. No Brasil, opções de ações são geralmente americanas e opções sobre índice são europeias.",
+        "temas_relacionados": ["exercicio_opcao", "vencimento_opcao"]
+    },
+    {
+        "id": "trava_alta",
+        "categoria": "OPCOES_DERIVATIVOS",
+        "termos_usuario": [
+            "trava de alta", "bull spread", "call spread",
+            "trava de alta com call"
+        ],
+        "termos_busca": [
+            "trava de alta", "bull spread", "call spread",
+            "compra e venda de call", "spread de alta"
+        ],
+        "descricao": "Trava de alta (bull spread) combina compra de call com strike menor e venda de call com strike maior. Lucra com alta moderada do ativo. Risco e retorno são limitados. O custo é menor que comprar call seca.",
+        "temas_relacionados": ["call", "trava_baixa", "call_seca"]
+    },
+    {
+        "id": "trava_baixa",
+        "categoria": "OPCOES_DERIVATIVOS",
+        "termos_usuario": [
+            "trava de baixa", "bear spread", "put spread",
+            "trava de baixa com put"
+        ],
+        "termos_busca": [
+            "trava de baixa", "bear spread", "put spread",
+            "compra e venda de put", "spread de baixa"
+        ],
+        "descricao": "Trava de baixa (bear spread) combina compra de put com strike maior e venda de put com strike menor. Lucra com queda moderada do ativo. Risco e retorno são limitados.",
+        "temas_relacionados": ["put", "trava_alta", "put_seca"]
+    },
+    {
+        "id": "borboleta",
+        "categoria": "OPCOES_DERIVATIVOS",
+        "termos_usuario": [
+            "borboleta", "butterfly", "butterfly spread"
+        ],
+        "termos_busca": [
+            "borboleta", "butterfly", "butterfly spread",
+            "faixa de preço", "aposta lateral"
+        ],
+        "descricao": "Borboleta (butterfly spread) é uma estratégia que aposta que o ativo ficará numa faixa de preço específica no vencimento. Combina compra e venda de opções em três strikes diferentes. Risco e retorno são limitados.",
+        "temas_relacionados": ["condor", "trava_alta", "trava_baixa"]
+    },
+    {
+        "id": "gregas_opcoes",
+        "categoria": "OPCOES_DERIVATIVOS",
+        "termos_usuario": [
+            "gregas", "sensibilidade da opção", "rho"
+        ],
+        "termos_busca": [
+            "gregas", "delta", "gamma", "theta", "vega", "rho",
+            "sensibilidade", "precificação de opções"
+        ],
+        "descricao": "As gregas medem a sensibilidade do preço da opção a diferentes fatores: Delta (preço do ativo), Gamma (variação do delta), Theta (tempo), Vega (volatilidade) e Rho (taxa de juros). Essenciais para gestão de risco em opções.",
+        "temas_relacionados": ["gregas_delta", "gregas_gamma", "gregas_theta", "gregas_vega"]
+    },
+    {
+        "id": "volatilidade_implicita",
+        "categoria": "OPCOES_DERIVATIVOS",
+        "termos_usuario": [
+            "volatilidade implícita", "vol implícita", "implied volatility",
+            "smile de volatilidade", "skew"
+        ],
+        "termos_busca": [
+            "volatilidade implícita", "IV", "implied volatility",
+            "smile de volatilidade", "skew", "expectativa de oscilação"
+        ],
+        "descricao": "Volatilidade implícita (IV) reflete a expectativa do mercado sobre a oscilação futura do ativo, embutida no preço das opções. Smile de volatilidade mostra como a IV varia por strike. Skew mostra a assimetria. IV alta = opções mais caras.",
+        "temas_relacionados": ["gregas_vega", "volatilidade", "premio"]
+    },
+    {
+        "id": "mini_contratos",
+        "categoria": "OPCOES_DERIVATIVOS",
+        "termos_usuario": [
+            "mini contrato", "mini índice", "mini dólar",
+            "WIN", "WDO", "IND", "DOL"
+        ],
+        "termos_busca": [
+            "mini contrato", "mini índice", "mini dólar",
+            "WIN", "WDO", "IND", "DOL", "day trade", "B3 futuros"
+        ],
+        "descricao": "Mini contratos são versões menores dos contratos futuros, acessíveis a investidores pessoa física. Mini índice (WIN) = 20% do contrato cheio de Ibovespa. Mini dólar (WDO) = 20% do contrato cheio de dólar. Os mais negociados na B3 para day trade e hedge.",
+        "temas_relacionados": ["contrato_futuro", "margem_garantia", "hedge"]
+    },
+    {
+        "id": "termo",
+        "categoria": "OPCOES_DERIVATIVOS",
+        "termos_usuario": [
+            "a termo", "operação a termo", "contrato a termo",
+            "termo de ações"
+        ],
+        "termos_busca": [
+            "operação a termo", "contrato a termo", "termo de ações",
+            "compra a termo", "venda a termo", "balcão"
+        ],
+        "descricao": "Operação a termo é um contrato para comprar ou vender um ativo em data futura a preço acordado. Diferente dos futuros, é negociado em balcão e não tem ajuste diário. Usado para alavancar posições em ações.",
+        "temas_relacionados": ["contrato_futuro", "margem_garantia"]
+    },
+    {
+        "id": "coe",
+        "categoria": "OPCOES_DERIVATIVOS",
+        "termos_usuario": [
+            "COE", "certificado de operações estruturadas", "nota estruturada",
+            "structured note", "capital protegido"
+        ],
+        "termos_busca": [
+            "COE", "certificado de operações estruturadas", "nota estruturada",
+            "capital protegido", "proteção de capital", "derivativo estruturado"
+        ],
+        "descricao": "COE (Certificado de Operações Estruturadas) combina elementos de renda fixa com derivativos. Pode oferecer proteção total ou parcial do capital investido. Permite acesso a estratégias sofisticadas de forma simplificada.",
+        "temas_relacionados": ["operacao_estruturada", "hedge"]
+    },
+    {
+        "id": "margem_garantia",
+        "categoria": "OPCOES_DERIVATIVOS",
+        "termos_usuario": [
+            "margem", "margem de garantia", "chamada de margem",
+            "margin call", "garantia de operação"
+        ],
+        "termos_busca": [
+            "margem de garantia", "chamada de margem", "margin call",
+            "garantia", "depósito de margem", "colateral"
+        ],
+        "descricao": "Margem de garantia é o capital ou ativos depositados como garantia para operar derivativos (futuros, opções vendidas, termo). Chamada de margem (margin call) ocorre quando a garantia se torna insuficiente e o investidor precisa depositar mais recursos.",
+        "temas_relacionados": ["contrato_futuro", "venda_call", "venda_put"]
+    },
+    {
+        "id": "mercado_opcoes",
+        "categoria": "OPCOES_DERIVATIVOS",
+        "termos_usuario": [
+            "mercado de opções", "calls e puts", "call e put",
+            "compra e venda de opções"
+        ],
+        "termos_busca": [
+            "mercado de opções", "calls e puts", "opções de ações",
+            "derivativos", "B3 opções"
+        ],
+        "descricao": "O mercado de opções é o ambiente onde se negociam contratos que conferem o direito de comprar (call) ou vender (put) um ativo a preço predeterminado. Na B3, as opções mais negociadas são sobre ações como PETR4, VALE3 e BOVA11.",
+        "temas_relacionados": ["call", "put", "opcoes_basico"]
+    },
+    {
+        "id": "operacao_estruturada",
+        "categoria": "OPCOES_DERIVATIVOS",
+        "termos_usuario": [
+            "operação estruturada", "estruturada", "estrutura com opções",
+            "montagem de operação"
+        ],
+        "termos_busca": [
+            "operação estruturada", "estrutura com opções", "combinação de opções",
+            "perfil de risco-retorno", "montagem de estratégia"
+        ],
+        "descricao": "Operação estruturada é a combinação de dois ou mais instrumentos financeiros (ações, opções, futuros) para atingir um perfil de risco-retorno específico. Exemplos: collar, trava, borboleta, condor.",
+        "temas_relacionados": ["collar", "trava_alta", "trava_baixa", "borboleta"]
+    },
+    {
+        "id": "financiamento_opcoes",
+        "categoria": "OPCOES_DERIVATIVOS",
+        "termos_usuario": [
+            "financiamento", "financiamento com opções", "venda coberta de call",
+            "income strategy"
+        ],
+        "termos_busca": [
+            "financiamento com opções", "venda coberta de call", "covered call",
+            "income strategy", "geração de renda", "lançamento coberto"
+        ],
+        "descricao": "Financiamento com opções (covered call) é a estratégia de gerar renda vendendo calls sobre ações que o investidor já possui. Se exercido, vende as ações pelo strike. Se não exercido, fica com o prêmio recebido como renda extra.",
+        "temas_relacionados": ["covered_call", "venda_call", "call"]
+    },
+    # =========================================================================
+    # CATEGORIA 9: RENDA FIXA
+    # =========================================================================
+    {
+        "id": "tesouro_direto",
+        "categoria": "RENDA_FIXA",
+        "termos_usuario": [
+            "tesouro direto", "NTN-B", "NTN-F", "LFT", "tesouro IPCA",
+            "tesouro selic", "tesouro prefixado", "título público"
+        ],
+        "termos_busca": [
+            "tesouro direto", "NTN-B", "NTN-F", "LFT", "tesouro IPCA",
+            "tesouro selic", "tesouro prefixado", "título público", "governo federal"
+        ],
+        "descricao": "Tesouro Direto é o programa de compra de títulos públicos federais. Tesouro Selic (LFT) = pós-fixado à Selic. Tesouro IPCA+ (NTN-B) = inflação + taxa real. Tesouro Prefixado (NTN-F/LTN) = taxa fixa. Considerados os investimentos mais seguros do Brasil.",
+        "temas_relacionados": ["copom_selic", "ipca", "marcacao_mercado"]
+    },
+    {
+        "id": "cdb",
+        "categoria": "RENDA_FIXA",
+        "termos_usuario": [
+            "CDB", "certificado de depósito bancário", "CDB DI", "CDB pré"
+        ],
+        "termos_busca": [
+            "CDB", "certificado de depósito bancário", "CDB DI",
+            "CDB prefixado", "CDB IPCA", "renda fixa bancária"
+        ],
+        "descricao": "CDB (Certificado de Depósito Bancário) é um título de renda fixa emitido por bancos. Pode ser pós-fixado (% do CDI), prefixado ou atrelado à inflação. Conta com garantia do FGC até R$250 mil por CPF/instituição.",
+        "temas_relacionados": ["fgc", "copom_selic", "indexador"]
+    },
+    {
+        "id": "debenture",
+        "categoria": "RENDA_FIXA",
+        "termos_usuario": [
+            "debênture", "debêntures", "debênture incentivada",
+            "dívida corporativa", "crédito privado"
+        ],
+        "termos_busca": [
+            "debênture", "debênture incentivada", "dívida corporativa",
+            "crédito privado", "emissão de dívida", "rating corporativo"
+        ],
+        "descricao": "Debêntures são títulos de dívida emitidos por empresas para captar recursos. Debêntures incentivadas (Lei 12.431) são isentas de IR para pessoa física. Crédito privado envolve risco do emissor e spread sobre títulos públicos.",
+        "temas_relacionados": ["spread_credito", "risco_credito", "indexador"]
+    },
+    {
+        "id": "cra",
+        "categoria": "RENDA_FIXA",
+        "termos_usuario": [
+            "CRA", "certificado de recebíveis do agronegócio", "agronegócio"
+        ],
+        "termos_busca": [
+            "CRA", "certificado de recebíveis do agronegócio",
+            "recebíveis agrícolas", "agronegócio", "securitização"
+        ],
+        "descricao": "CRA (Certificado de Recebíveis do Agronegócio) é um título de renda fixa lastreado em recebíveis do setor agrícola. Isento de IR para pessoa física. Similar ao CRI, mas voltado ao agronegócio.",
+        "temas_relacionados": ["cri", "debenture", "indexador"]
+    },
+    {
+        "id": "marcacao_mercado",
+        "categoria": "RENDA_FIXA",
+        "termos_usuario": [
+            "marcação a mercado", "MtM", "mark to market", "precificação",
+            "variação de preço do título"
+        ],
+        "termos_busca": [
+            "marcação a mercado", "MtM", "mark to market", "precificação",
+            "variação de preço", "PU", "preço unitário"
+        ],
+        "descricao": "Marcação a mercado (MtM) é a atualização diária do preço de um título de renda fixa de acordo com as condições de mercado. Se as taxas de juros sobem, o preço do título cai (e vice-versa). Afeta quem vende antes do vencimento.",
+        "temas_relacionados": ["curva_juros", "duration_conceito", "carrego"]
+    },
+    {
+        "id": "carrego",
+        "categoria": "RENDA_FIXA",
+        "termos_usuario": [
+            "carrego", "carry", "levar até o vencimento", "carregar o título"
+        ],
+        "termos_busca": [
+            "carrego", "carry", "vencimento", "carregar título",
+            "retorno contratado", "taxa contratada"
+        ],
+        "descricao": "Carrego é o retorno obtido ao manter um título de renda fixa até o vencimento, recebendo a taxa contratada. Diferente de vender antes (marcação a mercado), no carrego o investidor recebe exatamente o combinado.",
+        "temas_relacionados": ["marcacao_mercado", "duration_conceito"]
+    },
+    {
+        "id": "spread_credito",
+        "categoria": "RENDA_FIXA",
+        "termos_usuario": [
+            "spread de crédito", "prêmio de risco",
+            "risco de crédito corporativo"
+        ],
+        "termos_busca": [
+            "spread de crédito", "prêmio de risco", "risco corporativo",
+            "spread sobre CDI", "spread sobre NTN-B"
+        ],
+        "descricao": "Spread de crédito é o prêmio de risco adicional que um título privado paga acima de um título público de referência. Quanto maior o risco do emissor, maior o spread exigido pelo mercado.",
+        "temas_relacionados": ["debenture", "risco_credito", "cri"]
+    },
+    {
+        "id": "curva_juros",
+        "categoria": "RENDA_FIXA",
+        "termos_usuario": [
+            "curva de juros", "yield curve", "estrutura a termo",
+            "DI futuro", "curva pré"
+        ],
+        "termos_busca": [
+            "curva de juros", "yield curve", "estrutura a termo",
+            "DI futuro", "curva pré", "taxa futura"
+        ],
+        "descricao": "Curva de juros mostra a relação entre taxas de juros e seus prazos de vencimento. Curva normal = taxas maiores para prazos maiores. Curva invertida = taxas curtas maiores que longas (sinal de recessão). DI futuro é o principal indicador no Brasil.",
+        "temas_relacionados": ["copom_selic", "marcacao_mercado", "duration_conceito"]
+    },
+    {
+        "id": "convexidade",
+        "categoria": "RENDA_FIXA",
+        "termos_usuario": [
+            "convexidade", "convexity", "sensibilidade à taxa"
+        ],
+        "termos_busca": [
+            "convexidade", "convexity", "sensibilidade à taxa de juros",
+            "segunda derivada do preço", "duration modificada"
+        ],
+        "descricao": "Convexidade complementa a duration para medir a sensibilidade do preço de um título a variações nas taxas de juros. Quanto maior a convexidade, mais o título se beneficia de quedas nas taxas e menos sofre com altas.",
+        "temas_relacionados": ["duration_conceito", "marcacao_mercado", "curva_juros"]
+    },
+    {
+        "id": "copom_selic",
+        "categoria": "RENDA_FIXA",
+        "termos_usuario": [
+            "Selic", "COPOM", "taxa básica", "taxa de juros",
+            "reunião do COPOM", "meta Selic"
+        ],
+        "termos_busca": [
+            "Selic", "COPOM", "taxa básica de juros", "meta Selic",
+            "reunião do COPOM", "política monetária", "Banco Central"
+        ],
+        "descricao": "A Selic é a taxa básica de juros da economia brasileira, definida pelo COPOM (Comitê de Política Monetária) do Banco Central a cada 45 dias. Influencia todas as taxas de juros do mercado, câmbio e inflação.",
+        "temas_relacionados": ["ipca", "curva_juros", "tesouro_direto"]
+    },
+    {
+        "id": "ipca",
+        "categoria": "RENDA_FIXA",
+        "termos_usuario": [
+            "IPCA", "inflação", "IGP-M", "deflação",
+            "índice de preços", "CPI"
+        ],
+        "termos_busca": [
+            "IPCA", "inflação", "IGP-M", "deflação", "índice de preços",
+            "IBGE", "custo de vida"
+        ],
+        "descricao": "IPCA (Índice de Preços ao Consumidor Amplo) é o índice oficial de inflação do Brasil, medido pelo IBGE. IGP-M é outro índice, usado em contratos de aluguel. A inflação corrói o poder de compra e impacta diretamente os investimentos.",
+        "temas_relacionados": ["copom_selic", "tesouro_direto", "indexador"]
+    },
+    {
+        "id": "fgc",
+        "categoria": "RENDA_FIXA",
+        "termos_usuario": [
+            "FGC", "fundo garantidor", "garantia do FGC",
+            "seguro do investimento"
+        ],
+        "termos_busca": [
+            "FGC", "fundo garantidor de créditos", "garantia",
+            "R$250 mil", "proteção do investidor", "cobertura FGC"
+        ],
+        "descricao": "FGC (Fundo Garantidor de Créditos) garante até R$250 mil por CPF por instituição financeira em caso de quebra do banco. Cobre CDB, LCI, LCA, poupança e LC. Não cobre debêntures, CRI, CRA, ações ou fundos.",
+        "temas_relacionados": ["cdb", "lci", "risco_credito"]
+    },
+    # =========================================================================
+    # CATEGORIA 10: TRADING E OPERAÇÕES
+    # =========================================================================
+    {
+        "id": "short_selling",
+        "categoria": "TRADING",
+        "termos_usuario": [
+            "short", "venda a descoberto", "operar vendido",
+            "short selling", "posição vendida", "apostar na queda"
+        ],
+        "termos_busca": [
+            "short selling", "venda a descoberto", "posição vendida",
+            "aluguel de ações", "operar vendido", "aposta na queda"
+        ],
+        "descricao": "Venda a descoberto (short selling) é a estratégia de vender ações emprestadas (alugadas) apostando na queda. O investidor aluga as ações, vende no mercado e recompra mais barato para devolver. Lucro = diferença de preço menos custos.",
+        "temas_relacionados": ["aluguel_acoes", "short_squeeze", "margem_garantia"]
+    },
+    {
+        "id": "short_squeeze",
+        "categoria": "TRADING",
+        "termos_usuario": [
+            "short squeeze", "squeeze", "cobertura de short"
+        ],
+        "termos_busca": [
+            "short squeeze", "squeeze", "cobertura de short",
+            "alta forçada", "posições vendidas"
+        ],
+        "descricao": "Short squeeze é uma alta forçada no preço de um ativo quando muitos investidores vendidos (short) precisam recomprar simultaneamente para cobrir suas posições, gerando pressão compradora e elevando ainda mais o preço.",
+        "temas_relacionados": ["short_selling", "aluguel_acoes"]
+    },
+    {
+        "id": "circuit_breaker",
+        "categoria": "TRADING",
+        "termos_usuario": [
+            "circuit breaker", "circuit", "parada de negociação",
+            "queda brusca"
+        ],
+        "termos_busca": [
+            "circuit breaker", "parada de negociação", "interrupção",
+            "queda brusca", "proteção do mercado"
+        ],
+        "descricao": "Circuit breaker é a interrupção temporária das negociações na bolsa quando o índice Ibovespa cai além de limites pré-definidos (10%, 15%). Serve para evitar pânico e dar tempo ao mercado de se reorganizar.",
+        "temas_relacionados": ["volatilidade", "fluxo_estrangeiro"]
+    },
+    {
+        "id": "aluguel_acoes",
+        "categoria": "TRADING",
+        "termos_usuario": [
+            "aluguel de ações", "empréstimo de ações", "BTC",
+            "doador", "tomador"
+        ],
+        "termos_busca": [
+            "aluguel de ações", "empréstimo de ações", "BTC",
+            "doador", "tomador", "taxa de aluguel"
+        ],
+        "descricao": "Aluguel de ações permite que um investidor (doador) empreste suas ações a outro (tomador) mediante pagamento de uma taxa. O tomador usa as ações para operar vendido (short). O doador recebe renda extra sem vender suas ações.",
+        "temas_relacionados": ["short_selling", "short_squeeze"]
+    },
+    {
+        "id": "fluxo_estrangeiro",
+        "categoria": "TRADING",
+        "termos_usuario": [
+            "fluxo estrangeiro", "gringo", "investidor estrangeiro",
+            "fluxo de capital", "saída de capital"
+        ],
+        "termos_busca": [
+            "fluxo estrangeiro", "investidor estrangeiro", "capital estrangeiro",
+            "entrada de capital", "saída de capital", "fluxo gringo"
+        ],
+        "descricao": "Fluxo estrangeiro representa o capital entrando ou saindo da bolsa brasileira por investidores internacionais. Fluxo positivo (entrada) tende a valorizar ativos. Fluxo negativo (saída) tende a pressionar preços para baixo.",
+        "temas_relacionados": ["liquidez", "volatilidade"]
+    },
+    {
+        "id": "book_ofertas",
+        "categoria": "TRADING",
+        "termos_usuario": [
+            "book", "book de ofertas", "livro de ofertas",
+            "ordem de compra", "ordem de venda", "bid", "ask", "spread bid-ask"
+        ],
+        "termos_busca": [
+            "book de ofertas", "livro de ofertas", "bid", "ask",
+            "spread bid-ask", "profundidade de mercado"
+        ],
+        "descricao": "Book de ofertas (livro de ofertas) mostra todas as ordens de compra (bid) e venda (ask) pendentes para um ativo, organizadas por preço. O spread bid-ask é a diferença entre a melhor oferta de compra e a melhor oferta de venda.",
+        "temas_relacionados": ["spread_mercado", "liquidez", "order_types"]
+    },
+    {
+        "id": "after_market",
+        "categoria": "TRADING",
+        "termos_usuario": [
+            "after market", "pós-mercado", "horário estendido"
+        ],
+        "termos_busca": [
+            "after market", "pós-mercado", "horário estendido",
+            "negociação fora do horário", "after hours"
+        ],
+        "descricao": "After market é o período adicional de negociação após o fechamento normal da bolsa (17h30-18h). Tem regras especiais: variação limitada a 2% do preço de fechamento e menor liquidez.",
+        "temas_relacionados": ["liquidez", "order_types"]
+    },
+    {
+        "id": "follow_on",
+        "categoria": "TRADING",
+        "termos_usuario": [
+            "follow-on", "oferta subsequente", "re-IPO",
+            "oferta secundária", "bookbuilding"
+        ],
+        "termos_busca": [
+            "follow-on", "oferta subsequente", "oferta secundária",
+            "bookbuilding", "emissão de ações", "oferta pública"
+        ],
+        "descricao": "Follow-on é uma nova emissão de ações por empresa já listada na bolsa. Pode ser primária (empresa emite novas ações e recebe os recursos) ou secundária (acionistas existentes vendem suas ações). O bookbuilding define o preço.",
+        "temas_relacionados": ["subscricao", "free_float", "liquidez"]
+    },
+    {
+        "id": "lote_padrao",
+        "categoria": "TRADING",
+        "termos_usuario": [
+            "lote padrão", "lote fracionário", "mercado fracionário",
+            "F na frente", "comprar fracionado"
+        ],
+        "termos_busca": [
+            "lote padrão", "lote fracionário", "mercado fracionário",
+            "100 ações", "fração"
+        ],
+        "descricao": "Lote padrão na B3 é de 100 ações. No mercado fracionário, é possível comprar de 1 a 99 ações, adicionando F ao ticker (ex: PETR4F). O fracionário pode ter menor liquidez e spread maior.",
+        "temas_relacionados": ["liquidez", "book_ofertas"]
+    },
+    {
+        "id": "order_types",
+        "categoria": "TRADING",
+        "termos_usuario": [
+            "ordem a mercado", "ordem limitada", "ordem stop",
+            "ordem casada", "ordem start", "tipo de ordem"
+        ],
+        "termos_busca": [
+            "ordem a mercado", "ordem limitada", "ordem stop",
+            "ordem casada", "ordem start", "tipo de ordem", "stop loss", "stop gain"
+        ],
+        "descricao": "Tipos de ordem: A mercado = executa no melhor preço disponível. Limitada = executa só no preço definido ou melhor. Stop = dispara quando atinge um preço gatilho. Casada = compra e venda simultâneas. Start = compra quando atinge preço de disparo.",
+        "temas_relacionados": ["book_ofertas", "liquidez"]
+    },
+    # =========================================================================
+    # CATEGORIA 11: JARGÃO DO ASSESSOR
+    # =========================================================================
+    {
+        "id": "auc",
+        "categoria": "ASSESSOR_JARGAO",
+        "termos_usuario": [
+            "AuC", "assets under custody", "patrimônio sob custódia",
+            "custódia total"
+        ],
+        "termos_busca": [
+            "AuC", "assets under custody", "patrimônio sob custódia",
+            "custódia total", "volume sob gestão"
+        ],
+        "descricao": "AuC (Assets under Custody) é o volume total de recursos dos clientes sob custódia do assessor ou escritório de assessoria. É a principal métrica de tamanho e relevância de um assessor no mercado.",
+        "temas_relacionados": ["captacao_liquida", "fee"]
+    },
+    {
+        "id": "captacao_liquida",
+        "categoria": "ASSESSOR_JARGAO",
+        "termos_usuario": [
+            "captação líquida", "captação", "NNM", "net new money",
+            "entrada de recursos", "resgate líquido"
+        ],
+        "termos_busca": [
+            "captação líquida", "NNM", "net new money", "entrada de recursos",
+            "resgate líquido", "fluxo de clientes"
+        ],
+        "descricao": "Captação líquida (Net New Money) é a diferença entre recursos captados (novos investimentos) e resgatados pelos clientes. Captação positiva indica crescimento. É uma métrica-chave de desempenho do assessor.",
+        "temas_relacionados": ["auc", "fee", "onboarding_cliente"]
+    },
+    {
+        "id": "fee",
+        "categoria": "ASSESSOR_JARGAO",
+        "termos_usuario": [
+            "fee", "fee fixo", "fee variável", "comissão",
+            "receita do assessor", "rebate", "repasse", "RoA"
+        ],
+        "termos_busca": [
+            "fee", "comissão", "rebate", "repasse", "RoA",
+            "receita do assessor", "remuneração", "taxa de administração"
+        ],
+        "descricao": "Fee é a remuneração do assessor. Pode ser fixo (valor mensal) ou variável (% sobre produtos vendidos/rebate). RoA (Return on Assets) = receita anual / AuC. Rebate é a parcela da taxa de administração repassada ao assessor.",
+        "temas_relacionados": ["auc", "captacao_liquida"]
+    },
+    {
+        "id": "suitability",
+        "categoria": "ASSESSOR_JARGAO",
+        "termos_usuario": [
+            "suitability", "adequação", "análise de perfil",
+            "perfil do investidor", "perfil de risco", "conservador",
+            "moderado", "agressivo", "arrojado"
+        ],
+        "termos_busca": [
+            "suitability", "adequação", "perfil do investidor",
+            "perfil de risco", "conservador", "moderado", "agressivo",
+            "arrojado", "API"
+        ],
+        "descricao": "Suitability (adequação) é a avaliação do perfil do investidor para garantir que os produtos oferecidos são adequados ao seu perfil de risco. Perfis: conservador, moderado, agressivo/arrojado. Obrigatório por regulação da CVM.",
+        "temas_relacionados": ["enquadramento", "onboarding_cliente"]
+    },
+    {
+        "id": "cross_selling",
+        "categoria": "ASSESSOR_JARGAO",
+        "termos_usuario": [
+            "cross-selling", "cross sell", "venda cruzada",
+            "upselling", "oferta complementar"
+        ],
+        "termos_busca": [
+            "cross-selling", "venda cruzada", "upselling",
+            "oferta complementar", "produtos adicionais"
+        ],
+        "descricao": "Cross-selling é a prática de oferecer produtos financeiros adicionais a um cliente existente. Exemplo: cliente que tem renda fixa recebe oferta de fundos imobiliários ou previdência. Aumenta a receita e diversifica a carteira do cliente.",
+        "temas_relacionados": ["fee", "suitability", "pipeline"]
+    },
+    {
+        "id": "onboarding_cliente",
+        "categoria": "ASSESSOR_JARGAO",
+        "termos_usuario": [
+            "onboarding", "cadastro de cliente", "abertura de conta",
+            "transferência de custódia", "STVM", "portabilidade"
+        ],
+        "termos_busca": [
+            "onboarding", "cadastro", "abertura de conta",
+            "transferência de custódia", "STVM", "portabilidade"
+        ],
+        "descricao": "Onboarding é o processo de cadastro de um novo cliente: abertura de conta, análise de perfil (suitability), documentação. STVM é a transferência de custódia de outra corretora. Portabilidade é a transferência de investimentos.",
+        "temas_relacionados": ["suitability", "captacao_liquida"]
+    },
+    {
+        "id": "ipa",
+        "categoria": "ASSESSOR_JARGAO",
+        "termos_usuario": [
+            "IPA", "AAI", "assessor de investimentos", "agente autônomo",
+            "escritório de assessoria", "credenciado"
+        ],
+        "termos_busca": [
+            "IPA", "AAI", "assessor de investimentos", "agente autônomo",
+            "escritório de assessoria", "credenciado CVM"
+        ],
+        "descricao": "IPA (Intermediário de Produtos de Investimento) / AAI (Agente Autônomo de Investimentos) é o profissional credenciado pela CVM que atua como assessor de investimentos, intermediando a relação entre investidor e corretora.",
+        "temas_relacionados": ["ancord", "suitability", "fee"]
+    },
+    {
+        "id": "ancord",
+        "categoria": "ASSESSOR_JARGAO",
+        "termos_usuario": [
+            "ANCORD", "CPA-10", "CPA-20", "CEA", "CFP",
+            "certificação", "prova ANCORD", "certificado"
+        ],
+        "termos_busca": [
+            "ANCORD", "CPA-10", "CPA-20", "CEA", "CFP",
+            "certificação financeira", "habilitação profissional"
+        ],
+        "descricao": "Certificações profissionais do mercado financeiro: ANCORD (assessor de investimentos), CPA-10/CPA-20 (ANBIMA, para bancários), CEA (especialista ANBIMA), CFP (planejador financeiro). Obrigatórias para atuar no mercado.",
+        "temas_relacionados": ["ipa", "suitability"]
+    },
+    {
+        "id": "mesa_rv",
+        "categoria": "ASSESSOR_JARGAO",
+        "termos_usuario": [
+            "mesa RV", "mesa de renda variável", "mesa de operações",
+            "trader", "operador de mesa", "broker"
+        ],
+        "termos_busca": [
+            "mesa de renda variável", "mesa de operações", "trader",
+            "operador de mesa", "broker", "execução de ordens"
+        ],
+        "descricao": "Mesa de Renda Variável é a área da corretora responsável pela execução de ordens em ações, opções e derivativos. O trader/operador de mesa auxilia o assessor na execução de operações mais complexas.",
+        "temas_relacionados": ["order_types", "operacao_estruturada", "ipa"]
+    },
+    {
+        "id": "pipeline",
+        "categoria": "ASSESSOR_JARGAO",
+        "termos_usuario": [
+            "pipeline", "pipe", "negócio em andamento",
+            "oportunidade", "deal flow"
+        ],
+        "termos_busca": [
+            "pipeline", "deal flow", "oportunidade de negócio",
+            "funil de vendas", "prospecção"
+        ],
+        "descricao": "Pipeline é o conjunto de oportunidades de negócio em andamento do assessor: novos clientes em prospecção, transferências de custódia em processo, operações em análise. Deal flow é o fluxo de novas oportunidades.",
+        "temas_relacionados": ["captacao_liquida", "onboarding_cliente", "cross_selling"]
+    },
+    {
+        "id": "churning",
+        "categoria": "ASSESSOR_JARGAO",
+        "termos_usuario": [
+            "churning", "giro excessivo", "overtrading",
+            "excesso de operações"
+        ],
+        "termos_busca": [
+            "churning", "giro excessivo", "overtrading",
+            "prática irregular", "excesso de corretagem"
+        ],
+        "descricao": "Churning é a prática irregular de realizar giro excessivo na carteira do cliente para gerar comissões (corretagem) para o assessor. É vedado pela CVM e pode resultar em punições e ressarcimento ao cliente.",
+        "temas_relacionados": ["fee", "suitability", "enquadramento"]
+    },
+    {
+        "id": "enquadramento",
+        "categoria": "ASSESSOR_JARGAO",
+        "termos_usuario": [
+            "enquadramento", "enquadrar carteira", "rebalanceamento",
+            "adequação de carteira", "carteira adequada"
+        ],
+        "termos_busca": [
+            "enquadramento", "adequação de carteira", "rebalanceamento",
+            "perfil de risco", "carteira adequada"
+        ],
+        "descricao": "Enquadramento é o processo de ajustar a carteira do cliente ao seu perfil de risco (suitability). Inclui rebalanceamento de posições, substituição de ativos inadequados e adequação a limites regulatórios.",
+        "temas_relacionados": ["suitability", "diversificacao"]
+    },
+    {
+        "id": "come_cotas",
+        "categoria": "ASSESSOR_JARGAO",
+        "termos_usuario": [
+            "come-cotas", "come cotas", "antecipação de IR",
+            "tributação semestral"
+        ],
+        "termos_busca": [
+            "come-cotas", "antecipação de IR", "tributação semestral",
+            "maio e novembro", "imposto sobre fundos"
+        ],
+        "descricao": "Come-cotas é a antecipação do Imposto de Renda cobrada semestralmente (maio e novembro) sobre fundos de investimento abertos. Reduz o número de cotas do investidor. Alíquota de 15% (longo prazo) ou 20% (curto prazo).",
+        "temas_relacionados": ["iof_ir", "dividendo"]
+    },
+    {
+        "id": "iof_ir",
+        "categoria": "ASSESSOR_JARGAO",
+        "termos_usuario": [
+            "IOF", "imposto de renda", "IR", "tributação",
+            "tabela regressiva", "alíquota", "DARF",
+            "IR sobre ganho de capital", "15%", "20%"
+        ],
+        "termos_busca": [
+            "IOF", "imposto de renda", "IR", "tributação",
+            "tabela regressiva", "alíquota", "DARF", "ganho de capital"
+        ],
+        "descricao": "IOF incide sobre resgates em menos de 30 dias. IR em renda fixa segue tabela regressiva: 22,5% (até 180 dias) a 15% (acima de 720 dias). Ações: 15% sobre ganho de capital (20% em day trade). DARF é a guia de pagamento do imposto.",
+        "temas_relacionados": ["come_cotas", "dividendo"]
+    },
+    {
+        "id": "pgbl_vgbl",
+        "categoria": "ASSESSOR_JARGAO",
+        "termos_usuario": [
+            "PGBL", "VGBL", "previdência privada", "previdência",
+            "aposentadoria", "plano de previdência"
+        ],
+        "termos_busca": [
+            "PGBL", "VGBL", "previdência privada", "aposentadoria",
+            "plano de previdência", "tabela regressiva", "tabela progressiva"
+        ],
+        "descricao": "PGBL permite deduzir até 12% da renda bruta no IR (indicado para quem faz declaração completa). VGBL não deduz, mas o IR incide só sobre os rendimentos (indicado para declaração simplificada). Ambos podem usar tabela regressiva ou progressiva.",
+        "temas_relacionados": ["iof_ir", "come_cotas"]
+    },
+    # =========================================================================
+    # CATEGORIA 12: CONCEITOS ADICIONAIS IMPORTANTES
+    # =========================================================================
+    {
+        "id": "ebitda",
+        "categoria": "PERFORMANCE",
+        "termos_usuario": [
+            "EBITDA", "lucro antes de juros", "resultado operacional",
+            "LAJIDA"
+        ],
+        "termos_busca": [
+            "EBITDA", "LAJIDA", "lucro operacional", "resultado operacional",
+            "margem EBITDA"
+        ],
+        "descricao": "EBITDA (Lucro antes de Juros, Impostos, Depreciação e Amortização) mede a geração de caixa operacional de uma empresa. Margem EBITDA = EBITDA / Receita Líquida. Usado para comparar eficiência operacional entre empresas.",
+        "temas_relacionados": ["pl_ratio", "roe", "noi"]
+    },
+    {
+        "id": "free_float",
+        "categoria": "MERCADO",
+        "termos_usuario": [
+            "free float", "ações em circulação", "percentual em circulação",
+            "liquidez de mercado"
+        ],
+        "termos_busca": [
+            "free float", "ações em circulação", "ações disponíveis",
+            "liquidez", "percentual em circulação"
+        ],
+        "descricao": "Free float é o percentual de ações de uma empresa disponíveis para negociação no mercado, excluindo ações detidas por controladores e insiders. Maior free float = maior liquidez e facilidade de negociação.",
+        "temas_relacionados": ["liquidez", "governanca", "follow_on"]
+    },
+    {
+        "id": "tag_along",
+        "categoria": "MERCADO",
+        "termos_usuario": [
+            "tag along", "proteção minoritário", "direito de saída",
+            "100% tag along"
+        ],
+        "termos_busca": [
+            "tag along", "proteção minoritário", "direito de saída",
+            "mudança de controle", "oferta pública de aquisição"
+        ],
+        "descricao": "Tag along é o direito dos acionistas minoritários de vender suas ações por pelo menos 80% do preço pago ao controlador em caso de mudança de controle. No Novo Mercado, o tag along é de 100%.",
+        "temas_relacionados": ["governanca", "free_float"]
+    },
+    {
+        "id": "governanca",
+        "categoria": "MERCADO",
+        "termos_usuario": [
+            "governança", "novo mercado", "nível 1", "nível 2",
+            "segmento de listagem", "governança corporativa"
+        ],
+        "termos_busca": [
+            "governança corporativa", "novo mercado", "nível 1", "nível 2",
+            "segmento de listagem", "boas práticas"
+        ],
+        "descricao": "Governança corporativa são as práticas de gestão transparente e proteção aos acionistas. Na B3, os segmentos de listagem são: Novo Mercado (mais exigente, só ações ON, 100% tag along), Nível 2 e Nível 1 (menos exigentes).",
+        "temas_relacionados": ["tag_along", "free_float"]
+    },
+    {
+        "id": "split_grupamento",
+        "categoria": "MERCADO",
+        "termos_usuario": [
+            "split", "desdobramento", "grupamento", "inplit",
+            "ajuste de preço da ação"
+        ],
+        "termos_busca": [
+            "split", "desdobramento", "grupamento", "inplit",
+            "ajuste de preço", "proporção"
+        ],
+        "descricao": "Split (desdobramento) divide cada ação em várias, reduzindo o preço unitário sem alterar o valor total. Grupamento (inplit) é o inverso: junta várias ações em uma, aumentando o preço unitário. Não altera o patrimônio do investidor.",
+        "temas_relacionados": ["cotacao", "liquidez"]
+    },
+    {
+        "id": "bonificacao",
+        "categoria": "DISTRIBUICAO",
+        "termos_usuario": [
+            "bonificação", "ações bonificadas", "bonificação em ações",
+            "distribuição gratuita de ações"
+        ],
+        "termos_busca": [
+            "bonificação", "ações bonificadas", "distribuição gratuita",
+            "incorporação de reservas"
+        ],
+        "descricao": "Bonificação é a distribuição gratuita de novas ações aos acionistas, geralmente originada da incorporação de reservas de lucro ao capital social. O acionista recebe mais ações proporcionalmente à sua participação.",
+        "temas_relacionados": ["dividendo", "provento_tipos"]
+    },
+    {
+        "id": "provento_tipos",
+        "categoria": "DISTRIBUICAO",
+        "termos_usuario": [
+            "rendimento isento", "rendimento tributável", "proventos em ações",
+            "direito de preferência", "sobras"
+        ],
+        "termos_busca": [
+            "rendimento isento", "rendimento tributável", "proventos em ações",
+            "direito de preferência", "sobras", "tipos de provento"
+        ],
+        "descricao": "Tipos de proventos: dividendos (isentos de IR), JCP (tributados na fonte), bonificação em ações, direito de preferência em subscrição e sobras (frações não exercidas). Cada tipo tem tratamento fiscal diferente.",
+        "temas_relacionados": ["dividendo", "jcp", "bonificacao", "subscricao"]
+    },
+    {
+        "id": "beta",
+        "categoria": "RISCO",
+        "termos_usuario": [
+            "beta", "beta da ação", "risco sistemático",
+            "correlação com mercado", "coeficiente beta"
+        ],
+        "termos_busca": [
+            "beta", "coeficiente beta", "risco sistemático",
+            "sensibilidade ao mercado", "Ibovespa"
+        ],
+        "descricao": "Beta mede a sensibilidade de uma ação em relação ao mercado (Ibovespa). Beta = 1: se move igual ao mercado. Beta > 1: mais volátil que o mercado. Beta < 1: menos volátil. Beta negativo: se move na direção oposta.",
+        "temas_relacionados": ["volatilidade", "diversificacao", "benchmark"]
+    },
 ]
 
 
