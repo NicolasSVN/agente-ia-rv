@@ -7,9 +7,10 @@ Documentação: https://developer.z-api.io/webhooks/on-message-received
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List, Tuple
 from datetime import datetime
 import json
+import re
 
 from database.database import get_db, SessionLocal
 from database.models import (
@@ -418,6 +419,26 @@ async def _send_diagram_for_slug(phone: str, slug: str, db: Session):
         return False
 
 
+DIAGRAM_MARKER_PATTERN = re.compile(r'\[ENVIAR_DIAGRAMA:([a-z0-9\-]+)\]')
+
+def _extract_diagram_markers(response: str) -> Tuple[str, List[str]]:
+    markers = DIAGRAM_MARKER_PATTERN.findall(response)
+    clean_response = DIAGRAM_MARKER_PATTERN.sub('', response).strip()
+    clean_response = re.sub(r'\n{3,}', '\n\n', clean_response)
+    return clean_response, markers
+
+
+async def _send_diagrams_from_markers(phone: str, slugs: List[str], db: Session) -> List[str]:
+    sent_slugs = []
+    for slug in slugs:
+        success = await _send_diagram_for_slug(phone, slug, db)
+        if success:
+            sent_slugs.append(slug)
+        else:
+            print(f"[DIAGRAM-MARKER] Falha ao enviar diagrama para slug: {slug}")
+    return sent_slugs
+
+
 async def _send_derivatives_diagram_if_requested(
     phone: str, user_message: str, context: dict, db: Session
 ):
@@ -804,6 +825,13 @@ async def process_text_message(phone: str, message: str, db: Session, message_re
         )
         print(f"[WEBHOOK] Resposta gerada: {response[:100] if response else 'VAZIA'}...")
         
+        diagram_slugs_from_ai = []
+        if response:
+            clean_response, diagram_slugs_from_ai = _extract_diagram_markers(response)
+            if diagram_slugs_from_ai:
+                print(f"[WEBHOOK] Marcações de diagrama detectadas na resposta do OpenAI: {diagram_slugs_from_ai}")
+                response = clean_response
+        
         history.append({"role": "user", "content": normalized_message})
         if response:
             assistant_entry = {"role": "assistant", "content": response}
@@ -948,12 +976,20 @@ async def process_text_message(phone: str, message: str, db: Session, message_re
                     db.commit()
                     print(f"[WEBHOOK] last_bot_response_at atualizado: {fresh_conversation.last_bot_response_at}")
             
-            try:
-                await _send_derivatives_diagram_if_requested(
-                    phone, normalized_message, context, db
-                )
-            except Exception as diag_err:
-                print(f"[WEBHOOK] Erro ao enviar diagrama: {diag_err}")
+            if diagram_slugs_from_ai:
+                try:
+                    sent = await _send_diagrams_from_markers(phone, diagram_slugs_from_ai, db)
+                    if sent:
+                        print(f"[WEBHOOK] Diagramas enviados via marcação OpenAI: {sent}")
+                except Exception as diag_err:
+                    print(f"[WEBHOOK] Erro ao enviar diagramas via marcação: {diag_err}")
+            else:
+                try:
+                    await _send_derivatives_diagram_if_requested(
+                        phone, normalized_message, context, db
+                    )
+                except Exception as diag_err:
+                    print(f"[WEBHOOK] Erro ao enviar diagrama: {diag_err}")
             
             try:
                 await save_conversation_insight(
