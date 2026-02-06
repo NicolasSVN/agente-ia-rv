@@ -834,6 +834,41 @@ Quando um ticker ou ativo NÃO for encontrado na base de conhecimento:
 3. Se houver sugestões similares disponíveis, APENAS pergunte "Você quis dizer X ou Y?" e PARE - não dê mais informações até o usuário confirmar
 4. NÃO use frases de deflexão como "o melhor é acionar o responsável" ou "consulte a área" - isso é evasivo e frustrante
 
+ESTRUTURAS DE DERIVATIVOS (FLUXO CONVERSACIONAL OBRIGATÓRIO):
+Quando o assessor perguntar sobre estruturas de derivativos ou produtos estruturados, SIGA ESTE FLUXO:
+
+1. PERGUNTA GENÉRICA (ex: "quais estruturas de proteção?", "me fala de alavancagem", "o que tem de derivativos?"):
+   → Liste APENAS OS NOMES das estruturas disponíveis naquela categoria
+   → Pergunte qual delas o assessor quer conhecer melhor
+   → NÃO explique nenhuma estrutura ainda
+   → Exemplo: "Na categoria Proteção temos: Put Spread, Collar, Fence e Seagull. Qual delas quer saber mais?"
+
+2. ASSESSOR ESCOLHE UMA ESTRUTURA (ex: "Collar", "a segunda", "me fala do Booster"):
+   → Pergunte O QUE ele quer saber sobre aquela estrutura
+   → Ofereça opções como: como funciona, perfil de risco, para qual cenário é adequado, componentes, vantagens e desvantagens
+   → NÃO despeje toda a informação de uma vez
+   → Exemplo: "Sobre o Collar, o que quer saber? Como funciona, pra qual momento é adequado, perfil de risco...?"
+
+3. ASSESSOR DIZ O QUE QUER SABER (ex: "como funciona", "perfil de risco", "pra quem é"):
+   → Agora sim, responda com a informação específica solicitada
+   → Seja objetivo e direto, sem repetir o que não foi pedido
+
+4. DIAGRAMA DE PAYOFF:
+   → Se a estrutura tiver diagrama disponível (indicado nos metadados), ofereça ao final: "Quer que eu envie o diagrama de payoff?"
+   → NUNCA envie diagrama sem o assessor pedir
+
+CATEGORIAS DE DERIVATIVOS DISPONÍVEIS:
+- Alavancagem (ex: Booster, Call Spread)
+- Juros (ex: Swap Pré-DI)
+- Proteção (ex: Put Spread, Collar, Fence, Seagull)
+- Volatilidade (ex: Straddle, Strangle)
+- Direcionais (ex: Tunnel, Seagull Direcional)
+- Exóticas (ex: Knock-In, Knock-Out)
+- Hedge Cambial (ex: NDF, Collar Cambial)
+- Remuneração de Carteira (ex: Financiamento, Venda Coberta)
+
+IMPORTANTE: Este fluxo de desambiguação é OBRIGATÓRIO. Não pule etapas. O assessor deve ter controle sobre o nível de detalhe que recebe.
+
 === PERSONALIDADE E TOM (ADITIVO) ===
 
 O agente deve falar de forma natural, próxima e humana, como um broker experiente falando com outro broker.
@@ -1011,6 +1046,130 @@ REGRAS PARA INFORMAÇÕES DA INTERNET:
 5. SEJA TRANSPARENTE: Deixe claro quando a informação vem da internet e não da base oficial.
 """
     
+    def _check_pending_derivatives_selection(
+        self,
+        user_message: str,
+        conversation_history: Optional[List[dict]]
+    ) -> Optional[Tuple[str, bool, dict]]:
+        """
+        Verifica se o usuário está respondendo a uma listagem de categorias ou estruturas de derivativos.
+        Trata seleção por ordinal, nome ou keyword.
+        """
+        if not conversation_history:
+            return None
+        
+        try:
+            from scripts.xpi_derivatives.derivatives_dataset import TABS
+        except ImportError:
+            return None
+        
+        msg_lower = user_message.lower().strip()
+        
+        ordinal_map = {
+            'primeiro': 0, 'primeira': 0, '1': 0, 'o primeiro': 0, 'a primeira': 0,
+            'segundo': 1, 'segunda': 1, '2': 1, 'o segundo': 1, 'a segunda': 1,
+            'terceiro': 2, 'terceira': 2, '3': 2, 'o terceiro': 2, 'a terceira': 2,
+            'quarto': 3, 'quarta': 3, '4': 3,
+            'quinto': 4, 'quinta': 4, '5': 4,
+            'sexto': 5, 'sexta': 5, '6': 5,
+            'sétimo': 6, 'sétima': 6, '7': 6,
+            'oitavo': 7, 'oitava': 7, '8': 7,
+        }
+        
+        for hist in reversed(conversation_history[-4:]):
+            metadata = hist.get('metadata', {})
+            intent = metadata.get('intent', '')
+            
+            if intent == 'derivatives_category_listing':
+                categories = metadata.get('categories', [])
+                
+                for ordinal, idx in ordinal_map.items():
+                    if ordinal in msg_lower and idx < len(categories):
+                        chosen_category = categories[idx]
+                        return self._list_structures_for_category(chosen_category, TABS)
+                
+                for tab in TABS:
+                    tab_lower = tab["name"].lower()
+                    if tab_lower in msg_lower:
+                        return self._list_structures_for_category(tab["name"], TABS)
+                
+                break
+            
+            elif intent == 'derivatives_structure_listing':
+                category = metadata.get('category', '')
+                structures = metadata.get('structures', [])
+                
+                for ordinal, idx in ordinal_map.items():
+                    if ordinal in msg_lower and idx < len(structures):
+                        chosen = structures[idx]
+                        return self._ask_what_about_structure(chosen, category)
+                
+                for struct_name in structures:
+                    if struct_name.lower() in msg_lower:
+                        return self._ask_what_about_structure(struct_name, category)
+                
+                break
+            
+            elif intent == 'derivatives_structure_selected':
+                structure = metadata.get('structure', '')
+                category = metadata.get('category', '')
+                if structure:
+                    print(f"[OpenAI] Follow-up sobre estrutura '{structure}' - injetando no contexto")
+                    return (
+                        f"__DERIVATIVES_QUERY__{structure}|||{category}|||{user_message}",
+                        False,
+                        {
+                            "intent": "derivatives_detail_query",
+                            "structure": structure,
+                            "category": category,
+                            "original_question": user_message
+                        }
+                    )
+                break
+        
+        return None
+    
+    def _list_structures_for_category(self, category_name: str, tabs: list) -> Optional[Tuple[str, bool, dict]]:
+        """Lista estruturas de uma categoria específica."""
+        for tab in tabs:
+            if tab["name"] == category_name:
+                structures = []
+                for strategy in tab["strategies"]:
+                    for struct in strategy["structures"]:
+                        structures.append(struct["name"])
+                
+                structures_text = "\n".join([f"• {name}" for name in structures])
+                response = f"Na categoria {category_name} temos:\n\n{structures_text}\n\nQual delas quer conhecer melhor?"
+                
+                print(f"[OpenAI] Usuário escolheu categoria '{category_name}' - listando {len(structures)} estruturas")
+                
+                return (
+                    response,
+                    False,
+                    {
+                        "intent": "derivatives_structure_listing",
+                        "category": category_name,
+                        "structures": structures
+                    }
+                )
+        return None
+    
+    def _ask_what_about_structure(self, structure_name: str, category: str) -> Tuple[str, bool, dict]:
+        """Pergunta ao assessor o que ele quer saber sobre uma estrutura específica."""
+        response = f"Sobre o {structure_name}, o que quer saber? Como funciona, perfil de risco, pra qual cenário é adequado, componentes...?"
+        
+        print(f"[OpenAI] Usuário escolheu estrutura '{structure_name}' - perguntando o que quer saber")
+        
+        return (
+            response,
+            False,
+            {
+                "intent": "derivatives_structure_selected",
+                "structure": structure_name,
+                "category": category
+            }
+        )
+
     def _check_pending_manager_selection(
         self, 
         user_message: str, 
@@ -1111,6 +1270,115 @@ REGRAS PARA INFORMAÇÕES DA INTERNET:
         
         return None
     
+    def _check_derivatives_disambiguation(
+        self,
+        user_message: str,
+        conversation_history: Optional[List[dict]] = None
+    ) -> Optional[Tuple[str, bool, dict]]:
+        """
+        Verifica se a query é sobre estruturas de derivativos de forma genérica (por categoria).
+        Se sim, lista as estruturas disponíveis e pergunta qual interessa.
+        """
+        msg_lower = user_message.lower().strip()
+        
+        CATEGORY_KEYWORDS = {
+            "Alavancagem": ["alavancagem", "alavancada", "alavancar", "dobrar participação", "participação dobrada"],
+            "Juros": ["juros", "taxa de juros", "pré-di", "swap", "curva de juros"],
+            "Proteção": ["proteção", "proteger", "hedge", "proteger carteira", "proteger posição"],
+            "Volatilidade": ["volatilidade", "vol", "straddle", "strangle"],
+            "Direcionais": ["direcional", "direcionais", "visão de mercado", "aposta direcional"],
+            "Exóticas": ["exótica", "exóticas", "knock-in", "knock-out", "barreira"],
+            "Hedge Cambial": ["hedge cambial", "cambial", "dólar", "moeda", "câmbio", "proteger câmbio"],
+            "Remuneração de Carteira": ["remuneração", "remunerar carteira", "renda extra", "financiamento", "venda coberta", "covered call"],
+        }
+        
+        GENERIC_DERIVATIVES_KEYWORDS = [
+            "derivativos", "derivativo", "estruturas", "estruturados", "produtos estruturados",
+            "opções", "opcoes", "estruturas de derivativos", "o que tem de derivativos",
+            "quais estruturas", "quais derivativos", "lista de estruturas"
+        ]
+        
+        try:
+            from scripts.xpi_derivatives.derivatives_dataset import TABS
+        except ImportError:
+            return None
+        
+        is_generic_derivatives = any(kw in msg_lower for kw in GENERIC_DERIVATIVES_KEYWORDS)
+        if is_generic_derivatives:
+            specific_structure_names = []
+            for tab in TABS:
+                for strategy in tab["strategies"]:
+                    for struct in strategy["structures"]:
+                        if struct["name"].lower() in msg_lower or struct["slug"].lower() in msg_lower:
+                            specific_structure_names.append(struct["name"])
+            
+            if specific_structure_names:
+                return None
+            
+            categories_list = []
+            for tab in TABS:
+                structure_count = sum(len(s["structures"]) for s in tab["strategies"])
+                categories_list.append(f"• {tab['name']} ({structure_count} estruturas)")
+            
+            categories_text = "\n".join(categories_list)
+            response = f"Temos estruturas de derivativos nas seguintes categorias:\n\n{categories_text}\n\nQual categoria te interessa?"
+            
+            print(f"[OpenAI] Query genérica de derivativos detectada - listando categorias")
+            
+            return (
+                response,
+                False,
+                {
+                    "intent": "derivatives_category_listing",
+                    "categories": [t["name"] for t in TABS]
+                }
+            )
+        
+        matched_category = None
+        for category, keywords in CATEGORY_KEYWORDS.items():
+            if any(kw in msg_lower for kw in keywords):
+                specific_found = False
+                for tab in TABS:
+                    if tab["name"] == category:
+                        for strategy in tab["strategies"]:
+                            for struct in strategy["structures"]:
+                                if struct["name"].lower() in msg_lower or struct["slug"] in msg_lower:
+                                    specific_found = True
+                                    break
+                if not specific_found:
+                    matched_category = category
+                break
+        
+        if not matched_category:
+            return None
+        
+        for tab in TABS:
+            if tab["name"] == matched_category:
+                structures = []
+                for strategy in tab["strategies"]:
+                    for struct in strategy["structures"]:
+                        structures.append(struct["name"])
+                
+                if len(structures) == 1:
+                    return None
+                
+                structures_text = "\n".join([f"• {name}" for name in structures])
+                response = f"Na categoria {matched_category} temos as seguintes estruturas:\n\n{structures_text}\n\nQual delas quer conhecer melhor?"
+                
+                print(f"[OpenAI] Categoria de derivativos '{matched_category}' detectada com {len(structures)} estruturas - listando")
+                
+                return (
+                    response,
+                    False,
+                    {
+                        "intent": "derivatives_structure_listing",
+                        "category": matched_category,
+                        "structures": structures
+                    }
+                )
+        
+        return None
+
     def _check_manager_disambiguation(
         self, 
         user_message: str
@@ -1181,10 +1449,36 @@ REGRAS PARA INFORMAÇÕES DA INTERNET:
             return "Nenhum contexto relevante encontrado na base de conhecimento."
         
         context_parts = []
+        derivatives_by_tab = {}
+        
         for i, doc in enumerate(documents, 1):
-            title = doc.get('metadata', {}).get('title', f'Documento {i}')
+            metadata = doc.get('metadata', {})
+            title = metadata.get('title', f'Documento {i}')
             content = doc.get('content', '')
             context_parts.append(f"[{title}]\n{content}")
+            
+            doc_type = metadata.get('type', '')
+            if doc_type in ('derivatives_structure', 'derivatives_structure_technical', 'derivatives_tab'):
+                tab = metadata.get('tab', 'Outros')
+                structure_name = metadata.get('product_name', '')
+                has_diagram = metadata.get('has_diagram', 'false') == 'true'
+                if structure_name and tab:
+                    if tab not in derivatives_by_tab:
+                        derivatives_by_tab[tab] = []
+                    entry = structure_name
+                    if has_diagram:
+                        entry += " [diagrama disponível]"
+                    if entry not in [e for e in derivatives_by_tab[tab]]:
+                        derivatives_by_tab[tab].append(entry)
+        
+        if derivatives_by_tab:
+            listing = "\n[ESTRUTURAS DE DERIVATIVOS ENCONTRADAS NO CONTEXTO]\n"
+            listing += "Use esta lista para orientar a desambiguação com o assessor:\n"
+            for tab, structures in derivatives_by_tab.items():
+                listing += f"\n📂 {tab}:\n"
+                for s in structures:
+                    listing += f"  • {s}\n"
+            context_parts.append(listing)
         
         return "\n\n---\n\n".join(context_parts)
     
@@ -1375,6 +1669,19 @@ REGRAS PARA INFORMAÇÕES DA INTERNET:
         
         categoria, extracted_products = self._classify_message(user_message)
         
+        pending_derivatives = self._check_pending_derivatives_selection(user_message, conversation_history)
+        if pending_derivatives:
+            response_text, should_ticket, context_info = pending_derivatives
+            if response_text.startswith("__DERIVATIVES_QUERY__"):
+                parts = response_text.replace("__DERIVATIVES_QUERY__", "").split("|||")
+                structure_name = parts[0] if len(parts) > 0 else ""
+                category = parts[1] if len(parts) > 1 else ""
+                original_question = parts[2] if len(parts) > 2 else user_message
+                user_message = f"{structure_name} {original_question}"
+                print(f"[OpenAI] Query substituída para derivativos: '{user_message}'")
+            else:
+                return pending_derivatives
+        
         pending_manager_selection = self._check_pending_manager_selection(user_message, conversation_history)
         if pending_manager_selection:
             response_text, should_ticket, context_info = pending_manager_selection
@@ -1394,6 +1701,10 @@ REGRAS PARA INFORMAÇÕES DA INTERNET:
         manager_disambiguation = self._check_manager_disambiguation(user_message)
         if manager_disambiguation:
             return manager_disambiguation
+        
+        derivatives_disambiguation = self._check_derivatives_disambiguation(user_message, conversation_history)
+        if derivatives_disambiguation:
+            return derivatives_disambiguation
         
         is_followup = self._is_followup_question(user_message)
         
