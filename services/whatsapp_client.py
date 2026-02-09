@@ -479,13 +479,14 @@ class ZAPIClient:
             "total": len(all_chats)
         }
     
-    async def get_chat_messages(self, phone_or_lid: str, amount: int = 100) -> dict:
+    async def get_chat_messages(self, phone_or_lid: str, amount: int = 100, last_message_id: str = None) -> dict:
         """
         Busca mensagens de um chat específico via Z-API.
         
         Args:
             phone_or_lid: Número de telefone ou LID do chat (@lid)
             amount: Quantidade de mensagens a buscar (padrão 100)
+            last_message_id: ID da última mensagem para paginação (busca mensagens anteriores a esta)
             
         Returns:
             Lista de mensagens do chat
@@ -496,6 +497,8 @@ class ZAPIClient:
         
         url = f"{self.base_url}/chat-messages/{identifier}"
         params = {"amount": amount}
+        if last_message_id:
+            params["lastMessageId"] = last_message_id
         
         async with httpx.AsyncClient() as client:
             try:

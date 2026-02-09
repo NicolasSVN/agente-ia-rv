@@ -391,6 +391,10 @@ function App() {
   const [totalCount, setTotalCount] = useState(0);
   const [contextMenu, setContextMenu] = useState(null);
   const [toast, setToast] = useState(null);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  const [hasMoreHistory, setHasMoreHistory] = useState(true);
+  const [lastZapiMessageId, setLastZapiMessageId] = useState(null);
+  const [historyExhausted, setHistoryExhausted] = useState(false);
   const messagesEndRef = useRef(null);
   const messagesContainerRef = useRef(null);
   const eventSourceRef = useRef(null);
@@ -470,13 +474,22 @@ function App() {
         credentials: 'include',
       });
       const res = await fetch(`${API_BASE}/conversations/${conversationId}/messages`, { credentials: 'include' });
-      const data = await res.json();
-      setMessages(data);
+      const dbMessages = await res.json();
+      
       if (isInitialLoad) {
+        setMessages(dbMessages);
         shouldScrollRef.current = true;
         setTimeout(() => scrollToBottom('auto'), 50);
-      } else if (shouldScrollRef.current) {
-        setTimeout(() => scrollToBottom('smooth'), 50);
+      } else {
+        setMessages(prev => {
+          const historyMessages = prev.filter(m => m.source === 'zapi');
+          const dbMessageIds = new Set(dbMessages.map(m => m.message_id).filter(Boolean));
+          const uniqueHistory = historyMessages.filter(m => !dbMessageIds.has(m.message_id));
+          return [...uniqueHistory, ...dbMessages];
+        });
+        if (shouldScrollRef.current) {
+          setTimeout(() => scrollToBottom('smooth'), 50);
+        }
       }
     } catch (err) {
       console.error('Erro ao carregar mensagens:', err);
@@ -490,7 +503,85 @@ function App() {
       c.id === conv.id ? { ...c, unread_count: 0 } : c
     ));
     setMessages([]);
+    setHasMoreHistory(true);
+    setLastZapiMessageId(null);
+    setHistoryExhausted(false);
     await fetchMessages(conv.id, true);
+  };
+
+  const loadMoreHistory = async () => {
+    if (!currentConversation || isLoadingHistory || historyExhausted) return;
+    
+    setIsLoadingHistory(true);
+    try {
+      const params = new URLSearchParams({ amount: '10' });
+      if (lastZapiMessageId) {
+        params.append('last_message_id', lastZapiMessageId);
+      }
+      
+      const res = await fetch(
+        `${API_BASE}/conversations/${currentConversation.id}/history?${params}`,
+        { credentials: 'include' }
+      );
+      
+      if (!res.ok) {
+        showToast('Erro ao carregar histórico', 'error');
+        return;
+      }
+      
+      const data = await res.json();
+      
+      if (!data.success || !data.messages || data.messages.length === 0) {
+        setHistoryExhausted(true);
+        setHasMoreHistory(false);
+        return;
+      }
+      
+      const existingMessageIds = new Set(messages.map(m => m.message_id).filter(Boolean));
+      const newMessages = data.messages
+        .filter(m => !m.already_in_db && !existingMessageIds.has(m.message_id))
+        .map(m => ({
+          ...m,
+          id: m.message_id,
+          source: 'zapi'
+        }));
+      
+      if (newMessages.length === 0 && !data.has_more) {
+        setHistoryExhausted(true);
+        setHasMoreHistory(false);
+        return;
+      }
+      
+      if (newMessages.length > 0) {
+        const container = messagesContainerRef.current;
+        const prevScrollHeight = container?.scrollHeight || 0;
+        
+        shouldScrollRef.current = false;
+        setMessages(prev => [...newMessages.reverse(), ...prev]);
+        
+        requestAnimationFrame(() => {
+          if (container) {
+            const newScrollHeight = container.scrollHeight;
+            container.scrollTop = newScrollHeight - prevScrollHeight;
+          }
+        });
+      }
+      
+      const lastMsg = data.messages[data.messages.length - 1];
+      if (lastMsg?.message_id) {
+        setLastZapiMessageId(lastMsg.message_id);
+      }
+      
+      setHasMoreHistory(data.has_more);
+      if (!data.has_more) {
+        setHistoryExhausted(true);
+      }
+    } catch (err) {
+      console.error('Erro ao carregar histórico:', err);
+      showToast('Erro ao carregar histórico', 'error');
+    } finally {
+      setIsLoadingHistory(false);
+    }
   };
 
   const loadMoreConversations = () => {
@@ -1091,6 +1182,33 @@ function App() {
                   </div>
                 ) : (
                   <>
+                    {historyExhausted ? (
+                      <div className="flex justify-center mb-4">
+                        <span className="text-xs text-gray-400 bg-gray-100 px-4 py-2 rounded-full">
+                          Não há mais mensagens no histórico
+                        </span>
+                      </div>
+                    ) : (
+                      <div className="flex justify-center mb-4">
+                        <button
+                          onClick={loadMoreHistory}
+                          disabled={isLoadingHistory}
+                          className="flex items-center gap-2 px-4 py-2 text-sm text-primary bg-white border border-gray-200 rounded-lg hover:bg-primary/5 hover:border-primary/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+                        >
+                          {isLoadingHistory ? (
+                            <>
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                              Carregando...
+                            </>
+                          ) : (
+                            <>
+                              <ArrowUpCircle className="w-4 h-4" />
+                              Carregar mais mensagens
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    )}
                     {(() => {
                       const noteTimestamp = currentConversation.first_human_response_at || currentConversation.last_message_at;
                       const showNote = currentConversation.ticket_summary && currentConversation.escalation_level === 't1';

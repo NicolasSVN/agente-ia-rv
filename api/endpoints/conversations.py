@@ -824,6 +824,137 @@ async def sync_conversation_messages(
     }
 
 
+@router.get("/{conversation_id}/history")
+async def get_conversation_history_zapi(
+    conversation_id: int,
+    amount: int = Query(10, ge=1, le=50),
+    last_message_id: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Busca histórico de mensagens diretamente da Z-API (sem salvar no banco).
+    Usado para carregar mensagens mais antigas sob demanda via botão "Carregar mais".
+    
+    Args:
+        conversation_id: ID da conversa no banco
+        amount: Quantidade de mensagens a buscar (padrão 10)
+        last_message_id: ID da última mensagem carregada (para paginação Z-API)
+    """
+    from services.whatsapp_client import zapi_client
+    
+    conv = db.query(Conversation).filter(Conversation.id == conversation_id).first()
+    if not conv:
+        raise HTTPException(status_code=404, detail="Conversa não encontrada")
+    
+    if not zapi_client.is_configured():
+        raise HTTPException(status_code=500, detail="Z-API não configurada")
+    
+    result = await zapi_client.get_chat_messages(
+        conv.phone, 
+        amount=amount, 
+        last_message_id=last_message_id
+    )
+    
+    if not result.get("success"):
+        return {
+            "success": False,
+            "error": result.get("error", "Erro ao buscar histórico"),
+            "messages": [],
+            "has_more": False
+        }
+    
+    raw_messages = result.get("messages", [])
+    
+    existing_ids = set()
+    if raw_messages:
+        msg_ids = [m.get("messageId") or m.get("id") for m in raw_messages if m.get("messageId") or m.get("id")]
+        if msg_ids:
+            existing_records = db.query(WhatsAppMessage.message_id).filter(
+                WhatsAppMessage.message_id.in_(msg_ids)
+            ).all()
+            existing_ids = {r[0] for r in existing_records}
+    
+    formatted_messages = []
+    for msg_data in raw_messages:
+        msg_id = msg_data.get("messageId") or msg_data.get("id")
+        if not msg_id:
+            continue
+        
+        is_from_me = msg_data.get("fromMe", False)
+        
+        body = ""
+        msg_type = "text"
+        media_url = None
+        media_filename = None
+        
+        if msg_data.get("text"):
+            body = msg_data["text"].get("message", "") if isinstance(msg_data["text"], dict) else str(msg_data["text"])
+        elif msg_data.get("audio"):
+            msg_type = "audio"
+            body = "[Áudio]"
+            media_url = msg_data["audio"].get("audioUrl")
+        elif msg_data.get("image"):
+            msg_type = "image"
+            body = msg_data["image"].get("caption", "[Imagem]")
+            media_url = msg_data["image"].get("imageUrl") or msg_data["image"].get("thumbnailUrl")
+        elif msg_data.get("document"):
+            msg_type = "document"
+            media_filename = msg_data["document"].get("fileName", "Documento")
+            body = media_filename
+            media_url = msg_data["document"].get("documentUrl")
+        elif msg_data.get("video"):
+            msg_type = "video"
+            body = msg_data["video"].get("caption", "[Vídeo]")
+            media_url = msg_data["video"].get("videoUrl")
+        elif msg_data.get("contact"):
+            msg_type = "contact"
+            body = msg_data["contact"].get("displayName", "[Contato]")
+        elif msg_data.get("sticker"):
+            msg_type = "sticker"
+            body = "[Figurinha]"
+            media_url = msg_data["sticker"].get("stickerUrl")
+        
+        timestamp = msg_data.get("momment") or msg_data.get("timestamp")
+        created_at = None
+        if timestamp:
+            try:
+                if timestamp > 10000000000:
+                    timestamp = timestamp / 1000
+                created_at = datetime.fromtimestamp(timestamp).isoformat()
+            except:
+                created_at = datetime.utcnow().isoformat()
+        else:
+            created_at = datetime.utcnow().isoformat()
+        
+        formatted_messages.append({
+            "id": None,
+            "message_id": msg_id,
+            "direction": "outbound" if is_from_me else "inbound",
+            "message_type": msg_type,
+            "status": msg_data.get("status"),
+            "from_me": is_from_me,
+            "sender_type": "human" if is_from_me else "contact",
+            "sender_name": msg_data.get("senderName"),
+            "body": body,
+            "media_url": media_url,
+            "media_filename": media_filename,
+            "thumbnail_url": None,
+            "created_at": created_at,
+            "source": "zapi",
+            "already_in_db": msg_id in existing_ids
+        })
+    
+    has_more = len(raw_messages) >= amount
+    
+    return {
+        "success": True,
+        "messages": formatted_messages,
+        "has_more": has_more,
+        "count": len(formatted_messages)
+    }
+
+
 @router.post("/{conversation_id}/send")
 async def send_message(
     conversation_id: int,
