@@ -388,6 +388,10 @@ CLASSIFIQUE a mensagem em UMA das categorias:
 
 3. ESCOPO - Perguntas gerais sobre renda variável que não citam produto específico:
    "como funciona a estratégia de RV?", "quais setores estão aquecidos?", "o que é um FII?"
+   INCLUI perguntas sobre comitê, produtos do mês, recomendações atuais da SVN:
+   "qual o produto do mês?", "me faz um resumo do comitê", "o que a SVN tá recomendando?",
+   "quais as recomendações atuais?", "produto pra cliente conservador?"
+   Para estas, adicione "COMITE" na lista de produtos para sinalizar busca por produtos vigentes.
 
 4. MERCADO - Perguntas sobre notícias, cotações ATUAIS, eventos do dia, preços EM TEMPO REAL:
    "o que aconteceu com a Petrobras hoje?", "qual a cotação do PETR4?", "como está o mercado?",
@@ -432,6 +436,10 @@ Exemplos:
 "chama o broker" -> {"categoria": "ATENDIMENTO_HUMANO", "produtos": []}
 "me manda o gráfico da booster" -> {"categoria": "DOCUMENTAL", "produtos": ["BOOSTER"]}
 "consegue me ajudar com isso?" -> {"categoria": "ESCOPO", "produtos": []}
+"qual o produto do mês?" -> {"categoria": "ESCOPO", "produtos": ["COMITE"]}
+"me faz um resumo do comitê" -> {"categoria": "ESCOPO", "produtos": ["COMITE"]}
+"o que a SVN tá recomendando?" -> {"categoria": "ESCOPO", "produtos": ["COMITE"]}
+"produto pra cliente conservador?" -> {"categoria": "ESCOPO", "produtos": ["COMITE"]}
 "conta uma piada" -> {"categoria": "FORA_ESCOPO", "produtos": []}
 
 Retorne APENAS o JSON."""
@@ -838,6 +846,21 @@ Quando o assessor perguntar sobre notícias, cotações, eventos ou fatos releva
 - Seja objetivo e factual - não dê opiniões ou recomendações de compra/venda
 - Foque em FATOS: preços, eventos, anúncios, resultados, movimentações
 - Se não houver informação disponível, seja honesto e sugira que o assessor consulte diretamente as fontes de mercado
+
+COMITÊ E PRODUTOS DO MÊS (CONCEITO FUNDAMENTAL):
+O Comitê é um grupo de diretores e especialistas da SVN que periodicamente seleciona produtos do mercado para recomendar aos assessores, com base na estratégia da empresa. Os produtos selecionados pelo Comitê são os "Produtos do Mês" — as recomendações ativas e vigentes da SVN para aquele período.
+
+COMO IDENTIFICAR PRODUTOS DO COMITÊ:
+- Produtos/materiais na base de conhecimento com DATA DE VALIDADE VIGENTE (valid_until >= hoje) são considerados recomendações ativas do Comitê
+- Materiais do tipo "comite" representam decisões e teses aprovadas pelo Comitê de Investimentos
+- Quando os documentos fornecidos incluírem a marcação [PRODUTO_VIGENTE] ou [COMITÊ], priorize esses conteúdos na resposta
+
+QUANDO O ASSESSOR PERGUNTAR SOBRE COMITÊ OU PRODUTOS DO MÊS:
+Exemplos: "qual o produto do mês?", "me faz um resumo do comitê", "o que a SVN tá recomendando?", "qual produto pra cliente conservador?", "quais as recomendações atuais?", "o que saiu do último comitê?"
+→ Responda EXCLUSIVAMENTE com base nos produtos/materiais vigentes (dentro da data de validade)
+→ Se houver produtos vigentes, liste-os de forma organizada com as informações disponíveis
+→ Se o assessor especificar perfil de cliente (conservador, moderado, arrojado), filtre pelos produtos adequados
+→ Se NÃO houver produtos vigentes na base, informe que não há recomendações atualizadas do Comitê disponíveis no momento e sugira consultar o broker ou a área de RV
 
 IMPORTANTE - TICKERS/ATIVOS NÃO ENCONTRADOS:
 Quando um ticker ou ativo NÃO for encontrado na base de conhecimento:
@@ -1799,6 +1822,24 @@ REGRAS PARA INFORMAÇÕES DA INTERNET:
                         if doc not in context_documents:
                             context_documents.append(doc)
         elif vs:
+            is_comite_query = "COMITE" in [p.upper() for p in extracted_products] if extracted_products else False
+            
+            if not is_comite_query:
+                comite_keywords = ["comitê", "comite", "produto do mês", "produto do mes", "produtos do mês", "produtos do mes", "recomendações atuais", "recomendacoes atuais", "o que a svn tá recomendando", "o que a svn ta recomendando", "recomendação do mês", "recomendacao do mes"]
+                msg_lower = user_message.lower()
+                if any(kw in msg_lower for kw in comite_keywords):
+                    is_comite_query = True
+                    print(f"[OpenAI] Fallback: detectada palavra-chave de Comitê na mensagem")
+            
+            if is_comite_query:
+                print(f"[OpenAI] Detectada consulta sobre COMITÊ/Produtos do Mês - buscando produtos vigentes")
+                comite_docs = vs.search_comite_vigent(query=user_message, n_results=20)
+                if comite_docs:
+                    context_documents.extend(comite_docs)
+                    print(f"[OpenAI] {len(comite_docs)} documentos vigentes do Comitê adicionados ao contexto")
+                else:
+                    print(f"[OpenAI] Nenhum produto vigente encontrado - Stevan informará ao assessor")
+                extracted_products = [p for p in extracted_products if p.upper() != "COMITE"]
             if extracted_products:
                 for product in extracted_products:
                     product_docs = vs.search_by_product(product, n_results=10)

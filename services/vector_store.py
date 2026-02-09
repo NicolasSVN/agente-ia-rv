@@ -1151,6 +1151,115 @@ class VectorStore:
         finally:
             db.close()
     
+    def search_comite_vigent(self, query: str = "", n_results: int = 20) -> List[dict]:
+        """
+        Busca produtos/materiais vigentes do Comitê (dentro da data de validade).
+        Prioriza materiais do tipo 'comite' e produtos com valid_until >= hoje.
+        
+        Returns:
+            Lista de documentos vigentes do Comitê com marcação especial
+        """
+        from database.database import SessionLocal
+        from database.models import Product, Material, ContentBlock, MaterialStatus
+        from datetime import datetime
+        
+        db = SessionLocal()
+        try:
+            now = datetime.utcnow()
+            from sqlalchemy import or_
+            
+            vigent_materials = db.query(Material).filter(
+                Material.publish_status == MaterialStatus.PUBLISHED.value,
+                or_(
+                    Material.valid_until.is_(None),
+                    Material.valid_until >= now
+                )
+            ).all()
+            
+            if not vigent_materials:
+                vigent_products = db.query(Product).filter(
+                    Product.status == 'ativo',
+                    Product.name != '__SYSTEM_UNASSIGNED__',
+                    or_(
+                        Product.valid_until >= now,
+                        Product.valid_until.is_(None)
+                    )
+                ).all()
+                
+                if vigent_products:
+                    product_ids = [p.id for p in vigent_products]
+                    vigent_materials = db.query(Material).filter(
+                        Material.product_id.in_(product_ids),
+                        Material.publish_status == MaterialStatus.PUBLISHED.value,
+                        or_(
+                            Material.valid_until.is_(None),
+                            Material.valid_until >= now
+                        )
+                    ).all()
+            
+            if not vigent_materials:
+                print("[VECTOR_STORE] Nenhum material vigente encontrado para Comitê")
+                return []
+            
+            material_ids = [m.id for m in vigent_materials]
+            material_map = {}
+            for m in vigent_materials:
+                material_map[m.id] = m
+            
+            blocks = db.query(ContentBlock).filter(
+                ContentBlock.material_id.in_(material_ids),
+                ContentBlock.status.in_(['auto_approved', 'approved'])
+            ).order_by(ContentBlock.material_id, ContentBlock.order).all()
+            
+            if not blocks:
+                print("[VECTOR_STORE] Materiais vigentes encontrados, mas sem blocos de conteúdo")
+                return []
+            
+            documents = []
+            for block in blocks:
+                material = material_map.get(block.material_id)
+                if not material:
+                    continue
+                
+                product = material.product
+                is_comite_type = material.material_type == 'comite'
+                
+                vigent_label = "[COMITÊ] " if is_comite_type else "[PRODUTO_VIGENTE] "
+                valid_until_str = material.valid_until.strftime("%d/%m/%Y") if material.valid_until else ""
+                
+                content = block.content or ""
+                enriched_content = f"{vigent_label}(Válido até {valid_until_str}) {content}"
+                
+                metadata = {
+                    "product_name": product.name if product else "",
+                    "product_ticker": product.ticker if product else "",
+                    "gestora": product.manager if product else "",
+                    "category": product.category if product else "",
+                    "material_type": material.material_type,
+                    "material_name": material.name or "",
+                    "valid_until": valid_until_str,
+                    "is_comite": is_comite_type,
+                    "block_type": block.block_type,
+                    "publish_status": material.publish_status,
+                }
+                
+                documents.append({
+                    "content": enriched_content,
+                    "metadata": metadata,
+                    "distance": 0.1,
+                    "composite_score": 0.95,
+                    "source": "comite_vigent"
+                })
+            
+            print(f"[VECTOR_STORE] Comitê: {len(documents)} blocos vigentes de {len(vigent_materials)} materiais")
+            return documents[:n_results]
+            
+        except Exception as e:
+            print(f"[VECTOR_STORE] Erro na busca de Comitê vigente: {e}")
+            return []
+        finally:
+            db.close()
+    
     def clear(self) -> None:
         """Limpa toda a base de conhecimento."""
         try:
