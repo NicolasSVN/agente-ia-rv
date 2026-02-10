@@ -43,10 +43,8 @@ const OPERATION_LABELS = {
 }
 
 const UPLOAD_OPERATIONS = new Set([
-  'document_vision_extraction',
-  'document_summary',
-  'metadata_vision_extraction',
-  'ticker_inference',
+  'document_extraction',
+  'metadata_extraction',
   'chunk_enrichment',
 ])
 
