@@ -303,10 +303,11 @@ export function SmartUpload() {
         addLog(`Processando... ${Math.round(progress)}%`, 'info');
       }, 1500);
 
-      const material = await materialsAPI.create(selectedProduct.id, materialData);
-      addLog('Material criado, enviando PDF...', 'info');
+      const result = await materialsAPI.create(selectedProduct.id, materialData);
+      const materialId = result.material_id || result.id;
+      addLog(`Material criado (ID: ${materialId}), enviando PDF...`, 'info');
       
-      await materialsAPI.uploadPDF(selectedProduct.id, material.id, file);
+      await materialsAPI.uploadPDF(selectedProduct.id, materialId, file);
       
       clearInterval(progressInterval);
       setUploadProgress(100);
