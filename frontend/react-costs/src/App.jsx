@@ -63,9 +63,9 @@ function formatNumber(value) {
   return new Intl.NumberFormat('pt-BR').format(value)
 }
 
-function KPICard({ title, value, subtitle, icon: Icon, color = 'amber', trend }) {
+function KPICard({ title, value, subtitle, icon: Icon, color = 'primary', trend }) {
   const colorMap = {
-    amber: 'bg-amber-50 text-amber-700 border-amber-200',
+    primary: 'bg-primary/10 text-primary border-primary/20',
     green: 'bg-green-50 text-green-700 border-green-200',
     blue: 'bg-blue-50 text-blue-700 border-blue-200',
     purple: 'bg-purple-50 text-purple-700 border-purple-200',
@@ -74,7 +74,7 @@ function KPICard({ title, value, subtitle, icon: Icon, color = 'amber', trend })
   }
 
   const iconColorMap = {
-    amber: 'bg-amber-100 text-amber-600',
+    primary: 'bg-primary/15 text-primary',
     green: 'bg-green-100 text-green-600',
     blue: 'bg-blue-100 text-blue-600',
     purple: 'bg-purple-100 text-purple-600',
@@ -103,10 +103,10 @@ function KPICard({ title, value, subtitle, icon: Icon, color = 'amber', trend })
   )
 }
 
-function ProgressBar({ label, current, max, unit = '', color = 'amber' }) {
+function ProgressBar({ label, current, max, unit = '', color = 'primary' }) {
   const percentage = max > 0 ? Math.min((current / max) * 100, 100) : 0
   const colorClasses = {
-    amber: 'bg-amber-500',
+    primary: 'bg-primary',
     green: 'bg-green-500',
     blue: 'bg-blue-500',
     red: 'bg-red-500',
@@ -184,7 +184,7 @@ function FixedCostModal({ isOpen, onClose, onSave, editingCost }) {
               value={form.name}
               onChange={e => setForm({ ...form, name: e.target.value })}
               placeholder="Ex: Z-API, Replit, Tavily"
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/40 focus:border-primary outline-none"
               required
             />
           </div>
@@ -195,7 +195,7 @@ function FixedCostModal({ isOpen, onClose, onSave, editingCost }) {
               value={form.description}
               onChange={e => setForm({ ...form, description: e.target.value })}
               placeholder="Descrição breve do serviço"
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/40 focus:border-primary outline-none"
             />
           </div>
           <div>
@@ -206,7 +206,7 @@ function FixedCostModal({ isOpen, onClose, onSave, editingCost }) {
               value={form.monthly_cost_brl}
               onChange={e => setForm({ ...form, monthly_cost_brl: e.target.value })}
               placeholder="0,00"
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/40 focus:border-primary outline-none"
               required
             />
           </div>
@@ -215,7 +215,7 @@ function FixedCostModal({ isOpen, onClose, onSave, editingCost }) {
             <select
               value={form.category}
               onChange={e => setForm({ ...form, category: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/40 focus:border-primary outline-none"
             >
               <option value="infrastructure">Infraestrutura</option>
               <option value="api">API / Serviço</option>
@@ -229,14 +229,14 @@ function FixedCostModal({ isOpen, onClose, onSave, editingCost }) {
               onChange={e => setForm({ ...form, plan_details: e.target.value })}
               placeholder="Ex: Plano Pro, 1000 buscas/mês, inclui suporte..."
               rows={3}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none resize-none"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/40 focus:border-primary outline-none resize-none"
             />
           </div>
           <div className="flex gap-3 pt-2">
             <button type="button" onClick={onClose} className="flex-1 px-4 py-2.5 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 font-medium">
               Cancelar
             </button>
-            <button type="submit" className="flex-1 px-4 py-2.5 bg-amber-600 text-white rounded-lg hover:bg-amber-700 font-medium">
+            <button type="submit" className="flex-1 px-4 py-2.5 bg-primary text-white rounded-lg hover:bg-primary-dark font-medium">
               {editingCost ? 'Salvar' : 'Adicionar'}
             </button>
           </div>
@@ -333,8 +333,8 @@ export default function App() {
     datasets: [{
       label: 'Custo (R$)',
       data: daily.map(d => d.cost_brl),
-      borderColor: '#d97706',
-      backgroundColor: 'rgba(217, 119, 6, 0.1)',
+      borderColor: '#772B21',
+      backgroundColor: 'rgba(119, 43, 33, 0.1)',
       fill: true,
       tension: 0.4,
       pointRadius: 2,
@@ -370,7 +370,7 @@ export default function App() {
     labels: summary.by_service.map(s => s.service === 'openai' ? 'OpenAI' : s.service === 'tavily' ? 'Tavily' : s.service),
     datasets: [{
       data: summary.by_service.map(s => s.cost_brl),
-      backgroundColor: ['#d97706', '#2563eb', '#7c3aed', '#059669', '#dc2626'],
+      backgroundColor: ['#772B21', '#2563eb', '#7c3aed', '#059669', '#dc2626'],
       borderWidth: 0,
     }],
   } : null
@@ -381,8 +381,8 @@ export default function App() {
       label: 'Custo (R$)',
       data: summary.by_operation.slice(0, 8).map(o => o.cost_brl),
       backgroundColor: [
-        '#d97706', '#2563eb', '#7c3aed', '#059669',
-        '#dc2626', '#0891b2', '#c026d3', '#ea580c'
+        '#772B21', '#2563eb', '#7c3aed', '#059669',
+        '#dc2626', '#0891b2', '#c026d3', '#8b4513'
       ],
       borderRadius: 6,
     }],
@@ -419,7 +419,7 @@ export default function App() {
     return (
       <div className="flex items-center justify-center h-full">
         <div className="flex flex-col items-center gap-3">
-          <Loader2 className="w-8 h-8 animate-spin text-amber-600" />
+          <Loader2 className="w-8 h-8 animate-spin text-primary" />
           <p className="text-gray-500">Carregando dados de custos...</p>
         </div>
       </div>
@@ -432,7 +432,7 @@ export default function App() {
         <div className="flex flex-col items-center gap-3 text-red-500">
           <AlertCircle className="w-8 h-8" />
           <p>{error}</p>
-          <button onClick={fetchData} className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700">
+          <button onClick={fetchData} className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark">
             Tentar novamente
           </button>
         </div>
@@ -452,14 +452,14 @@ export default function App() {
             <select
               value={period}
               onChange={e => setPeriod(parseInt(e.target.value))}
-              className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none"
+              className="px-3 py-2 border border-border rounded-lg text-sm bg-white focus:ring-2 focus:ring-primary/40 focus:border-primary outline-none"
             >
               <option value={7}>Últimos 7 dias</option>
               <option value={30}>Últimos 30 dias</option>
               <option value={90}>Últimos 90 dias</option>
               <option value={365}>Último ano</option>
             </select>
-            <button onClick={fetchData} className="p-2 text-gray-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors" title="Atualizar">
+            <button onClick={fetchData} className="p-2 text-gray-400 hover:text-primary hover:bg-primary/10 rounded-lg transition-colors" title="Atualizar">
               <RefreshCw className="w-5 h-5" />
             </button>
           </div>
@@ -477,7 +477,7 @@ export default function App() {
               onClick={() => setActiveTab(tab.key)}
               className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
                 activeTab === tab.key
-                  ? 'bg-white text-amber-700 shadow-sm'
+                  ? 'bg-white text-primary shadow-sm'
                   : 'text-gray-500 hover:text-gray-700'
               }`}
             >
@@ -495,7 +495,7 @@ export default function App() {
                 value={formatBRL(summary?.variable_costs_brl || 0)}
                 subtitle={`${formatUSD(summary?.total_cost_usd || 0)} USD`}
                 icon={DollarSign}
-                color="amber"
+                color="primary"
               />
               <KPICard
                 title="Custos Fixos / Mês"
@@ -678,7 +678,7 @@ export default function App() {
                 <h3 className="text-base font-semibold text-gray-900">Custos Fixos Mensais</h3>
                 <button
                   onClick={() => { setEditingCost(null); setModalOpen(true) }}
-                  className="flex items-center gap-2 px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 text-sm font-medium"
+                  className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark text-sm font-medium"
                 >
                   <Plus className="w-4 h-4" />
                   Adicionar
@@ -707,7 +707,7 @@ export default function App() {
                         <div className="flex gap-1 ml-2">
                           <button
                             onClick={() => { setEditingCost(cost); setModalOpen(true) }}
-                            className="p-1.5 text-gray-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg"
+                            className="p-1.5 text-gray-400 hover:text-primary hover:bg-primary/10 rounded-lg"
                           >
                             <Pencil className="w-4 h-4" />
                           </button>
