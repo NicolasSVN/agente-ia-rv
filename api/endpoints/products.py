@@ -2469,6 +2469,7 @@ async def batch_upload(
     tags: str = Form("[]"),
     valid_from: str = Form(None),
     valid_until: str = Form(None),
+    product_id: str = Form(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -2503,9 +2504,22 @@ async def batch_upload(
         except ValueError:
             pass
 
-    placeholder_product = db.query(Product).filter(Product.ticker == "__SYSTEM_UNASSIGNED__").first()
-    if not placeholder_product:
-        raise HTTPException(status_code=500, detail="Produto de sistema não encontrado")
+    selected_product_id = None
+    if product_id:
+        try:
+            selected_product_id = int(product_id)
+            selected_product = db.query(Product).filter(Product.id == selected_product_id).first()
+            if not selected_product:
+                raise HTTPException(status_code=404, detail="Produto não encontrado")
+        except ValueError:
+            pass
+
+    target_product_id = selected_product_id
+    if not target_product_id:
+        placeholder_product = db.query(Product).filter(Product.ticker == "__SYSTEM_UNASSIGNED__").first()
+        if not placeholder_product:
+            raise HTTPException(status_code=500, detail="Produto de sistema não encontrado")
+        target_product_id = placeholder_product.id
 
     queued_items = []
 
@@ -2517,7 +2531,7 @@ async def batch_upload(
         name = file.filename.replace('.pdf', '')
 
         material = Material(
-            product_id=placeholder_product.id,
+            product_id=target_product_id,
             material_type=material_type,
             name=name,
             valid_from=parsed_valid_from,
@@ -2550,6 +2564,7 @@ async def batch_upload(
             tags=parsed_tags,
             valid_from=parsed_valid_from,
             valid_until=parsed_valid_until,
+            selected_product_id=selected_product_id,
         )
         upload_queue.add(queue_item)
         queued_items.append({

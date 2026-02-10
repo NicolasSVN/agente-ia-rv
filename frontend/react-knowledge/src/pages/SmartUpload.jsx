@@ -273,150 +273,8 @@ export function SmartUpload() {
     }
   };
 
-  const handleUploadWithProduct = async () => {
-    setUploading(true);
-    setStep(3);
-    setLogs([]);
-    setHasError(false);
-    setStats(null);
-    setBatchMode(false);
-
-    const file = files[0];
-
-    try {
-      const materialData = {
-        material_type: materialCategories[0] || 'outro',
-        material_categories: materialCategories,
-        name: file.name.replace('.pdf', ''),
-        tags: tags,
-        valid_from: validFrom || null,
-        valid_until: validUntil || null,
-      };
-
-      addLog('Iniciando upload para produto selecionado...', 'info');
-      
-      let progress = 0;
-      const progressInterval = setInterval(() => {
-        progress += Math.random() * 15;
-        if (progress > 90) progress = 90;
-        setUploadProgress(Math.round(progress));
-        addLog(`Processando... ${Math.round(progress)}%`, 'info');
-      }, 1500);
-
-      const result = await materialsAPI.create(selectedProduct.id, materialData);
-      const materialId = result.material_id || result.id;
-      addLog(`Material criado (ID: ${materialId}), enviando PDF...`, 'info');
-      
-      await materialsAPI.uploadPDF(selectedProduct.id, materialId, file);
-      
-      clearInterval(progressInterval);
-      setUploadProgress(100);
-      setUploadComplete(true);
-      setUploading(false);
-      setStats({ blocks_created: 0, auto_approved: 0, pending_review: 0, products_matched: [selectedProduct.ticker || selectedProduct.name] });
-      addLog('Documento processado com sucesso!', 'success');
-      addToast('Documento processado com sucesso!', 'success');
-    } catch (err) {
-      addLog(`Erro: ${err.message}`, 'error');
-      addToast(`Erro: ${err.message}`, 'error');
-      setHasError(true);
-      setUploading(false);
-    }
-  };
-
-  const handleUploadStreaming = async () => {
-    const file = files[0];
-    setUploading(true);
-    setStep(3);
-    setLogs([]);
-    setHasError(false);
-    setStats(null);
-    setBatchMode(false);
-
-    try {
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('material_type', materialCategories[0] || 'outro');
-      formData.append('material_categories', JSON.stringify(materialCategories));
-      formData.append('name', file.name.replace('.pdf', ''));
-      formData.append('tags', JSON.stringify(tags));
-      if (validFrom) formData.append('valid_from', validFrom);
-      if (validUntil) formData.append('valid_until', validUntil);
-
-      addLog('Iniciando upload do arquivo...', 'info');
-
-      const response = await fetch('/api/products/smart-upload-stream', {
-        method: 'POST',
-        body: formData,
-        credentials: 'include'
-      });
-
-      if (!response.ok) {
-        throw new Error(`Erro ${response.status}: ${response.statusText}`);
-      }
-
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        
-        const events = buffer.split('\n\n');
-        buffer = events.pop() || '';
-
-        for (const eventBlock of events) {
-          const lines = eventBlock.split('\n');
-          for (const line of lines) {
-            if (line.startsWith('data: ')) {
-              try {
-                const event = JSON.parse(line.slice(6));
-                
-                if (event.type === 'start') {
-                  addLog(event.message, 'info');
-                } else if (event.type === 'progress') {
-                  setCurrentPage(event.current);
-                  setTotalPages(event.total);
-                  setUploadProgress(event.percent);
-                } else if (event.type === 'log') {
-                  addLog(event.message, event.log_type || 'info');
-                } else if (event.type === 'complete') {
-                  setUploadProgress(100);
-                  setUploadComplete(true);
-                  setUploading(false);
-                  setStats(event.stats);
-                  addLog(event.message, 'success');
-                  addToast('Documento processado com sucesso!', 'success');
-                } else if (event.type === 'error') {
-                  setHasError(true);
-                  setUploading(false);
-                  addLog(event.message, 'error');
-                  addToast(event.message, 'error');
-                  if (event.resumable && event.job_id) {
-                    setResumableInfo({ jobId: event.job_id });
-                  }
-                } else if (event.type === 'start' && event.material_id) {
-                  setResumableMaterialId(event.material_id);
-                }
-              } catch (e) {
-              }
-            }
-          }
-        }
-      }
-    } catch (err) {
-      addLog(`Erro: ${err.message}`, 'error');
-      addToast(`Erro: ${err.message}`, 'error');
-      setHasError(true);
-      setUploading(false);
-    }
-  };
-
-  const handleBatchUpload = async () => {
-    if (files.length === 0 || materialCategories.length === 0) {
+  const handleUpload = async () => {
+    if (!files.length || materialCategories.length === 0) {
       addToast('Selecione pelo menos um arquivo e uma categoria', 'warning');
       return;
     }
@@ -424,6 +282,9 @@ export function SmartUpload() {
     setBatchMode(true);
     setStep(3);
     setShowQueue(true);
+    setLogs([]);
+    setHasError(false);
+    setStats(null);
 
     try {
       const formData = new FormData();
@@ -435,6 +296,7 @@ export function SmartUpload() {
       formData.append('tags', JSON.stringify(tags));
       if (validFrom) formData.append('valid_from', validFrom);
       if (validUntil) formData.append('valid_until', validUntil);
+      if (selectedProduct) formData.append('product_id', selectedProduct.id.toString());
 
       const response = await fetch('/api/products/batch-upload', {
         method: 'POST',
@@ -445,30 +307,16 @@ export function SmartUpload() {
       if (!response.ok) throw new Error(`Erro ${response.status}`);
 
       const data = await response.json();
-      addToast(`${data.total_queued} arquivo(s) adicionado(s) à fila de processamento`, 'success');
+      const msg = files.length === 1
+        ? 'Arquivo enviado para processamento em segundo plano'
+        : `${data.total_queued} arquivo(s) adicionado(s) à fila`;
+      addToast(msg, 'success');
       
       loadQueueStatus();
     } catch (err) {
       addToast(`Erro ao enviar arquivos: ${err.message}`, 'error');
       setBatchMode(false);
-    }
-  };
-
-  const handleUpload = async () => {
-    if (!files.length || materialCategories.length === 0) {
-      addToast('Selecione um arquivo e pelo menos uma categoria', 'warning');
-      return;
-    }
-
-    if (files.length > 1) {
-      await handleBatchUpload();
-      return;
-    }
-
-    if (selectedProduct) {
-      await handleUploadWithProduct();
-    } else {
-      await handleUploadStreaming();
+      setStep(2);
     }
   };
 
@@ -929,184 +777,13 @@ export function SmartUpload() {
   );
 
   const renderStep3 = () => {
-    if (batchMode) {
-      return (
-        <motion.div
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          className="space-y-4"
-        >
-          {renderQueueMonitor()}
-        </motion.div>
-      );
-    }
-
     return (
       <motion.div
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
-        className="space-y-6"
+        className="space-y-4"
       >
-        {!uploadComplete ? (
-          <>
-            <div className="bg-card border border-border rounded-xl p-6">
-              <div className="flex justify-between items-center mb-4">
-                <h4 className="font-semibold text-foreground flex items-center gap-2">
-                  {hasError ? (
-                    <AlertCircle className="w-5 h-5 text-red-500" />
-                  ) : (
-                    <Sparkles className="w-5 h-5 text-primary animate-pulse" />
-                  )}
-                  {hasError ? 'Erro no processamento' : 'Processando documento...'}
-                </h4>
-                <span className="text-2xl font-bold text-primary">{uploadProgress}%</span>
-              </div>
-              
-              <div className="h-3 bg-border rounded-full overflow-hidden mb-4">
-                <motion.div
-                  initial={{ width: 0 }}
-                  animate={{ width: `${uploadProgress}%` }}
-                  className={`h-full rounded-full transition-all ${hasError ? 'bg-red-500' : 'bg-gradient-to-r from-primary to-indigo-400'}`}
-                />
-              </div>
-              
-              <div className="flex justify-between text-sm text-muted mb-4">
-                <span>{currentPage} de {totalPages} páginas</span>
-                <span>
-                  {stats ? (
-                    <>Blocos: <span className="text-green-600 font-semibold">{stats.blocks_created}</span></>
-                  ) : 'Aguardando...'}
-                </span>
-              </div>
-
-              <div 
-                ref={logRef}
-                className="bg-slate-800 text-slate-300 rounded-lg p-4 font-mono text-xs max-h-48 overflow-y-auto"
-                style={{ display: logs.length > 0 ? 'block' : 'none' }}
-              >
-                {logs.map((log, i) => (
-                  <div key={i} className={`mb-1 ${getLogColor(log.type)}`}>
-                    [{log.time}] {log.message}
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {hasError && (
-              <div className="space-y-4">
-                {resumableInfo && resumableMaterialId && (
-                  <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg">
-                    <div className="flex items-center gap-2 mb-2">
-                      <RotateCcw className="w-5 h-5 text-amber-600" />
-                      <span className="font-medium text-amber-800">Processamento pode ser retomado</span>
-                    </div>
-                    <p className="text-sm text-amber-700 mb-3">
-                      O arquivo PDF foi salvo e você pode retomar o processamento de onde parou.
-                    </p>
-                    <Button 
-                      onClick={handleResume}
-                      className="bg-amber-600 hover:bg-amber-700"
-                    >
-                      <RotateCcw className="w-4 h-4" />
-                      Retomar Processamento
-                    </Button>
-                  </div>
-                )}
-                <div className="flex gap-3 justify-center">
-                  <Button variant="secondary" onClick={() => {
-                    setStep(2);
-                    setUploading(false);
-                    setUploadProgress(0);
-                    setLogs([]);
-                    setHasError(false);
-                    setResumableInfo(null);
-                  }}>
-                    Tentar Novamente
-                  </Button>
-                </div>
-              </div>
-            )}
-          </>
-        ) : (
-          <>
-            <div className="text-center py-4">
-              <motion.div
-                initial={{ scale: 0 }}
-                animate={{ scale: 1 }}
-                className="w-20 h-20 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-6"
-              >
-                <CheckCircle className="w-10 h-10 text-green-600" />
-              </motion.div>
-              <h2 className="text-xl font-semibold text-foreground mb-2">
-                Documento processado!
-              </h2>
-              <p className="text-muted mb-4">
-                {selectedProduct 
-                  ? 'Os blocos foram extraídos e estão prontos para revisão'
-                  : 'Os blocos foram extraídos e vinculados automaticamente aos produtos identificados'}
-              </p>
-            </div>
-
-            {stats && (
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-center">
-                  <div className="text-2xl font-bold text-blue-600">{stats.blocks_created}</div>
-                  <div className="text-xs text-blue-700">Blocos Criados</div>
-                </div>
-                <div className="bg-green-50 border border-green-200 rounded-lg p-3 text-center">
-                  <div className="text-2xl font-bold text-green-600">{stats.auto_approved}</div>
-                  <div className="text-xs text-green-700">Auto-Aprovados</div>
-                </div>
-                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-center">
-                  <div className="text-2xl font-bold text-yellow-600">{stats.pending_review}</div>
-                  <div className="text-xs text-yellow-700">Para Revisão</div>
-                </div>
-                <div className="bg-purple-50 border border-purple-200 rounded-lg p-3 text-center">
-                  <div className="text-2xl font-bold text-purple-600">{stats.products_matched?.length || 0}</div>
-                  <div className="text-xs text-purple-700">Produtos</div>
-                </div>
-              </div>
-            )}
-
-            <div 
-              ref={logRef}
-              className="bg-slate-800 text-slate-300 rounded-lg p-4 font-mono text-xs max-h-36 overflow-y-auto mb-6"
-            >
-              {logs.map((log, i) => (
-                <div key={i} className={`mb-1 ${getLogColor(log.type)}`}>
-                  [{log.time}] {log.message}
-                </div>
-              ))}
-            </div>
-
-            <div className="flex gap-3 justify-center">
-              <Button variant="secondary" onClick={() => {
-                setStep(1);
-                setFiles([]);
-                setMaterialCategories([]);
-                setTags([]);
-                setSelectedProduct(null);
-                setUploadComplete(false);
-                setUploadProgress(0);
-                setLogs([]);
-                setStats(null);
-                setCurrentPage(0);
-                setTotalPages(0);
-              }}>
-                Novo Upload
-              </Button>
-              {selectedProduct ? (
-                <Button onClick={() => navigate(`/product/${selectedProduct.id}`)}>
-                  Ver Produto
-                </Button>
-              ) : (
-                <Button onClick={() => navigate('/review')}>
-                  Ver Fila de Revisão
-                </Button>
-              )}
-            </div>
-          </>
-        )}
+        {renderQueueMonitor()}
       </motion.div>
     );
   };
