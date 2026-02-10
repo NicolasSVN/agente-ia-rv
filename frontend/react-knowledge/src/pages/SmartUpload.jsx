@@ -564,7 +564,7 @@ export function SmartUpload() {
                     {material.product_name && (
                       <span className="text-primary font-medium">{material.product_ticker || material.product_name}</span>
                     )}
-                    {material.job_info?.processed_pages !== null && (
+                    {material.job_info && material.job_info.processed_pages != null && (
                       <span className="ml-2">
                         {material.job_info.processed_pages}/{material.job_info.total_pages || '?'} páginas
                       </span>
