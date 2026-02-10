@@ -111,8 +111,9 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# Configura templates Jinja2
+# Configura templates Jinja2 (auto_reload=True evita cache de templates)
 templates = Jinja2Templates(directory="frontend/templates")
+templates.env.auto_reload = True
 
 # Monta arquivos estáticos
 app.mount("/static", StaticFiles(directory="frontend/static"), name="static")
