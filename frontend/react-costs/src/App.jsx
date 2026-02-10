@@ -27,18 +27,22 @@ const SERVICE_ICONS = {
 
 const OPERATION_LABELS = {
   chat_response: 'Resposta do Stevan',
-  chat_completion: 'Chat Completion',
+  chat_completion: 'Conversação com IA',
   intent_classification: 'Classificação de Intenção',
   conversation_analysis: 'Análise de Conversa',
   escalation_analysis: 'Análise de Escalação',
-  document_vision_extraction: 'Extração de PDF (Vision)',
+  document_extraction: 'Extração de PDF',
+  document_vision_extraction: 'Extração de PDF',
   document_summary: 'Resumo de Documento',
+  metadata_extraction: 'Extração de Metadados',
   metadata_vision_extraction: 'Extração de Metadados',
   ticker_inference: 'Inferência de Ticker',
   image_analysis: 'Análise de Imagem',
+  audio_transcription: 'Transcrição de Áudio',
   transcription: 'Transcrição de Áudio',
-  chunk_enrichment: 'Enriquecimento de Chunks',
+  chunk_enrichment: 'Enriquecimento Semântico',
   embedding: 'Embeddings (RAG)',
+  insight_generation: 'Geração de Insights',
   web_search: 'Busca Web (Tavily)',
 }
 
@@ -661,43 +665,24 @@ export default function App() {
                   </thead>
                   <tbody>
                     {uploadSummary && (
-                      <tr className="border-b border-primary/10 bg-primary/5 font-medium">
-                        <td className="py-3 px-4" colSpan={1}>
+                      <tr className="border-b border-gray-50 hover:bg-gray-50">
+                        <td className="py-3 px-4">
                           <div className="flex items-center gap-2">
                             <FileText className="w-4 h-4 text-primary" />
-                            <span className="text-primary">Processamento de Uploads</span>
-                            <span className="text-xs text-gray-400 font-normal">({uploadRows.length} sub-operações)</span>
+                            <span className="font-medium">Processamento de Uploads</span>
                           </div>
                         </td>
                         <td className="py-3 px-4">
-                          <span className="px-2 py-0.5 bg-primary/10 rounded text-xs font-mono text-primary">vários</span>
+                          <span className="px-2 py-0.5 bg-gray-100 rounded text-xs font-mono">vários</span>
                         </td>
                         <td className="text-right py-3 px-4">{formatNumber(uploadSummary.count)}</td>
                         <td className="text-right py-3 px-4">{formatNumber(uploadSummary.total_prompt_tokens)}</td>
                         <td className="text-right py-3 px-4">{formatNumber(uploadSummary.total_completion_tokens)}</td>
                         <td className="text-right py-3 px-4">{formatNumber(uploadSummary.total_tokens)}</td>
-                        <td className="text-right py-3 px-4 text-primary">{formatBRL(uploadSummary.cost_brl)}</td>
+                        <td className="text-right py-3 px-4 text-primary font-semibold">{formatBRL(uploadSummary.cost_brl)}</td>
                         <td className="text-right py-3 px-4 text-primary/70">{formatUSD(uploadSummary.cost_usd)}</td>
                       </tr>
                     )}
-                    {uploadRows.map((b, i) => (
-                      <tr key={`upload-${i}`} className="border-b border-gray-50 hover:bg-gray-50 bg-gray-50/50">
-                        <td className="py-2.5 px-4 pl-10">
-                          <span className="text-gray-600 text-xs">{OPERATION_LABELS[b.operation] || b.operation}</span>
-                        </td>
-                        <td className="py-2.5 px-4">
-                          <span className="px-2 py-0.5 bg-gray-100 rounded text-xs font-mono">
-                            {b.model || '-'}
-                          </span>
-                        </td>
-                        <td className="text-right py-2.5 px-4 text-gray-500 text-xs">{formatNumber(b.count)}</td>
-                        <td className="text-right py-2.5 px-4 text-gray-500 text-xs">{formatNumber(b.total_prompt_tokens)}</td>
-                        <td className="text-right py-2.5 px-4 text-gray-500 text-xs">{formatNumber(b.total_completion_tokens)}</td>
-                        <td className="text-right py-2.5 px-4 text-gray-500 text-xs">{formatNumber(b.total_tokens)}</td>
-                        <td className="text-right py-2.5 px-4 text-gray-500 text-xs">{formatBRL(b.cost_brl)}</td>
-                        <td className="text-right py-2.5 px-4 text-gray-400 text-xs">{formatUSD(b.cost_usd)}</td>
-                      </tr>
-                    ))}
                     {otherRows.map((b, i) => (
                       <tr key={`other-${i}`} className="border-b border-gray-50 hover:bg-gray-50">
                         <td className="py-3 px-4">
