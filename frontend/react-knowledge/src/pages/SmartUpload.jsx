@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Upload, FileText, CheckCircle, ArrowRight, Sparkles, Info, AlertCircle, RotateCcw, Clock, Trash2, X, Loader, Files, List } from 'lucide-react';
+import { Upload, FileText, CheckCircle, ArrowRight, Sparkles, Info, AlertCircle, RotateCcw, Clock, Trash2, X, Loader, Loader2, Files, List } from 'lucide-react';
 import { materialsAPI, productsAPI } from '../services/api';
 import { Button } from '../components/Button';
 import { ProductAutocomplete } from '../components/ProductAutocomplete';
@@ -24,21 +24,14 @@ export function SmartUpload() {
   const [tags, setTags] = useState([]);
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [uploading, setUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(0);
-  const [uploadComplete, setUploadComplete] = useState(false);
-  const [currentPage, setCurrentPage] = useState(0);
-  const [totalPages, setTotalPages] = useState(0);
   const [logs, setLogs] = useState([]);
-  const [stats, setStats] = useState(null);
   const [hasError, setHasError] = useState(false);
-  const [resumableInfo, setResumableInfo] = useState(null);
-  const [resumableMaterialId, setResumableMaterialId] = useState(null);
+  const [stats, setStats] = useState(null);
   const [pendingMaterials, setPendingMaterials] = useState([]);
   const [loadingPending, setLoadingPending] = useState(true);
 
   const [queueItems, setQueueItems] = useState([]);
   const [showQueue, setShowQueue] = useState(false);
-  const [batchMode, setBatchMode] = useState(false);
   const eventSourceRef = useRef(null);
 
   useEffect(() => {
@@ -62,13 +55,13 @@ export function SmartUpload() {
   }, []);
 
   useEffect(() => {
-    if (showQueue || batchMode) {
+    if (showQueue) {
       connectToQueueStream();
     }
     return () => {
       eventSourceRef.current = null;
     };
-  }, [showQueue, batchMode]);
+  }, [showQueue]);
 
   const loadQueueStatus = async () => {
     try {
@@ -118,67 +111,21 @@ export function SmartUpload() {
   };
 
   const handleResumeFromList = async (materialId) => {
-    setResumableMaterialId(materialId);
-    setStep(3);
-    setLogs([]);
-    setHasError(false);
-    setUploadComplete(false);
-    setUploading(true);
-    setUploadProgress(0);
-    setBatchMode(false);
-    
-    addLog('Retomando processamento...', 'info');
-    
     try {
       const response = await fetch(`/api/products/materials/${materialId}/resume-upload`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
       });
-      
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        
-        const text = decoder.decode(value, { stream: true });
-        const lines = text.split('\n');
-        
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            try {
-              const event = JSON.parse(line.slice(6));
-              
-              if (event.type === 'progress') {
-                setUploadProgress(event.percent);
-                setCurrentPage(event.current || 0);
-                setTotalPages(event.total || 0);
-              } else if (event.type === 'log') {
-                addLog(event.message, event.log_type || 'info');
-              } else if (event.type === 'complete') {
-                setUploadComplete(true);
-                setUploadProgress(100);
-                setUploading(false);
-                setStats(event.stats);
-                addLog(event.message, 'success');
-                addToast('Documento processado com sucesso!', 'success');
-                loadPendingMaterials();
-              } else if (event.type === 'error') {
-                setHasError(true);
-                setUploading(false);
-                addLog(event.message, 'error');
-                addToast(event.message, 'error');
-              }
-            } catch (e) {}
-          }
-        }
+      if (response.ok) {
+        addToast('Processamento retomado em segundo plano', 'success');
+        setShowQueue(true);
+        loadQueueStatus();
+        loadPendingMaterials();
+      } else {
+        addToast('Erro ao retomar processamento', 'error');
       }
     } catch (err) {
-      addLog(`Erro: ${err.message}`, 'error');
       addToast(`Erro: ${err.message}`, 'error');
-      setHasError(true);
-      setUploading(false);
     }
   };
 
@@ -206,85 +153,13 @@ export function SmartUpload() {
     setLogs(prev => [...prev, { time, message, type }]);
   };
 
-  const handleResume = async () => {
-    if (!resumableMaterialId) return;
-    
-    setUploading(true);
-    setStep(3);
-    setLogs([]);
-    setHasError(false);
-    setStats(null);
-    setResumableInfo(null);
-    setBatchMode(false);
-    
-    addLog('Retomando processamento...', 'info');
-    
-    try {
-      const response = await fetch(`/api/products/materials/${resumableMaterialId}/resume-upload`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        }
-      });
-      
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        
-        const text = decoder.decode(value, { stream: true });
-        const lines = text.split('\n');
-        
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            try {
-              const event = JSON.parse(line.slice(6));
-              
-              if (event.type === 'progress') {
-                setUploadProgress(event.percent);
-                setCurrentPage(event.current || 0);
-                setTotalPages(event.total || 0);
-              } else if (event.type === 'log') {
-                addLog(event.message, event.log_type || 'info');
-              } else if (event.type === 'complete') {
-                setUploadComplete(true);
-                setUploadProgress(100);
-                setStats(event.stats);
-                addLog(event.message || 'Processamento concluído!', 'success');
-                addToast({ type: 'success', message: 'Documento processado com sucesso!' });
-              } else if (event.type === 'error') {
-                setHasError(true);
-                addLog(event.message, 'error');
-                if (event.resumable) {
-                  setResumableInfo({ jobId: event.job_id });
-                }
-              }
-            } catch (e) {}
-          }
-        }
-      }
-    } catch (err) {
-      setHasError(true);
-      addLog(`Erro: ${err.message}`, 'error');
-    } finally {
-      setUploading(false);
-    }
-  };
-
   const handleUpload = async () => {
     if (!files.length || materialCategories.length === 0) {
       addToast('Selecione pelo menos um arquivo e uma categoria', 'warning');
       return;
     }
 
-    setBatchMode(true);
-    setStep(3);
-    setShowQueue(true);
-    setLogs([]);
-    setHasError(false);
-    setStats(null);
+    setUploading(true);
 
     try {
       const formData = new FormData();
@@ -307,16 +182,26 @@ export function SmartUpload() {
       if (!response.ok) throw new Error(`Erro ${response.status}`);
 
       const data = await response.json();
-      const msg = files.length === 1
+      const count = data.total_queued || files.length;
+      const msg = count === 1
         ? 'Arquivo enviado para processamento em segundo plano'
-        : `${data.total_queued} arquivo(s) adicionado(s) à fila`;
+        : `${count} arquivo(s) adicionado(s) à fila`;
       addToast(msg, 'success');
-      
+
+      setShowQueue(true);
       loadQueueStatus();
+
+      setFiles([]);
+      setSelectedProduct(null);
+      setMaterialCategories([]);
+      setTags([]);
+      setValidFrom('');
+      setValidUntil('');
+      setStep(1);
+      setUploading(false);
     } catch (err) {
       addToast(`Erro ao enviar arquivos: ${err.message}`, 'error');
-      setBatchMode(false);
-      setStep(2);
+      setUploading(false);
     }
   };
 
@@ -456,19 +341,7 @@ export function SmartUpload() {
     const doneItems = queueItems.filter(i => i.status === 'completed' || i.status === 'failed');
 
     return (
-      <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <h3 className="font-semibold text-foreground flex items-center gap-2">
-            <List className="w-5 h-5 text-primary" />
-            Fila de Processamento
-          </h3>
-          <button
-            onClick={() => loadQueueStatus()}
-            className="text-xs text-primary hover:underline"
-          >
-            Atualizar
-          </button>
-        </div>
+      <div className="space-y-3">
 
         {activeItems.length > 0 && (
           <div className="space-y-2">
@@ -509,7 +382,7 @@ export function SmartUpload() {
           </div>
         )}
 
-        {activeItems.length === 0 && batchMode && (
+        {activeItems.length === 0 && doneItems.length > 0 && (
           <div className="text-center py-8">
             <CheckCircle className="w-12 h-12 text-green-500 mx-auto mb-3" />
             <p className="font-medium text-foreground">Todos os arquivos foram processados!</p>
@@ -542,21 +415,9 @@ export function SmartUpload() {
 
         <div className="flex gap-3 justify-center pt-4">
           <Button variant="secondary" onClick={() => {
-            setStep(1);
-            setFiles([]);
-            setMaterialCategories([]);
-            setTags([]);
-            setSelectedProduct(null);
-            setUploadComplete(false);
-            setUploadProgress(0);
-            setLogs([]);
-            setStats(null);
-            setCurrentPage(0);
-            setTotalPages(0);
-            setBatchMode(false);
             setShowQueue(false);
           }}>
-            Novos Uploads
+            Ocultar Fila
           </Button>
           <Button onClick={() => navigate('/review')}>
             Ver Fila de Revisão
@@ -776,41 +637,54 @@ export function SmartUpload() {
     </motion.div>
   );
 
-  const renderStep3 = () => {
-    return (
-      <motion.div
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        className="space-y-4"
-      >
-        {renderQueueMonitor()}
-      </motion.div>
-    );
-  };
-
   return (
-    <div className="max-w-2xl mx-auto">
+    <div className="max-w-2xl mx-auto space-y-6">
       <div className="flex items-center gap-4 mb-8">
-        {[1, 2, 3].map((s) => (
+        {[1, 2].map((s) => (
           <div key={s} className="flex items-center">
             <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium
                             ${step >= s ? 'bg-primary text-white' : 'bg-border text-muted'}`}>
               {s}
             </div>
-            {s < 3 && (
+            {s < 2 && (
               <div className={`w-16 h-0.5 ml-2 ${step > s ? 'bg-primary' : 'bg-border'}`} />
             )}
           </div>
         ))}
+        <div className="flex-1" />
+        <span className="text-xs text-muted">
+          {step === 1 ? 'Selecionar Arquivo' : 'Configurar Detalhes'}
+        </span>
       </div>
 
       <div className="bg-card rounded-xl border border-border p-8 shadow-sm">
         <AnimatePresence mode="wait">
           {step === 1 && renderStep1()}
           {step === 2 && renderStep2()}
-          {step === 3 && renderStep3()}
         </AnimatePresence>
       </div>
+
+      {showQueue && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-card rounded-xl border border-border p-6 shadow-sm"
+        >
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-semibold text-foreground flex items-center gap-2">
+              <Loader2 className={`w-4 h-4 ${queueItems.some(q => q.status === 'processing') ? 'animate-spin text-primary' : 'text-muted'}`} />
+              Fila de Processamento
+            </h3>
+            <button
+              onClick={() => setShowQueue(false)}
+              className="text-xs text-muted hover:text-foreground"
+            >
+              Ocultar
+            </button>
+          </div>
+          {renderQueueMonitor()}
+        </motion.div>
+      )}
     </div>
   );
 }
