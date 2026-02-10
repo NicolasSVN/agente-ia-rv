@@ -2454,3 +2454,161 @@ async def migrate_embeddings_model(
         "chunks_indexed": indexed_count,
         "errors": errors[:10] if errors else []
     }
+
+
+UPLOAD_DIR_QUEUE = "uploads/materials"
+os.makedirs(UPLOAD_DIR_QUEUE, exist_ok=True)
+
+
+@router.post("/batch-upload")
+async def batch_upload(
+    request: Request,
+    files: list[UploadFile] = File(...),
+    material_type: str = Form("outro"),
+    material_categories: str = Form("[]"),
+    tags: str = Form("[]"),
+    valid_from: str = Form(None),
+    valid_until: str = Form(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    if current_user.role not in ["admin", "gestao_rv", "broker"]:
+        raise HTTPException(status_code=403, detail="Acesso negado")
+
+    from services.upload_queue import upload_queue, UploadQueueItem
+    from database.models import ProcessingStatus
+    import json as json_lib
+
+    parsed_tags = []
+    parsed_categories = []
+    try:
+        parsed_tags = json_lib.loads(tags) if tags else []
+    except Exception:
+        parsed_tags = []
+    try:
+        parsed_categories = json_lib.loads(material_categories) if material_categories else []
+    except Exception:
+        parsed_categories = []
+
+    parsed_valid_from = None
+    parsed_valid_until = None
+    if valid_from:
+        try:
+            parsed_valid_from = datetime.fromisoformat(valid_from.replace('Z', '+00:00'))
+        except ValueError:
+            pass
+    if valid_until:
+        try:
+            parsed_valid_until = datetime.fromisoformat(valid_until.replace('Z', '+00:00'))
+        except ValueError:
+            pass
+
+    placeholder_product = db.query(Product).filter(Product.ticker == "__SYSTEM_UNASSIGNED__").first()
+    if not placeholder_product:
+        raise HTTPException(status_code=500, detail="Produto de sistema não encontrado")
+
+    queued_items = []
+
+    for file in files:
+        if not file.filename.lower().endswith('.pdf'):
+            queued_items.append({"filename": file.filename, "error": "Apenas PDFs são suportados", "queued": False})
+            continue
+
+        name = file.filename.replace('.pdf', '')
+
+        material = Material(
+            product_id=placeholder_product.id,
+            material_type=material_type,
+            name=name,
+            valid_from=parsed_valid_from,
+            valid_until=parsed_valid_until,
+            tags=json_lib.dumps(parsed_tags),
+            material_categories=json_lib.dumps(parsed_categories),
+            publish_status="rascunho",
+            processing_status=ProcessingStatus.PENDING.value if hasattr(ProcessingStatus, 'PENDING') else "pending"
+        )
+        db.add(material)
+        db.commit()
+        db.refresh(material)
+
+        unique_filename = f"{uuid.uuid4()}.pdf"
+        file_path = os.path.join(UPLOAD_DIR_QUEUE, unique_filename)
+        content = await file.read()
+        with open(file_path, "wb") as f:
+            f.write(content)
+
+        upload_id = str(uuid.uuid4())
+        queue_item = UploadQueueItem(
+            upload_id=upload_id,
+            file_path=file_path,
+            filename=file.filename,
+            material_id=material.id,
+            name=name,
+            user_id=current_user.id,
+            material_type=material_type,
+            categories=parsed_categories,
+            tags=parsed_tags,
+            valid_from=parsed_valid_from,
+            valid_until=parsed_valid_until,
+        )
+        upload_queue.add(queue_item)
+        queued_items.append({
+            "filename": file.filename,
+            "upload_id": upload_id,
+            "material_id": material.id,
+            "queued": True
+        })
+
+    return {
+        "success": True,
+        "total_queued": sum(1 for i in queued_items if i.get("queued")),
+        "items": queued_items
+    }
+
+
+@router.get("/upload-queue/status")
+async def get_upload_queue_status(
+    current_user: User = Depends(get_current_user)
+):
+    from services.upload_queue import upload_queue
+    return upload_queue.get_all_status()
+
+
+@router.get("/upload-queue/stream")
+async def stream_upload_queue(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    from services.upload_queue import upload_queue
+    import queue as queue_module
+
+    listener_id = str(uuid.uuid4())
+    event_queue = upload_queue.subscribe(listener_id)
+
+    async def event_generator():
+        try:
+            status = upload_queue.get_all_status()
+            yield f"data: {json.dumps({'type': 'init', 'data': status}, ensure_ascii=False)}\n\n"
+
+            while True:
+                try:
+                    event = event_queue.get(timeout=1)
+                    yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+                except queue_module.Empty:
+                    yield f"data: {json.dumps({'type': 'ping'})}\n\n"
+
+                if await request.is_disconnected():
+                    break
+        finally:
+            upload_queue.unsubscribe(listener_id)
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"
+        }
+    )
