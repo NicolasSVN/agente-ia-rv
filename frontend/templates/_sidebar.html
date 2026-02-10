@@ -219,6 +219,8 @@
   const knowledgeRoutes = ['/base-conhecimento', '/fila-revisao', '/documentos'];
   const configRoutes = ['/assessores', '/admin', '/agent-brain', '/integrations', '/custos'].concat(knowledgeRoutes);
   const currentPath = window.location.pathname;
+  const isKnowledgePath = knowledgeRoutes.includes(currentPath) || currentPath.startsWith('/base-conhecimento');
+  const isConfigPath = configRoutes.includes(currentPath) || currentPath.startsWith('/base-conhecimento');
 
   // Helper to set max-height with !important to override external CSS
   function setMaxHeight(element, value) {
@@ -283,18 +285,12 @@
   }
 
   // Initialize accordions based on current route
-  if (configRoutes.includes(currentPath)) {
-    // Delay to ensure DOM is ready
+  if (isConfigPath) {
     requestAnimationFrame(() => {
       openSettings();
-      if (knowledgeRoutes.includes(currentPath)) {
+      if (isKnowledgePath) {
         setTimeout(() => openKnowledge(), 100);
       }
-    });
-  } else if (knowledgeRoutes.includes(currentPath)) {
-    requestAnimationFrame(() => {
-      openSettings();
-      setTimeout(() => openKnowledge(), 100);
     });
   }
 
@@ -346,10 +342,10 @@
         document.querySelectorAll('.sidebar-label').forEach(el => el.classList.remove('hidden'));
         document.querySelectorAll('.sidebar-accordion').forEach(el => el.classList.remove('hidden'));
         
-        if (configRoutes.includes(currentPath)) {
+        if (isConfigPath) {
           setTimeout(openSettings, 100);
         }
-        if (knowledgeRoutes.includes(currentPath)) {
+        if (isKnowledgePath) {
           setTimeout(openKnowledge, 150);
         }
       }
