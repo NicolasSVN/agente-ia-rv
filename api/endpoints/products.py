@@ -2148,6 +2148,9 @@ async def queue_resume_upload(
         existing_job_id=existing_job_id,
     )
 
+    material.processing_status = 'queued'
+    db.commit()
+
     upload_queue = UploadQueue.get_instance()
     upload_queue.add(queue_item)
 
@@ -2662,6 +2665,26 @@ async def get_upload_queue_status(
 ):
     from services.upload_queue import upload_queue
     return upload_queue.get_all_status()
+
+
+@router.post("/upload-queue/reorder")
+async def reorder_upload_queue(
+    request: Request,
+    current_user: User = Depends(get_current_user)
+):
+    from services.upload_queue import upload_queue
+    body = await request.json()
+    upload_id = body.get("upload_id")
+    direction = body.get("direction")
+
+    if not upload_id or direction not in ("up", "down"):
+        raise HTTPException(status_code=400, detail="upload_id e direction (up/down) são obrigatórios")
+
+    success = upload_queue.reorder(upload_id, direction)
+    if not success:
+        raise HTTPException(status_code=400, detail="Não foi possível reordenar. O item pode estar sendo processado ou já está no limite.")
+
+    return {"status": "ok", "message": "Ordem atualizada"}
 
 
 @router.get("/upload-queue/stream")

@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Upload, FileText, CheckCircle, ArrowRight, Sparkles, Info, AlertCircle, RotateCcw, Clock, Trash2, X, Loader, Loader2, Files, List } from 'lucide-react';
+import { Upload, FileText, CheckCircle, ArrowRight, Sparkles, Info, AlertCircle, RotateCcw, Clock, Trash2, X, Loader, Loader2, Files, List, ChevronUp, ChevronDown } from 'lucide-react';
 import { materialsAPI, productsAPI } from '../services/api';
 import { Button } from '../components/Button';
 import { ProductAutocomplete } from '../components/ProductAutocomplete';
@@ -147,6 +147,24 @@ export function SmartUpload() {
       }
     } catch (err) {
       addToast('Erro ao descartar', 'error');
+    }
+  };
+
+  const handleReorder = async (uploadId, direction) => {
+    try {
+      const response = await fetch('/api/products/upload-queue/reorder', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ upload_id: uploadId, direction })
+      });
+      if (response.ok) {
+        loadQueueStatus();
+      }
+    } catch (err) {
+      console.error('Erro ao reordenar:', err);
     }
   };
 
@@ -360,14 +378,43 @@ export function SmartUpload() {
 
         {activeItems.length > 0 && (
           <div className="space-y-2">
-            {activeItems.map((item) => (
+            {activeItems.map((item, idx) => {
+              const queuedItems = activeItems.filter(i => i.status === 'queued');
+              const queuedIdx = queuedItems.findIndex(i => i.upload_id === item.upload_id);
+              const isQueued = item.status === 'queued';
+              const canMoveUp = isQueued && queuedIdx > 0;
+              const canMoveDown = isQueued && queuedIdx >= 0 && queuedIdx < queuedItems.length - 1;
+
+              return (
               <div key={item.upload_id} className={`p-4 rounded-lg border ${getStatusColor(item.status)}`}>
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2 min-w-0 flex-1">
                     {getStatusIcon(item.status)}
                     <span className="font-medium text-sm truncate">{item.filename}</span>
                   </div>
-                  <span className="text-xs font-medium ml-2 flex-shrink-0">{getStatusLabel(item.status)}</span>
+                  <div className="flex items-center gap-1 ml-2 flex-shrink-0">
+                    {isQueued && queuedItems.length > 1 && (
+                      <div className="flex flex-col">
+                        <button
+                          onClick={() => handleReorder(item.upload_id, 'up')}
+                          disabled={!canMoveUp}
+                          className={`p-0.5 rounded transition-colors ${canMoveUp ? 'text-slate-500 hover:text-primary hover:bg-primary/10' : 'text-slate-200 cursor-not-allowed'}`}
+                          title="Mover para cima"
+                        >
+                          <ChevronUp className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => handleReorder(item.upload_id, 'down')}
+                          disabled={!canMoveDown}
+                          className={`p-0.5 rounded transition-colors ${canMoveDown ? 'text-slate-500 hover:text-primary hover:bg-primary/10' : 'text-slate-200 cursor-not-allowed'}`}
+                          title="Mover para baixo"
+                        >
+                          <ChevronDown className="w-4 h-4" />
+                        </button>
+                      </div>
+                    )}
+                    <span className="text-xs font-medium">{getStatusLabel(item.status)}</span>
+                  </div>
                 </div>
                 {item.status === 'processing' && (
                   <>
@@ -393,7 +440,8 @@ export function SmartUpload() {
                   <p className="text-xs opacity-75">Aguardando na fila...</p>
                 )}
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
 

@@ -1101,6 +1101,50 @@ class ConversationInsight(Base):
     ticket = relationship("Ticket", foreign_keys=[ticket_id])
 
 
+class QueueItemStatus(str, enum.Enum):
+    QUEUED = "queued"
+    PROCESSING = "processing"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
+class PersistentQueueItem(Base):
+    __tablename__ = "upload_queue_items"
+
+    id = Column(Integer, primary_key=True, index=True)
+    upload_id = Column(String(100), unique=True, nullable=False, index=True)
+    file_path = Column(String(500), nullable=False)
+    filename = Column(String(255), nullable=False)
+    material_id = Column(Integer, ForeignKey("materials.id"), nullable=False, index=True)
+    name = Column(String(255), nullable=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    material_type = Column(String(50), default="outro")
+    categories = Column(Text, default="[]")
+    tags = Column(Text, default="[]")
+    valid_from = Column(DateTime, nullable=True)
+    valid_until = Column(DateTime, nullable=True)
+    selected_product_id = Column(Integer, nullable=True)
+    is_resume = Column(Boolean, default=False)
+    resume_from_page = Column(Integer, default=0)
+    existing_job_id = Column(Integer, nullable=True)
+    status = Column(String(30), default=QueueItemStatus.QUEUED.value, index=True)
+    progress = Column(Integer, default=0)
+    current_page = Column(Integer, default=0)
+    total_pages = Column(Integer, default=0)
+    logs = Column(Text, default="[]")
+    error = Column(Text, nullable=True)
+    stats = Column(Text, nullable=True)
+    product_name = Column(String(255), nullable=True)
+    product_ticker = Column(String(50), nullable=True)
+    priority = Column(Integer, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    started_at = Column(DateTime, nullable=True)
+    completed_at = Column(DateTime, nullable=True)
+
+    material = relationship("Material", foreign_keys=[material_id])
+    user = relationship("User", foreign_keys=[user_id])
+
+
 class CostTracking(Base):
     """Rastreamento de custos de APIs por consumo."""
     __tablename__ = "cost_tracking"

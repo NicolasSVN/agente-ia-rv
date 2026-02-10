@@ -65,6 +65,10 @@ async def lifespan(app: FastAPI):
     finally:
         db.close()
     
+    from services.upload_queue import UploadQueue
+    upload_queue_instance = UploadQueue.get_instance()
+    upload_queue_instance.initialize()
+    
     confirmation_task = asyncio.create_task(confirmation_timeout_scheduler())
     
     yield

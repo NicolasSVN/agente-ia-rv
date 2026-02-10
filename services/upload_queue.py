@@ -22,7 +22,8 @@ class UploadQueueItem:
     def __init__(self, upload_id, file_path, filename, material_id, name, user_id,
                  material_type="outro", categories=None, tags=None,
                  valid_from=None, valid_until=None, selected_product_id=None,
-                 is_resume=False, resume_from_page=0, existing_job_id=None):
+                 is_resume=False, resume_from_page=0, existing_job_id=None,
+                 priority=0):
         self.upload_id = upload_id
         self.file_path = file_path
         self.filename = filename
@@ -50,6 +51,8 @@ class UploadQueueItem:
         self.completed_at = None
         self.product_name = None
         self.product_ticker = None
+        self.priority = priority
+        self._db_id = None
 
     def add_log(self, message, log_type="info"):
         self.logs.append({
@@ -64,7 +67,7 @@ class UploadQueueItem:
             "filename": self.filename,
             "name": self.name,
             "material_id": self.material_id,
-            "status": self.status.value,
+            "status": self.status.value if isinstance(self.status, UploadStatus) else self.status,
             "progress": self.progress,
             "current_page": self.current_page,
             "total_pages": self.total_pages,
@@ -76,6 +79,7 @@ class UploadQueueItem:
             "completed_at": self.completed_at.isoformat() if self.completed_at else None,
             "product_name": self.product_name,
             "product_ticker": self.product_ticker,
+            "priority": self.priority,
         }
 
 
@@ -99,8 +103,159 @@ class UploadQueue:
         self._event_listeners = {}
         self._history = []
         self._max_history = 50
+        self._initialized = False
+
+    def _persist_item(self, item: UploadQueueItem):
+        from database.database import SessionLocal
+        from database.models import PersistentQueueItem, QueueItemStatus
+        db = SessionLocal()
+        try:
+            db_item = PersistentQueueItem(
+                upload_id=item.upload_id,
+                file_path=item.file_path,
+                filename=item.filename,
+                material_id=item.material_id,
+                name=item.name,
+                user_id=item.user_id,
+                material_type=item.material_type,
+                categories=json.dumps(item.categories) if item.categories else "[]",
+                tags=json.dumps(item.tags) if item.tags else "[]",
+                valid_from=item.valid_from,
+                valid_until=item.valid_until,
+                selected_product_id=item.selected_product_id,
+                is_resume=item.is_resume,
+                resume_from_page=item.resume_from_page,
+                existing_job_id=item.existing_job_id,
+                status=QueueItemStatus.QUEUED.value,
+                priority=item.priority,
+                created_at=item.created_at,
+            )
+            db.add(db_item)
+            db.commit()
+            db.refresh(db_item)
+            item._db_id = db_item.id
+        except Exception as e:
+            logger.error(f"Erro ao persistir item na fila: {e}")
+            db.rollback()
+        finally:
+            db.close()
+
+    def _update_db_status(self, item: UploadQueueItem):
+        from database.database import SessionLocal
+        from database.models import PersistentQueueItem
+        db = SessionLocal()
+        try:
+            db_item = db.query(PersistentQueueItem).filter(
+                PersistentQueueItem.upload_id == item.upload_id
+            ).first()
+            if db_item:
+                status_val = item.status.value if isinstance(item.status, UploadStatus) else item.status
+                db_item.status = status_val
+                db_item.progress = item.progress
+                db_item.current_page = item.current_page
+                db_item.total_pages = item.total_pages
+                db_item.error = item.error
+                db_item.stats = json.dumps(item.stats) if item.stats else None
+                db_item.product_name = item.product_name
+                db_item.product_ticker = item.product_ticker
+                db_item.started_at = item.started_at
+                db_item.completed_at = item.completed_at
+                db_item.logs = json.dumps(item.logs[-50:])
+                db.commit()
+        except Exception as e:
+            logger.error(f"Erro ao atualizar status no DB: {e}")
+            db.rollback()
+        finally:
+            db.close()
+
+    def _load_pending_from_db(self):
+        from database.database import SessionLocal
+        from database.models import PersistentQueueItem, QueueItemStatus
+        db = SessionLocal()
+        try:
+            pending = db.query(PersistentQueueItem).filter(
+                PersistentQueueItem.status.in_([
+                    QueueItemStatus.QUEUED.value,
+                    QueueItemStatus.PROCESSING.value
+                ])
+            ).order_by(
+                PersistentQueueItem.priority.desc(),
+                PersistentQueueItem.created_at.asc()
+            ).all()
+
+            loaded = 0
+            for db_item in pending:
+                if db_item.upload_id in self._items:
+                    continue
+
+                if not os.path.exists(db_item.file_path):
+                    db_item.status = QueueItemStatus.FAILED.value
+                    db_item.error = "Arquivo não encontrado após reinício"
+                    db.commit()
+                    continue
+
+                item = UploadQueueItem(
+                    upload_id=db_item.upload_id,
+                    file_path=db_item.file_path,
+                    filename=db_item.filename,
+                    material_id=db_item.material_id,
+                    name=db_item.name,
+                    user_id=db_item.user_id,
+                    material_type=db_item.material_type,
+                    categories=json.loads(db_item.categories or "[]"),
+                    tags=json.loads(db_item.tags or "[]"),
+                    valid_from=db_item.valid_from,
+                    valid_until=db_item.valid_until,
+                    selected_product_id=db_item.selected_product_id,
+                    is_resume=db_item.is_resume,
+                    resume_from_page=db_item.resume_from_page,
+                    existing_job_id=db_item.existing_job_id,
+                    priority=db_item.priority or 0,
+                )
+                item.created_at = db_item.created_at
+                item._db_id = db_item.id
+                item.product_name = db_item.product_name
+                item.product_ticker = db_item.product_ticker
+
+                if db_item.status == QueueItemStatus.PROCESSING.value:
+                    item.is_resume = True
+                    from database.models import DocumentProcessingJob
+                    job = db.query(DocumentProcessingJob).filter(
+                        DocumentProcessingJob.material_id == db_item.material_id
+                    ).order_by(DocumentProcessingJob.created_at.desc()).first()
+                    if job:
+                        item.existing_job_id = job.id
+                        item.resume_from_page = job.last_processed_page or 0
+
+                try:
+                    logs = json.loads(db_item.logs or "[]")
+                    item.logs = logs
+                except Exception:
+                    pass
+
+                item.add_log("Retomado automaticamente após reinício do servidor", "info")
+                self._items[item.upload_id] = item
+                self._queue.put(item.upload_id)
+                loaded += 1
+
+            if loaded > 0:
+                logger.info(f"[UploadQueue] {loaded} item(ns) pendente(s) carregado(s) do banco")
+
+        except Exception as e:
+            logger.error(f"Erro ao carregar fila do banco: {e}")
+        finally:
+            db.close()
+
+    def initialize(self):
+        if self._initialized:
+            return
+        self._initialized = True
+        self._load_pending_from_db()
+        if not self._queue.empty():
+            self._ensure_worker_running()
 
     def add(self, item: UploadQueueItem):
+        self._persist_item(item)
         self._items[item.upload_id] = item
         self._queue.put(item.upload_id)
         self._ensure_worker_running()
@@ -121,7 +276,7 @@ class UploadQueue:
                 active.append(d)
             else:
                 history.append(d)
-        active.sort(key=lambda x: x["created_at"] or "")
+        active.sort(key=lambda x: (-(x.get("priority") or 0), x["created_at"] or ""))
         history.sort(key=lambda x: x["completed_at"] or "", reverse=True)
         return {
             "active": active,
@@ -129,6 +284,43 @@ class UploadQueue:
             "queue_size": self._queue.qsize(),
             "is_processing": self._processing,
         }
+
+    def reorder(self, upload_id: str, direction: str):
+        active_items = [
+            item for item in self._items.values()
+            if item.status == UploadStatus.QUEUED
+        ]
+        active_items.sort(key=lambda x: (-(x.priority or 0), x.created_at))
+
+        target = None
+        target_idx = -1
+        for i, item in enumerate(active_items):
+            if item.upload_id == upload_id:
+                target = item
+                target_idx = i
+                break
+
+        if not target:
+            return False
+
+        if direction == "up" and target_idx > 0:
+            swap_item = active_items[target_idx - 1]
+            target.priority, swap_item.priority = swap_item.priority, target.priority
+            if target.priority == swap_item.priority:
+                target.priority = swap_item.priority + 1
+            self._update_db_status(target)
+            self._update_db_status(swap_item)
+            return True
+        elif direction == "down" and target_idx < len(active_items) - 1:
+            swap_item = active_items[target_idx + 1]
+            target.priority, swap_item.priority = swap_item.priority, target.priority
+            if target.priority == swap_item.priority:
+                swap_item.priority = target.priority + 1
+            self._update_db_status(target)
+            self._update_db_status(swap_item)
+            return True
+
+        return False
 
     def subscribe(self, listener_id):
         q = queue.Queue()
@@ -169,6 +361,7 @@ class UploadQueue:
             item.status = UploadStatus.PROCESSING
             item.started_at = datetime.utcnow()
             item.add_log("Iniciando processamento...", "info")
+            self._update_db_status(item)
             self._broadcast_event({"type": "status_change", "upload_id": upload_id, "status": "processing"})
 
             try:
@@ -178,6 +371,7 @@ class UploadQueue:
                 item.status = UploadStatus.FAILED
                 item.error = str(e)[:500]
                 item.add_log(f"Erro: {str(e)[:200]}", "error")
+                self._update_db_status(item)
                 self._broadcast_event({
                     "type": "status_change", "upload_id": upload_id,
                     "status": "failed", "error": str(e)[:200]
@@ -223,6 +417,7 @@ class UploadQueue:
                     item.current_page = start_page
                     item.progress = int((start_page / processing_job.total_pages) * 100) if processing_job.total_pages > 0 else 0
                     item.add_log(f"Retomando da página {start_page + 1}/{processing_job.total_pages}...", "info")
+                    self._update_db_status(item)
                     self._broadcast_event({
                         "type": "progress", "upload_id": item.upload_id,
                         "message": f"Retomando da página {start_page + 1}...",
@@ -264,6 +459,7 @@ class UploadQueue:
                 db.commit()
 
                 item.add_log("Extraindo metadados do documento...", "info")
+                self._update_db_status(item)
                 self._broadcast_event({
                     "type": "progress", "upload_id": item.upload_id,
                     "message": "Extraindo metadados...", "progress": 5
@@ -353,6 +549,7 @@ class UploadQueue:
                     db.commit()
                 except Exception:
                     pass
+                self._update_db_status(item)
 
             result = ingestor.process_pdf_with_product_detection_streaming(
                 pdf_path=item.file_path,
@@ -416,6 +613,7 @@ class UploadQueue:
                 "pending_review": result.get("stats", {}).get("pending_review", 0)
             }
             item.add_log("Processamento concluído!", "success")
+            self._update_db_status(item)
             self._broadcast_event({
                 "type": "status_change", "upload_id": item.upload_id,
                 "status": "completed", "stats": item.stats
@@ -427,6 +625,7 @@ class UploadQueue:
                 mat.processing_status = ProcessingStatus.FAILED.value if hasattr(ProcessingStatus, 'FAILED') else "failed"
                 mat.processing_error = str(e)[:500]
                 db.commit()
+            self._update_db_status(item)
             raise
         finally:
             db.close()
