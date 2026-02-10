@@ -13,6 +13,7 @@ from services.vector_store import get_vector_store
 from services.fii_lookup import get_fii_lookup_service, FIIInfoType
 from services.semantic_search import get_enhanced_search, TokenExtractor
 from services.web_search import get_web_search_service
+from services.cost_tracker import cost_tracker
 
 settings = get_settings()
 
@@ -108,6 +109,17 @@ Se NEGA_TODOS ou NOVA_PERGUNTA, ticker deve ser null."""
                 max_tokens=150,
                 response_format={"type": "json_object"}
             )
+            try:
+                if response.usage:
+                    cost_tracker.track_openai_chat(
+                        model='gpt-4o-mini',
+                        prompt_tokens=response.usage.prompt_tokens,
+                        completion_tokens=response.usage.completion_tokens,
+                        total_tokens=response.usage.total_tokens,
+                        operation='intent_classification'
+                    )
+            except Exception:
+                pass
             
             result_text = response.choices[0].message.content.strip()
             if result_text.startswith("```"):
@@ -313,6 +325,17 @@ Responda em JSON:
                 temperature=0.3,
                 max_tokens=500
             )
+            try:
+                if response.usage:
+                    cost_tracker.track_openai_chat(
+                        model='gpt-4o-mini',
+                        prompt_tokens=response.usage.prompt_tokens,
+                        completion_tokens=response.usage.completion_tokens,
+                        total_tokens=response.usage.total_tokens,
+                        operation='conversation_analysis'
+                    )
+            except Exception:
+                pass
             
             content = response.choices[0].message.content.strip()
             if content.startswith("```"):
@@ -449,6 +472,17 @@ Retorne APENAS o JSON."""
                 max_tokens=150,
                 temperature=0
             )
+            try:
+                if response.usage:
+                    cost_tracker.track_openai_chat(
+                        model='gpt-4o-mini',
+                        prompt_tokens=response.usage.prompt_tokens,
+                        completion_tokens=response.usage.completion_tokens,
+                        total_tokens=response.usage.total_tokens,
+                        operation='escalation_analysis'
+                    )
+            except Exception:
+                pass
             
             result = response.choices[0].message.content.strip()
             if result.startswith("{"):
@@ -2140,6 +2174,18 @@ INSTRUÇÕES IMPORTANTES:
                 max_tokens=max_tokens,
                 temperature=temperature
             )
+            try:
+                if response.usage:
+                    cost_tracker.track_openai_chat(
+                        model=model,
+                        prompt_tokens=response.usage.prompt_tokens,
+                        completion_tokens=response.usage.completion_tokens,
+                        total_tokens=response.usage.total_tokens,
+                        operation='chat_response',
+                        conversation_id=conversation_id_for_context
+                    )
+            except Exception:
+                pass
             
             ai_response = response.choices[0].message.content
             

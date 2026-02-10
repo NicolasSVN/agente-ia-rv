@@ -14,6 +14,7 @@ import logging
 from typing import Optional, Dict, Any, List
 
 from openai import OpenAI
+from services.cost_tracker import cost_tracker
 
 logger = logging.getLogger(__name__)
 
@@ -128,6 +129,18 @@ def classify_chunk_content(
             temperature=0.1,
             max_tokens=300
         )
+
+        try:
+            if response.usage:
+                cost_tracker.track_openai_chat(
+                    model='gpt-4o-mini',
+                    prompt_tokens=response.usage.prompt_tokens,
+                    completion_tokens=response.usage.completion_tokens,
+                    total_tokens=response.usage.total_tokens,
+                    operation='chunk_enrichment'
+                )
+        except Exception:
+            pass
 
         result_text = response.choices[0].message.content.strip()
 

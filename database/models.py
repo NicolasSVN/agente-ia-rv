@@ -2,10 +2,11 @@
 Modelos SQLAlchemy para o banco de dados.
 Define as tabelas User, Ticket, Interaction, TicketCategory e Integration.
 """
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Text, Boolean, Index
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Text, Boolean, Float, Index
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from database.database import Base
+from datetime import datetime
 import enum
 
 
@@ -1098,3 +1099,38 @@ class ConversationInsight(Base):
     
     assessor = relationship("Assessor", foreign_keys=[assessor_id])
     ticket = relationship("Ticket", foreign_keys=[ticket_id])
+
+
+class CostTracking(Base):
+    """Rastreamento de custos de APIs por consumo."""
+    __tablename__ = "cost_tracking"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    service = Column(String(50), nullable=False, index=True)
+    operation = Column(String(100), nullable=False)
+    model = Column(String(50), nullable=True)
+    prompt_tokens = Column(Integer, default=0)
+    completion_tokens = Column(Integer, default=0)
+    total_tokens = Column(Integer, default=0)
+    audio_duration_seconds = Column(Float, nullable=True)
+    cost_usd = Column(Float, default=0.0)
+    cost_brl = Column(Float, default=0.0)
+    exchange_rate = Column(Float, default=5.5)
+    context = Column(String(200), nullable=True)
+    conversation_id = Column(Integer, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+
+class FixedCost(Base):
+    """Custos fixos mensais cadastrados pelo admin."""
+    __tablename__ = "fixed_costs"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(100), nullable=False)
+    description = Column(Text, nullable=True)
+    monthly_cost_brl = Column(Float, nullable=False)
+    category = Column(String(50), default='infrastructure')
+    is_active = Column(Boolean, default=True)
+    plan_details = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

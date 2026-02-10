@@ -20,6 +20,7 @@ from difflib import SequenceMatcher
 
 import fitz
 from openai import OpenAI
+from services.cost_tracker import cost_tracker
 
 
 @dataclass
@@ -405,6 +406,17 @@ Responda APENAS em JSON válido com este formato:
                 max_tokens=1000,
                 temperature=0.1
             )
+            try:
+                if response.usage:
+                    cost_tracker.track_openai_chat(
+                        model=self.model,
+                        prompt_tokens=response.usage.prompt_tokens,
+                        completion_tokens=response.usage.completion_tokens,
+                        total_tokens=response.usage.total_tokens,
+                        operation='metadata_vision_extraction'
+                    )
+            except Exception:
+                pass
             
             response_text = response.choices[0].message.content.strip()
             
@@ -657,6 +669,17 @@ Resposta:"""
                 max_tokens=20,
                 temperature=0.1
             )
+            try:
+                if response.usage:
+                    cost_tracker.track_openai_chat(
+                        model='gpt-4o-mini',
+                        prompt_tokens=response.usage.prompt_tokens,
+                        completion_tokens=response.usage.completion_tokens,
+                        total_tokens=response.usage.total_tokens,
+                        operation='ticker_inference'
+                    )
+            except Exception:
+                pass
             
             ticker_response = response.choices[0].message.content.strip().upper()
             

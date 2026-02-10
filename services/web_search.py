@@ -8,6 +8,7 @@ import time
 import httpx
 from typing import List, Dict, Optional, Tuple
 from datetime import datetime
+from services.cost_tracker import cost_tracker
 
 
 class WebSearchService:
@@ -125,6 +126,11 @@ class WebSearchService:
                     if citation:
                         citations.append(citation)
                 
+                try:
+                    cost_tracker.track_tavily_search(query=query)
+                except Exception:
+                    pass
+                
                 elapsed_ms = int((time.time() - start_time) * 1000)
                 
                 return {
@@ -207,6 +213,11 @@ class WebSearchService:
                     citation = self._format_citation(fact)
                     if citation:
                         citations.append(citation)
+                
+                try:
+                    cost_tracker.track_tavily_search(query=query)
+                except Exception:
+                    pass
                 
                 elapsed_ms = int((time.time() - start_time) * 1000)
                 

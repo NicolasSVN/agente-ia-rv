@@ -10,6 +10,7 @@ import re
 from typing import Optional, Tuple
 from openai import OpenAI
 from core.config import get_settings
+from services.cost_tracker import cost_tracker
 
 settings = get_settings()
 
@@ -157,6 +158,12 @@ class MediaProcessor:
                         prompt=WHISPER_FINANCIAL_PROMPT
                     )
                 
+                try:
+                    estimated_duration = max(len(audio_content) / 2000, 5)
+                    cost_tracker.track_whisper(duration_seconds=estimated_duration, context='whatsapp_audio')
+                except Exception:
+                    pass
+                
                 raw_transcription = transcript.text.strip()
                 print(f"[MediaProcessor] Transcrição bruta: {raw_transcription[:100]}...")
                 
@@ -227,6 +234,17 @@ Responda de forma concisa e objetiva, focando nas informações úteis para o su
                 ],
                 max_tokens=1000
             )
+            try:
+                if response.usage:
+                    cost_tracker.track_openai_chat(
+                        model='gpt-4o',
+                        prompt_tokens=response.usage.prompt_tokens,
+                        completion_tokens=response.usage.completion_tokens,
+                        total_tokens=response.usage.total_tokens,
+                        operation='image_analysis'
+                    )
+            except Exception:
+                pass
             
             analysis = response.choices[0].message.content.strip()
             print(f"[MediaProcessor] Análise de imagem: {analysis[:100]}...")

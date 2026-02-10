@@ -15,6 +15,7 @@ from pdf2image import convert_from_path, convert_from_bytes
 from PIL import Image
 
 from core.config import get_settings
+from services.cost_tracker import cost_tracker
 
 settings = get_settings()
 
@@ -162,6 +163,17 @@ Responda APENAS com o JSON, sem markdown ou explicações."""
                 max_tokens=8192,
                 temperature=0.1
             )
+            try:
+                if response.usage:
+                    cost_tracker.track_openai_chat(
+                        model='gpt-4o',
+                        prompt_tokens=response.usage.prompt_tokens,
+                        completion_tokens=response.usage.completion_tokens,
+                        total_tokens=response.usage.total_tokens,
+                        operation='document_vision_extraction'
+                    )
+            except Exception:
+                pass
             
             result_text = response.choices[0].message.content.strip()
             
@@ -510,6 +522,17 @@ Responda APENAS em JSON no formato:
                 temperature=0.3,
                 max_tokens=500
             )
+            try:
+                if response.usage:
+                    cost_tracker.track_openai_chat(
+                        model='gpt-4o-mini',
+                        prompt_tokens=response.usage.prompt_tokens,
+                        completion_tokens=response.usage.completion_tokens,
+                        total_tokens=response.usage.total_tokens,
+                        operation='document_summary'
+                    )
+            except Exception:
+                pass
             
             content = response.choices[0].message.content
             

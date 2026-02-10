@@ -8,6 +8,7 @@ import re
 from openai import OpenAI
 from typing import List, Optional, Set, Dict, Tuple
 from core.config import get_settings
+from services.cost_tracker import cost_tracker
 
 
 TICKER_PATTERN = re.compile(r'\b([A-Z]{4,5})\s*11\b', re.IGNORECASE)
@@ -240,6 +241,14 @@ class VectorStore:
             input=text,
             dimensions=3072
         )
+        try:
+            if response.usage:
+                cost_tracker.track_openai_embedding(
+                    model='text-embedding-3-large',
+                    total_tokens=response.usage.total_tokens
+                )
+        except Exception:
+            pass
         return response.data[0].embedding
     
     def add_document(self, doc_id: str, text: str, metadata: Optional[dict] = None) -> None:

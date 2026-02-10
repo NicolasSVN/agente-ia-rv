@@ -12,7 +12,7 @@ import os
 
 from database.database import engine, Base, SessionLocal
 from database import crud
-from api.endpoints import auth, users, tickets, whatsapp_webhook, integrations, agent_config, assessores, campaigns, knowledge, agent_test, conversations, products, insights, search, trusted_sources
+from api.endpoints import auth, users, tickets, whatsapp_webhook, integrations, agent_config, assessores, campaigns, knowledge, agent_test, conversations, products, insights, search, trusted_sources, costs
 from core.security import decode_token
 
 
@@ -137,6 +137,7 @@ app.include_router(products.router)
 app.include_router(insights.router)
 app.include_router(search.router)
 app.include_router(trusted_sources.router)
+app.include_router(costs.router)
 
 
 # ========== Rotas de Páginas HTML ==========
@@ -236,6 +237,63 @@ if os.path.exists(react_insights_dist_path):
     async def serve_react_insights_static(filename: str, request: Request):
         import os
         file_path = os.path.join(react_insights_dist_path, filename)
+        if os.path.exists(file_path) and os.path.isfile(file_path):
+            from fastapi.responses import FileResponse
+            return FileResponse(file_path)
+        return HTMLResponse(content="Not Found", status_code=404)
+
+
+# ==============================================================================
+# CENTRAL DE CUSTOS REACT APP
+# ==============================================================================
+react_costs_dist_path = os.path.join(os.path.dirname(__file__), "frontend", "react-costs", "dist")
+react_costs_assets_path = os.path.join(os.path.dirname(__file__), "frontend", "react-costs", "dist", "assets")
+
+if os.path.exists(react_costs_assets_path):
+    app.mount("/custos/assets", StaticFiles(directory=react_costs_assets_path), name="react-costs-assets")
+
+@app.get("/custos", response_class=HTMLResponse)
+async def custos_page(request: Request):
+    """
+    Central de Custos - Monitoramento de gastos com APIs e serviços.
+    Requer autenticação como admin ou gestao_rv.
+    """
+    token = request.cookies.get("access_token")
+    
+    if not token:
+        return RedirectResponse(url="/login")
+    
+    payload = decode_token(token)
+    if not payload:
+        return RedirectResponse(url="/login")
+    
+    user_role = payload.get("role")
+    if user_role not in ["admin", "gestao_rv"]:
+        return RedirectResponse(url="/login?error=permission")
+    
+    if os.path.exists(react_costs_dist_path):
+        dist_assets = os.path.join(react_costs_dist_path, "assets")
+        css_file = ""
+        js_file = ""
+        if os.path.exists(dist_assets):
+            for f in os.listdir(dist_assets):
+                if f.endswith('.css'):
+                    css_file = f
+                elif f.endswith('.js'):
+                    js_file = f
+        
+        if css_file and js_file:
+            return templates.TemplateResponse(
+                "custos_react.html",
+                {"request": request, "user_role": user_role, "css_file": css_file, "js_file": js_file}
+            )
+    
+    return HTMLResponse(content="<h1>Central de Custos não disponível</h1>", status_code=500)
+
+if os.path.exists(react_costs_dist_path):
+    @app.get("/custos/{filename:path}")
+    async def serve_react_costs_static(filename: str, request: Request):
+        file_path = os.path.join(react_costs_dist_path, filename)
         if os.path.exists(file_path) and os.path.isfile(file_path):
             from fastapi.responses import FileResponse
             return FileResponse(file_path)
