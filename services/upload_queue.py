@@ -248,6 +248,10 @@ class UploadQueue:
                     if job:
                         item.existing_job_id = job.id
                         item.resume_from_page = job.last_processed_page or 0
+                        item.total_pages = job.total_pages or 0
+                        item.current_page = job.last_processed_page or 0
+                        if item.total_pages > 0:
+                            item.progress = int((item.current_page / item.total_pages) * 100)
 
                 try:
                     logs = json.loads(db_item.logs or "[]")

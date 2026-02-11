@@ -296,7 +296,7 @@
         let importColumns = [];
         
         function openImportModal() {
-            document.getElementById('importModal').classList.add('show');
+            document.getElementById('importModal').classList.add('active');
             document.getElementById('import-step-1').style.display = 'block';
             document.getElementById('import-step-2').style.display = 'none';
             document.getElementById('import-step-3').style.display = 'none';
@@ -309,7 +309,7 @@
         }
         
         function closeImportModal() {
-            document.getElementById('importModal').classList.remove('show');
+            document.getElementById('importModal').classList.remove('active');
         }
         
         async function handleFileUpload(event) {
@@ -621,11 +621,11 @@
                 document.getElementById('userId').value = '';
             }
             
-            modal.classList.add('show');
+            modal.classList.add('active');
         }
         
         function closeModal() {
-            document.getElementById('userModal').classList.remove('show');
+            document.getElementById('userModal').classList.remove('active');
         }
         
         async function editUser(userId) {
