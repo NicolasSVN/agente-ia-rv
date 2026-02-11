@@ -370,7 +370,13 @@ export function SmartUpload() {
   };
 
   const renderQueueMonitor = () => {
-    const activeItems = queueItems.filter(i => i.status === 'processing' || i.status === 'queued');
+    const activeItems = queueItems
+      .filter(i => i.status === 'processing' || i.status === 'queued')
+      .sort((a, b) => {
+        if (a.status === 'processing' && b.status !== 'processing') return -1;
+        if (a.status !== 'processing' && b.status === 'processing') return 1;
+        return 0;
+      });
     const doneItems = queueItems.filter(i => i.status === 'completed' || i.status === 'failed');
 
     return (
