@@ -615,14 +615,8 @@ class UploadQueue:
                     "message": f"Página {current}/{total}"
                 })
                 processing_job.processed_pages = current
-                try:
-                    db.commit()
-                except Exception:
-                    pass
-
-            def page_completed_callback(page_num, total):
-                processing_job.last_processed_page = page_num + 1
-                item.record_page_completed(page_num, total)
+                processing_job.last_processed_page = current
+                item.record_page_completed(current - 1, total)
                 try:
                     db.commit()
                 except Exception:
@@ -633,6 +627,15 @@ class UploadQueue:
                     "eta_seconds": item.eta_seconds,
                     "avg_page_time": item.avg_page_time,
                 })
+
+            def page_completed_callback(page_num, total):
+                if processing_job.last_processed_page and processing_job.last_processed_page >= page_num + 1:
+                    return
+                processing_job.last_processed_page = page_num + 1
+                try:
+                    db.commit()
+                except Exception:
+                    pass
 
             result = ingestor.process_pdf_with_product_detection_streaming(
                 pdf_path=item.file_path,

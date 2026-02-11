@@ -466,11 +466,15 @@ class ProductIngestor:
                 log_callback(msg, log_type)
             print(f"[SMART_UPLOAD] {msg}")
         
-        log("Convertendo PDF em imagens...")
+        if start_page > 0:
+            log(f"Retomando da página {start_page + 1}...")
+        else:
+            log("Convertendo PDF em imagens...")
         
-        processed = self.doc_processor.process_pdf(
+        processed = self.doc_processor.process_pdf_resumable(
             pdf_path=pdf_path,
             document_title=document_title,
+            start_page=start_page,
             progress_callback=progress_callback
         )
         
