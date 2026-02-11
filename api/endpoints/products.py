@@ -632,6 +632,13 @@ async def delete_material(
     if not material:
         raise HTTPException(status_code=404, detail="Material não encontrado")
     
+    db.query(PersistentQueueItem).filter(
+        PersistentQueueItem.material_id == material_id
+    ).delete()
+    db.query(DocumentProcessingJob).filter(
+        DocumentProcessingJob.material_id == material_id
+    ).delete()
+    
     db.delete(material)
     db.commit()
     return {"success": True}
