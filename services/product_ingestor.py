@@ -271,16 +271,10 @@ class ProductIngestor:
         if processed.get("error"):
             return {"success": False, "error": processed["error"]}
         
-        all_products = db.query(Product).filter(
-            Product.ticker != "__SYSTEM_UNASSIGNED__",
-            Product.status == "ativo"
-        ).all()
-        
-        product_lookup = {}
-        for p in all_products:
-            if p.ticker:
-                product_lookup[p.ticker.upper()] = p
-            product_lookup[p.name.upper()] = p
+        from services.product_resolver import get_product_resolver
+        resolver_legacy = get_product_resolver(db)
+        resolver_legacy._load_products()
+        product_by_id_legacy = {rp["id"]: rp["_obj"] for rp in resolver_legacy._products_cache}
         
         stats = {
             "total_pages": processed["total_pages"],
@@ -302,11 +296,12 @@ class ProductIngestor:
             
             matched_product = None
             for prod_name in products_in_page:
-                prod_upper = prod_name.upper().strip()
-                if prod_upper in product_lookup:
-                    matched_product = product_lookup[prod_upper]
-                    stats["products_matched"].add(matched_product.ticker or matched_product.name)
-                    break
+                resolve_r = resolver_legacy.resolve(fund_name=prod_name.strip())
+                if resolve_r.is_confident or resolve_r.match_type == "fuzzy_high_confidence":
+                    matched_product = product_by_id_legacy.get(resolve_r.matched_product_id)
+                    if matched_product:
+                        stats["products_matched"].add(matched_product.ticker or matched_product.name)
+                        break
             
             if not matched_product:
                 page_text = summary + " " + " ".join(facts)
@@ -314,10 +309,12 @@ class ProductIngestor:
                 ticker_pattern = r'\b([A-Z]{4}\d{1,2})\b'
                 tickers_found = re.findall(ticker_pattern, page_text.upper())
                 for ticker in tickers_found:
-                    if ticker in product_lookup:
-                        matched_product = product_lookup[ticker]
-                        stats["products_matched"].add(ticker)
-                        break
+                    resolve_r = resolver_legacy.resolve(ticker=ticker)
+                    if resolve_r.is_confident:
+                        matched_product = product_by_id_legacy.get(resolve_r.matched_product_id)
+                        if matched_product:
+                            stats["products_matched"].add(ticker)
+                            break
             
             target_material_id = material_id
             
@@ -485,18 +482,15 @@ class ProductIngestor:
         total_pages = processed.get("total_pages", 0)
         log(f"Documento com {total_pages} páginas detectado", "success")
         
-        all_products = db.query(Product).filter(
-            Product.ticker != "__SYSTEM_UNASSIGNED__",
-            Product.status == "ativo"
-        ).all()
+        from services.product_resolver import get_product_resolver
+        resolver = get_product_resolver(db)
+        resolver_products = resolver._load_products()
         
-        product_lookup = {}
-        for p in all_products:
-            if p.ticker:
-                product_lookup[p.ticker.upper()] = p
-            product_lookup[p.name.upper()] = p
+        product_by_id = {}
+        for rp in resolver_products:
+            product_by_id[rp["id"]] = rp["_obj"]
         
-        log(f"Base de produtos carregada: {len(all_products)} produtos ativos")
+        log(f"Base de produtos carregada: {len(resolver_products)} produtos ativos (via ProductResolver)")
         
         stats = {
             "total_pages": total_pages,
@@ -542,11 +536,12 @@ class ProductIngestor:
             
             matched_product = None
             for prod_name in products_in_page:
-                prod_upper = prod_name.upper().strip()
-                if prod_upper in product_lookup:
-                    matched_product = product_lookup[prod_upper]
-                    stats["products_matched"].add(matched_product.ticker or matched_product.name)
-                    break
+                resolve_r = resolver.resolve(fund_name=prod_name.strip())
+                if resolve_r.is_confident or resolve_r.match_type == "fuzzy_high_confidence":
+                    matched_product = product_by_id.get(resolve_r.matched_product_id)
+                    if matched_product:
+                        stats["products_matched"].add(matched_product.ticker or matched_product.name)
+                        break
             
             if not matched_product:
                 page_text = summary + " " + " ".join(facts)
@@ -554,10 +549,12 @@ class ProductIngestor:
                 ticker_pattern = r'\b([A-Z]{4}\d{1,2})\b'
                 tickers_found = re.findall(ticker_pattern, page_text.upper())
                 for ticker in tickers_found:
-                    if ticker in product_lookup:
-                        matched_product = product_lookup[ticker]
-                        stats["products_matched"].add(ticker)
-                        break
+                    resolve_r = resolver.resolve(ticker=ticker)
+                    if resolve_r.is_confident:
+                        matched_product = product_by_id.get(resolve_r.matched_product_id)
+                        if matched_product:
+                            stats["products_matched"].add(ticker)
+                            break
             
             target_material_id = material_id
             

@@ -1,12 +1,13 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ClipboardCheck, Check, X, Edit, AlertTriangle, RefreshCw, Table2, Search, FileText, Maximize2, CheckSquare, Square } from 'lucide-react';
+import { ClipboardCheck, Check, X, Edit, AlertTriangle, RefreshCw, Table2, Search, FileText, Maximize2, CheckSquare, Square, Package, Link, Plus } from 'lucide-react';
 import { reviewAPI, blocksAPI } from '../services/api';
 import { Button } from '../components/Button';
 import { Modal } from '../components/Modal';
 import { LoadingSpinner } from '../components/LoadingSpinner';
 import { EmptyState } from '../components/EmptyState';
 import { useToast } from '../components/Toast';
+import { ProductAutocomplete } from '../components/ProductAutocomplete';
 
 const API_BASE = '/api/products';
 
@@ -199,6 +200,222 @@ function PDFViewer({ materialId, page = 1 }) {
   );
 }
 
+function ConfidenceBadge({ confidence }) {
+  const value = parseFloat(confidence) || 0;
+  const pct = Math.round(value * 100);
+  let colorClass = 'bg-danger/10 text-danger';
+  if (value >= 0.8) colorClass = 'bg-success/10 text-success';
+  else if (value >= 0.5) colorClass = 'bg-warning/10 text-warning';
+
+  return (
+    <span className={`text-xs px-2 py-0.5 rounded font-medium ${colorClass}`}>
+      {pct}%
+    </span>
+  );
+}
+
+function ProductMatchCard({ item, onResolved, addToast }) {
+  const [selectedProduct, setSelectedProduct] = useState(null);
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [createForm, setCreateForm] = useState({ name: '', ticker: '', manager: '' });
+  const [processing, setProcessing] = useState(false);
+
+  const handleLink = async (productId) => {
+    setProcessing(true);
+    try {
+      await reviewAPI.resolveProduct({ material_id: item.material_id, action: 'link', product_id: productId });
+      addToast('Produto vinculado com sucesso!', 'success');
+      onResolved(item.material_id);
+    } catch (err) {
+      addToast(`Erro: ${err.message}`, 'error');
+    }
+    setProcessing(false);
+  };
+
+  const handleLinkFromAutocomplete = async (product) => {
+    if (!product) return;
+    setSelectedProduct(product);
+    await handleLink(product.id);
+  };
+
+  const handleCreate = async () => {
+    if (!createForm.name.trim()) {
+      addToast('Nome do produto é obrigatório', 'warning');
+      return;
+    }
+    setProcessing(true);
+    try {
+      await reviewAPI.resolveProduct({
+        material_id: item.material_id,
+        action: 'create',
+        product_name: createForm.name,
+        product_ticker: createForm.ticker,
+        product_manager: createForm.manager,
+      });
+      addToast('Produto criado e vinculado!', 'success');
+      onResolved(item.material_id);
+    } catch (err) {
+      addToast(`Erro: ${err.message}`, 'error');
+    }
+    setProcessing(false);
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, x: -100 }}
+      className="bg-card rounded-card border border-border p-5 shadow-card"
+    >
+      <div className="flex flex-col lg:flex-row gap-5">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-3">
+            <FileText className="w-5 h-5 text-primary flex-shrink-0" />
+            <h3 className="font-medium text-foreground truncate">
+              {item.source_filename || 'Documento sem nome'}
+            </h3>
+          </div>
+
+          <div className="space-y-1.5 mb-3">
+            {item.extracted_fund_name && (
+              <div className="flex items-center gap-2 text-sm">
+                <span className="text-muted">Fundo:</span>
+                <span className="text-foreground font-medium">{item.extracted_fund_name}</span>
+              </div>
+            )}
+            {item.extracted_ticker && (
+              <div className="flex items-center gap-2 text-sm">
+                <span className="text-muted">Ticker:</span>
+                <span className="text-foreground font-medium">{item.extracted_ticker}</span>
+              </div>
+            )}
+            {item.extracted_gestora && (
+              <div className="flex items-center gap-2 text-sm">
+                <span className="text-muted">Gestora:</span>
+                <span className="text-foreground font-medium">{item.extracted_gestora}</span>
+              </div>
+            )}
+          </div>
+
+          {item.extracted_confidence != null && (
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted">Confiança:</span>
+              <ConfidenceBadge confidence={item.extracted_confidence} />
+            </div>
+          )}
+        </div>
+
+        <div className="flex-1 min-w-0">
+          {item.candidates && item.candidates.length > 0 && (
+            <div className="mb-4">
+              <p className="text-xs font-medium text-muted mb-2">Candidatos encontrados:</p>
+              <div className="space-y-2">
+                {item.candidates.map((candidate) => (
+                  <div
+                    key={candidate.product_id}
+                    className="flex items-center justify-between gap-3 p-3 bg-muted/5 rounded-lg border border-border"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-foreground truncate">{candidate.product_name}</p>
+                      {candidate.ticker && (
+                        <p className="text-xs text-muted">{candidate.ticker}</p>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <span className="text-xs px-2 py-0.5 bg-primary/10 text-primary rounded font-medium">
+                        {Math.round((candidate.similarity || candidate.score || 0) * 100)}%
+                      </span>
+                      <Button
+                        size="sm"
+                        variant="success"
+                        onClick={() => handleLink(candidate.product_id)}
+                        disabled={processing}
+                      >
+                        <Link className="w-3.5 h-3.5" />
+                        Vincular
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="mb-3">
+            <p className="text-xs font-medium text-muted mb-2">Buscar produto existente:</p>
+            <ProductAutocomplete
+              value={selectedProduct}
+              onChange={handleLinkFromAutocomplete}
+              placeholder="Buscar produto para vincular..."
+            />
+          </div>
+
+          {!showCreateForm ? (
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => setShowCreateForm(true)}
+              disabled={processing}
+            >
+              <Plus className="w-4 h-4" />
+              Criar Novo Produto
+            </Button>
+          ) : (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              className="space-y-3 p-4 bg-muted/5 rounded-lg border border-border"
+            >
+              <p className="text-xs font-medium text-muted">Criar novo produto:</p>
+              <input
+                type="text"
+                placeholder="Nome do produto *"
+                value={createForm.name}
+                onChange={(e) => setCreateForm(prev => ({ ...prev, name: e.target.value }))}
+                className="w-full px-3 py-2 bg-card border border-border rounded-input text-foreground text-sm placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-primary/20"
+              />
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  placeholder="Ticker"
+                  value={createForm.ticker}
+                  onChange={(e) => setCreateForm(prev => ({ ...prev, ticker: e.target.value }))}
+                  className="flex-1 px-3 py-2 bg-card border border-border rounded-input text-foreground text-sm placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-primary/20"
+                />
+                <input
+                  type="text"
+                  placeholder="Gestora"
+                  value={createForm.manager}
+                  onChange={(e) => setCreateForm(prev => ({ ...prev, manager: e.target.value }))}
+                  className="flex-1 px-3 py-2 bg-card border border-border rounded-input text-foreground text-sm placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-primary/20"
+                />
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => { setShowCreateForm(false); setCreateForm({ name: '', ticker: '', manager: '' }); }}
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  size="sm"
+                  variant="success"
+                  onClick={handleCreate}
+                  disabled={processing}
+                >
+                  <Plus className="w-4 h-4" />
+                  Criar e Vincular
+                </Button>
+              </div>
+            </motion.div>
+          )}
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
 export function ReviewQueue() {
   const { addToast } = useToast();
   const [items, setItems] = useState([]);
@@ -210,6 +427,11 @@ export function ReviewQueue() {
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [selectedBlocks, setSelectedBlocks] = useState(new Set());
+
+  const [activeTab, setActiveTab] = useState('content');
+  const [productItems, setProductItems] = useState([]);
+  const [loadingProducts, setLoadingProducts] = useState(true);
+  const [pendingProductsCount, setPendingProductsCount] = useState(0);
 
   const selectableItems = useMemo(() => 
     items.filter(i => i.block_id), 
@@ -262,6 +484,9 @@ export function ReviewQueue() {
       setLoading(true);
       const data = await reviewAPI.listPending();
       setItems(data.pending_items || data.items || data || []);
+      if (data.pending_products_count != null) {
+        setPendingProductsCount(data.pending_products_count);
+      }
       setSelectedBlocks(new Set());
     } catch (err) {
       addToast('Erro ao carregar itens pendentes', 'error');
@@ -270,9 +495,27 @@ export function ReviewQueue() {
     }
   };
 
+  const loadProductItems = async () => {
+    try {
+      setLoadingProducts(true);
+      const data = await reviewAPI.listPendingProducts();
+      setProductItems(data.items || data.pending_items || data || []);
+    } catch (err) {
+      addToast('Erro ao carregar produtos pendentes', 'error');
+    } finally {
+      setLoadingProducts(false);
+    }
+  };
+
   useEffect(() => {
     loadItems();
+    loadProductItems();
   }, []);
+
+  const handleProductResolved = (materialId) => {
+    setProductItems(prev => prev.filter(i => i.material_id !== materialId));
+    setPendingProductsCount(prev => Math.max(0, prev - 1));
+  };
 
   const handleApprove = async (item) => {
     setProcessing(true);
@@ -344,6 +587,11 @@ export function ReviewQueue() {
     setShowRejectModal(true);
   };
 
+  const handleRefresh = () => {
+    loadItems();
+    loadProductItems();
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -353,151 +601,223 @@ export function ReviewQueue() {
             Itens que requerem revisão manual antes de serem publicados
           </p>
         </div>
-        <Button variant="secondary" onClick={loadItems} disabled={loading}>
-          <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+        <Button variant="secondary" onClick={handleRefresh} disabled={loading || loadingProducts}>
+          <RefreshCw className={`w-4 h-4 ${(loading || loadingProducts) ? 'animate-spin' : ''}`} />
           Atualizar
         </Button>
       </div>
 
-      {loading ? (
-        <div className="py-20">
-          <LoadingSpinner size="lg" />
-        </div>
-      ) : items.length === 0 ? (
-        <EmptyState
-          icon={ClipboardCheck}
-          title="Nenhum item pendente"
-          description="Todos os itens foram revisados. Volte mais tarde para verificar novos itens."
-        />
-      ) : (
+      <div className="flex items-center gap-1 p-1 bg-muted/10 rounded-full w-fit">
+        <button
+          onClick={() => setActiveTab('content')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all ${
+            activeTab === 'content'
+              ? 'bg-primary text-white shadow-sm'
+              : 'text-muted hover:text-foreground'
+          }`}
+        >
+          <ClipboardCheck className="w-4 h-4" />
+          Conteúdo
+          <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${
+            activeTab === 'content'
+              ? 'bg-white/20 text-white'
+              : 'bg-muted/20 text-muted'
+          }`}>
+            {items.length}
+          </span>
+        </button>
+        <button
+          onClick={() => setActiveTab('products')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all ${
+            activeTab === 'products'
+              ? 'bg-primary text-white shadow-sm'
+              : 'text-muted hover:text-foreground'
+          }`}
+        >
+          <Package className="w-4 h-4" />
+          Produtos
+          <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${
+            activeTab === 'products'
+              ? 'bg-white/20 text-white'
+              : 'bg-muted/20 text-muted'
+          }`}>
+            {productItems.length || pendingProductsCount}
+          </span>
+        </button>
+      </div>
+
+      {activeTab === 'content' && (
         <>
-          <div className="flex items-center justify-between bg-card rounded-card border border-border p-4">
-            <div className="flex items-center gap-4">
-              {selectableItems.length > 0 && (
-                <button
-                  onClick={toggleSelectAll}
-                  className="flex items-center gap-2 text-sm font-medium text-muted hover:text-foreground transition-colors"
-                >
-                  {selectedBlocks.size === selectableItems.length && selectableItems.length > 0 ? (
-                    <CheckSquare className="w-5 h-5 text-primary" />
-                  ) : (
-                    <Square className="w-5 h-5" />
-                  )}
-                  {selectedBlocks.size === selectableItems.length && selectableItems.length > 0 ? 'Desmarcar Todos' : 'Selecionar Todos'}
-                </button>
-              )}
-              <span className="text-sm text-muted">
-                {selectedBlocks.size > 0 ? (
-                  <span className="text-primary font-medium">{selectedBlocks.size} selecionado{selectedBlocks.size !== 1 ? 's' : ''}</span>
-                ) : (
-                  <>{items.length} item{items.length !== 1 ? 's' : ''} aguardando revisão</>
-                )}
-              </span>
+          {loading ? (
+            <div className="py-20">
+              <LoadingSpinner size="lg" />
             </div>
-            {selectedBlocks.size > 0 && (
-              <Button
-                variant="success"
-                onClick={handleBulkApprove}
-                disabled={processing}
-              >
-                <Check className="w-4 h-4" />
-                Aprovar {selectedBlocks.size} Selecionado{selectedBlocks.size !== 1 ? 's' : ''}
-              </Button>
-            )}
-          </div>
-
-          <div className="space-y-4">
-            <AnimatePresence>
-              {items.map((item) => (
-                <motion.div
-                  key={item.id}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, x: -100 }}
-                  className="bg-card rounded-card border border-warning/30 p-5 shadow-card"
-                >
-                  <div className="flex items-start gap-4">
-                    {item.block_id ? (
-                      <button
-                        onClick={() => toggleBlockSelection(item.block_id)}
-                        className="mt-1 flex-shrink-0"
-                      >
-                        {selectedBlocks.has(item.block_id) ? (
-                          <CheckSquare className="w-5 h-5 text-primary" />
-                        ) : (
-                          <Square className="w-5 h-5 text-muted hover:text-foreground transition-colors" />
-                        )}
-                      </button>
+          ) : items.length === 0 ? (
+            <EmptyState
+              icon={ClipboardCheck}
+              title="Nenhum item pendente"
+              description="Todos os itens foram revisados. Volte mais tarde para verificar novos itens."
+            />
+          ) : (
+            <>
+              <div className="flex items-center justify-between bg-card rounded-card border border-border p-4">
+                <div className="flex items-center gap-4">
+                  {selectableItems.length > 0 && (
+                    <button
+                      onClick={toggleSelectAll}
+                      className="flex items-center gap-2 text-sm font-medium text-muted hover:text-foreground transition-colors"
+                    >
+                      {selectedBlocks.size === selectableItems.length && selectableItems.length > 0 ? (
+                        <CheckSquare className="w-5 h-5 text-primary" />
+                      ) : (
+                        <Square className="w-5 h-5" />
+                      )}
+                      {selectedBlocks.size === selectableItems.length && selectableItems.length > 0 ? 'Desmarcar Todos' : 'Selecionar Todos'}
+                    </button>
+                  )}
+                  <span className="text-sm text-muted">
+                    {selectedBlocks.size > 0 ? (
+                      <span className="text-primary font-medium">{selectedBlocks.size} selecionado{selectedBlocks.size !== 1 ? 's' : ''}</span>
                     ) : (
-                      <div className="mt-1 w-5" />
+                      <>{items.length} item{items.length !== 1 ? 's' : ''} aguardando revisão</>
                     )}
-                    <div className="p-2 bg-warning/10 rounded-full">
-                      <AlertTriangle className="w-5 h-5 text-warning" />
-                    </div>
-                    
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-2">
-                        <span className="text-xs px-2 py-0.5 bg-muted/10 text-muted rounded font-medium">
-                          {item.block_type || 'texto'}
-                        </span>
-                        {item.product_name && (
-                          <span className="text-xs text-primary font-medium">
-                            {item.product_name}
-                          </span>
+                  </span>
+                </div>
+                {selectedBlocks.size > 0 && (
+                  <Button
+                    variant="success"
+                    onClick={handleBulkApprove}
+                    disabled={processing}
+                  >
+                    <Check className="w-4 h-4" />
+                    Aprovar {selectedBlocks.size} Selecionado{selectedBlocks.size !== 1 ? 's' : ''}
+                  </Button>
+                )}
+              </div>
+
+              <div className="space-y-4">
+                <AnimatePresence>
+                  {items.map((item) => (
+                    <motion.div
+                      key={item.id}
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, x: -100 }}
+                      className="bg-card rounded-card border border-warning/30 p-5 shadow-card"
+                    >
+                      <div className="flex items-start gap-4">
+                        {item.block_id ? (
+                          <button
+                            onClick={() => toggleBlockSelection(item.block_id)}
+                            className="mt-1 flex-shrink-0"
+                          >
+                            {selectedBlocks.has(item.block_id) ? (
+                              <CheckSquare className="w-5 h-5 text-primary" />
+                            ) : (
+                              <Square className="w-5 h-5 text-muted hover:text-foreground transition-colors" />
+                            )}
+                          </button>
+                        ) : (
+                          <div className="mt-1 w-5" />
                         )}
-                      </div>
-
-                      {(item.block_title || item.title) && (
-                        <h3 className="font-medium text-foreground mb-2">{item.block_title || item.title}</h3>
-                      )}
-
-                      <ContentPreview 
-                        content={item.extracted_content || item.content} 
-                        blockType={item.block_type}
-                      />
-
-                      {(item.risk_reason || item.reason) && (
-                        <div className="flex items-center gap-2 text-sm text-warning mb-3">
-                          <AlertTriangle className="w-4 h-4" />
-                          Motivo: {item.risk_reason || item.reason}
+                        <div className="p-2 bg-warning/10 rounded-full">
+                          <AlertTriangle className="w-5 h-5 text-warning" />
                         </div>
-                      )}
+                        
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-2">
+                            <span className="text-xs px-2 py-0.5 bg-muted/10 text-muted rounded font-medium">
+                              {item.block_type || 'texto'}
+                            </span>
+                            {item.product_name && (
+                              <span className="text-xs text-primary font-medium">
+                                {item.product_name}
+                              </span>
+                            )}
+                          </div>
 
-                      <div className="flex gap-2">
-                        <Button
-                          size="sm"
-                          variant="success"
-                          onClick={() => handleApprove(item)}
-                          disabled={processing}
-                        >
-                          <Check className="w-4 h-4" />
-                          Aprovar
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          onClick={() => openEditModal(item)}
-                          disabled={processing}
-                        >
-                          <Edit className="w-4 h-4" />
-                          Editar e Aprovar
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="danger"
-                          onClick={() => openRejectModal(item)}
-                          disabled={processing}
-                        >
-                          <X className="w-4 h-4" />
-                          Rejeitar
-                        </Button>
+                          {(item.block_title || item.title) && (
+                            <h3 className="font-medium text-foreground mb-2">{item.block_title || item.title}</h3>
+                          )}
+
+                          <ContentPreview 
+                            content={item.extracted_content || item.content} 
+                            blockType={item.block_type}
+                          />
+
+                          {(item.risk_reason || item.reason) && (
+                            <div className="flex items-center gap-2 text-sm text-warning mb-3">
+                              <AlertTriangle className="w-4 h-4" />
+                              Motivo: {item.risk_reason || item.reason}
+                            </div>
+                          )}
+
+                          <div className="flex gap-2">
+                            <Button
+                              size="sm"
+                              variant="success"
+                              onClick={() => handleApprove(item)}
+                              disabled={processing}
+                            >
+                              <Check className="w-4 h-4" />
+                              Aprovar
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              onClick={() => openEditModal(item)}
+                              disabled={processing}
+                            >
+                              <Edit className="w-4 h-4" />
+                              Editar e Aprovar
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="danger"
+                              onClick={() => openRejectModal(item)}
+                              disabled={processing}
+                            >
+                              <X className="w-4 h-4" />
+                              Rejeitar
+                            </Button>
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                  </div>
-                </motion.div>
-              ))}
-            </AnimatePresence>
-          </div>
+                    </motion.div>
+                  ))}
+                </AnimatePresence>
+              </div>
+            </>
+          )}
+        </>
+      )}
+
+      {activeTab === 'products' && (
+        <>
+          {loadingProducts ? (
+            <div className="py-20">
+              <LoadingSpinner size="lg" />
+            </div>
+          ) : productItems.length === 0 ? (
+            <EmptyState
+              icon={Package}
+              title="Nenhum produto pendente de confirmação"
+              description="Todos os materiais já foram vinculados a produtos. Volte mais tarde para verificar novos itens."
+            />
+          ) : (
+            <div className="space-y-4">
+              <AnimatePresence>
+                {productItems.map((item) => (
+                  <ProductMatchCard
+                    key={item.material_id}
+                    item={item}
+                    onResolved={handleProductResolved}
+                    addToast={addToast}
+                  />
+                ))}
+              </AnimatePresence>
+            </div>
+          )}
         </>
       )}
 

@@ -1098,7 +1098,278 @@ async def list_pending_reviews(
             "created_at": p.created_at.isoformat() if p.created_at else None
         })
     
+    pending_products_count = db.query(Material).filter(
+        Material.processing_status == "pending_product_match"
+    ).count()
+    
+    return {
+        "pending_items": items,
+        "total": len(items),
+        "pending_products_count": pending_products_count,
+        "pending_content_count": len(items),
+    }
+
+
+@router.get("/review/pending-products")
+async def list_pending_product_matches(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Lista materiais com matching de produto pendente de confirmação."""
+    if current_user.role not in ["admin", "gestao_rv"]:
+        raise HTTPException(status_code=403, detail="Acesso negado")
+    
+    materials = db.query(Material).options(
+        joinedload(Material.product)
+    ).filter(
+        Material.processing_status == "pending_product_match"
+    ).order_by(Material.created_at.desc()).all()
+    
+    items = []
+    for mat in materials:
+        extracted = {}
+        candidates = []
+        if mat.extracted_metadata:
+            try:
+                meta = json.loads(mat.extracted_metadata)
+                extracted = meta.get("product_resolver", {}).get("extracted_metadata", meta)
+                resolver_data = meta.get("product_resolver", {}).get("resolver_result", {})
+                candidates = resolver_data.get("candidates", [])
+            except (json.JSONDecodeError, TypeError):
+                pass
+        
+        items.append({
+            "material_id": mat.id,
+            "material_name": mat.name,
+            "source_filename": mat.source_filename,
+            "current_product_name": mat.product.name if mat.product else None,
+            "current_product_id": mat.product_id,
+            "extracted_fund_name": extracted.get("fund_name"),
+            "extracted_ticker": extracted.get("ticker"),
+            "extracted_gestora": extracted.get("gestora"),
+            "extracted_confidence": extracted.get("confidence", 0),
+            "candidates": candidates,
+            "created_at": mat.created_at.isoformat() if mat.created_at else None,
+        })
+    
     return {"pending_items": items, "total": len(items)}
+
+
+@router.post("/review/resolve-product")
+async def resolve_product_match(
+    data: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Resolve o matching de produto para um material.
+    Ações: 'link' (vincular a existente) ou 'create' (criar novo).
+    """
+    if current_user.role not in ["admin", "gestao_rv"]:
+        raise HTTPException(status_code=403, detail="Acesso negado")
+    
+    material_id = data.get("material_id")
+    action = data.get("action")
+    
+    if not material_id or action not in ("link", "create"):
+        raise HTTPException(status_code=400, detail="material_id e action (link/create) são obrigatórios")
+    
+    mat = db.query(Material).filter(Material.id == material_id).first()
+    if not mat:
+        raise HTTPException(status_code=404, detail="Material não encontrado")
+    
+    if action == "link":
+        product_id = data.get("product_id")
+        if not product_id:
+            raise HTTPException(status_code=400, detail="product_id é obrigatório para action=link")
+        
+        product = db.query(Product).filter(Product.id == product_id).first()
+        if not product:
+            raise HTTPException(status_code=404, detail="Produto não encontrado")
+        
+        mat.product_id = product.id
+        mat.processing_status = "success"
+        
+        extracted_name = None
+        if mat.extracted_metadata:
+            try:
+                meta = json.loads(mat.extracted_metadata)
+                extracted_name = meta.get("fund_name") or meta.get("product_resolver", {}).get("extracted_metadata", {}).get("fund_name")
+            except (json.JSONDecodeError, TypeError):
+                pass
+        
+        if extracted_name:
+            product.add_alias(extracted_name)
+        
+        db.commit()
+        
+        return {
+            "success": True,
+            "action": "linked",
+            "product_name": product.name,
+            "product_ticker": product.ticker,
+            "alias_saved": extracted_name if extracted_name else None,
+        }
+    
+    elif action == "create":
+        product_name = data.get("product_name")
+        product_ticker = data.get("product_ticker")
+        product_manager = data.get("product_manager")
+        product_category = data.get("product_category", "FII")
+        
+        if not product_name:
+            raise HTTPException(status_code=400, detail="product_name é obrigatório para action=create")
+        
+        if product_ticker:
+            existing = db.query(Product).filter(Product.ticker == product_ticker).first()
+            if existing:
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"Já existe um produto com ticker {product_ticker}: {existing.name}"
+                )
+        
+        new_product = Product(
+            name=product_name,
+            ticker=product_ticker,
+            manager=product_manager,
+            category=product_category,
+            status="ativo",
+            created_by=current_user.id,
+        )
+        db.add(new_product)
+        db.commit()
+        db.refresh(new_product)
+        
+        mat.product_id = new_product.id
+        mat.processing_status = "success"
+        db.commit()
+        
+        return {
+            "success": True,
+            "action": "created",
+            "product_id": new_product.id,
+            "product_name": new_product.name,
+            "product_ticker": new_product.ticker,
+        }
+
+
+@router.post("/merge-products")
+async def merge_products(
+    data: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Merge produto A (source) em produto B (target).
+    Move materiais, blocos, vetores e scripts de A para B.
+    Salva nome de A como alias de B. Deleta A.
+    """
+    if current_user.role not in ["admin"]:
+        raise HTTPException(status_code=403, detail="Apenas admin pode fazer merge")
+    
+    source_id = data.get("source_id")
+    target_id = data.get("target_id")
+    
+    if not source_id or not target_id:
+        raise HTTPException(status_code=400, detail="source_id e target_id são obrigatórios")
+    if source_id == target_id:
+        raise HTTPException(status_code=400, detail="source e target não podem ser o mesmo produto")
+    
+    source = db.query(Product).filter(Product.id == source_id).first()
+    target = db.query(Product).filter(Product.id == target_id).first()
+    
+    if not source or not target:
+        raise HTTPException(status_code=404, detail="Produto não encontrado")
+    
+    materials_moved = db.query(Material).filter(Material.product_id == source_id).update(
+        {Material.product_id: target_id}, synchronize_session=False
+    )
+    
+    from database.models import WhatsAppScript
+    scripts_moved = db.query(WhatsAppScript).filter(WhatsAppScript.product_id == source_id).update(
+        {WhatsAppScript.product_id: target_id}, synchronize_session=False
+    )
+    
+    target.add_alias(source.name)
+    for alias in source.get_aliases():
+        target.add_alias(alias)
+    
+    try:
+        vector_store = get_vector_store()
+        if vector_store and hasattr(vector_store, 'collection'):
+            results = vector_store.collection.get(
+                where={"product_id": str(source_id)}
+            )
+            if results and results.get("ids"):
+                for doc_id in results["ids"]:
+                    vector_store.collection.update(
+                        ids=[doc_id],
+                        metadatas=[{"product_id": str(target_id)}]
+                    )
+    except Exception as e:
+        print(f"[MERGE] Aviso: erro ao migrar vetores: {e}")
+    
+    db.delete(source)
+    db.commit()
+    
+    return {
+        "success": True,
+        "source_name": source.name,
+        "target_name": target.name,
+        "materials_moved": materials_moved,
+        "scripts_moved": scripts_moved,
+    }
+
+
+@router.get("/{product_id}/aliases")
+async def get_product_aliases(
+    product_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Retorna aliases de um produto."""
+    product = db.query(Product).filter(Product.id == product_id).first()
+    if not product:
+        raise HTTPException(status_code=404, detail="Produto não encontrado")
+    
+    return {"aliases": product.get_aliases(), "product_name": product.name}
+
+
+@router.post("/{product_id}/aliases")
+async def manage_product_aliases(
+    product_id: int,
+    data: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Adiciona ou remove aliases de um produto."""
+    if current_user.role not in ["admin", "gestao_rv"]:
+        raise HTTPException(status_code=403, detail="Acesso negado")
+    
+    product = db.query(Product).filter(Product.id == product_id).first()
+    if not product:
+        raise HTTPException(status_code=404, detail="Produto não encontrado")
+    
+    action = data.get("action", "add")
+    alias = data.get("alias", "").strip()
+    
+    if not alias:
+        raise HTTPException(status_code=400, detail="alias é obrigatório")
+    
+    if action == "add":
+        added = product.add_alias(alias)
+        db.commit()
+        return {"success": True, "added": added, "aliases": product.get_aliases()}
+    elif action == "remove":
+        aliases = product.get_aliases()
+        if alias in aliases:
+            aliases.remove(alias)
+            product.name_aliases = json.dumps(aliases, ensure_ascii=False)
+            db.commit()
+            return {"success": True, "removed": True, "aliases": product.get_aliases()}
+        return {"success": True, "removed": False, "aliases": aliases}
+    else:
+        raise HTTPException(status_code=400, detail="action deve ser 'add' ou 'remove'")
 
 
 @router.post("/review/{item_id}/approve")

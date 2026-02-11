@@ -562,39 +562,75 @@ class UploadQueue:
                     item.add_log(f"Metadados: {metadata.fund_name or 'N/A'} | Ticker: {metadata.ticker or 'N/A'}", "info")
 
                     if metadata.confidence >= 0.5 and (metadata.ticker or metadata.fund_name):
-                        matched_product = None
-                        if metadata.ticker:
-                            matched_product = db.query(Product).filter(Product.ticker == metadata.ticker).first()
-                        if not matched_product and metadata.fund_name:
-                            from services.document_metadata_extractor import normalize_text
-                            fund_normalized = normalize_text(metadata.fund_name)
-                            for prod in existing_products:
-                                if normalize_text(prod.name) in fund_normalized or fund_normalized in normalize_text(prod.name):
-                                    matched_product = prod
-                                    break
+                        from services.product_resolver import get_product_resolver
+                        resolver = get_product_resolver(db)
+                        resolve_result = resolver.resolve(
+                            fund_name=metadata.fund_name,
+                            ticker=metadata.ticker,
+                            gestora=metadata.gestora,
+                            confidence=metadata.confidence,
+                        )
 
-                        if matched_product and matched_product.ticker != "__SYSTEM_UNASSIGNED__":
-                            mat.product_id = matched_product.id
+                        if resolve_result.is_confident:
+                            mat.product_id = resolve_result.matched_product_id
+                            mat.processing_status = "processing"
                             db.commit()
-                            item.product_name = matched_product.name
-                            item.product_ticker = matched_product.ticker
-                            item.add_log(f"Produto: {matched_product.name} ({matched_product.ticker})", "success")
-                        elif metadata.fund_name and metadata.confidence >= 0.8:
-                            new_product = Product(
-                                name=metadata.fund_name,
-                                ticker=metadata.ticker,
-                                category=metadata.gestora or "FII",
-                                manager=metadata.gestora,
-                                status="ativo"
+                            item.product_name = resolve_result.matched_product_name
+                            item.product_ticker = resolve_result.matched_product_ticker
+                            item.add_log(
+                                f"Produto vinculado: {resolve_result.matched_product_name} "
+                                f"({resolve_result.matched_product_ticker or 'sem ticker'}) "
+                                f"[{resolve_result.match_type}]",
+                                "success"
                             )
-                            db.add(new_product)
+                            if metadata.fund_name and resolve_result.match_type == "ticker_exact":
+                                resolver.save_alias_on_match(resolve_result.matched_product_id, metadata.fund_name)
+
+                        elif resolve_result.match_type == "fuzzy_high_confidence":
+                            mat.product_id = resolve_result.matched_product_id
+                            mat.processing_status = "processing"
                             db.commit()
-                            db.refresh(new_product)
-                            mat.product_id = new_product.id
+                            item.product_name = resolve_result.matched_product_name
+                            item.product_ticker = resolve_result.matched_product_ticker
+                            item.add_log(
+                                f"Produto vinculado (alta similaridade): {resolve_result.matched_product_name} "
+                                f"(score={resolve_result.match_confidence})",
+                                "success"
+                            )
+                            if metadata.fund_name:
+                                resolver.save_alias_on_match(resolve_result.matched_product_id, metadata.fund_name)
+
+                        else:
+                            resolve_data = {
+                                "resolver_result": resolve_result.to_dict(),
+                                "extracted_metadata": metadata.to_dict(),
+                            }
+                            existing_meta = {}
+                            if mat.extracted_metadata:
+                                try:
+                                    existing_meta = json.loads(mat.extracted_metadata)
+                                except (json.JSONDecodeError, TypeError):
+                                    pass
+                            existing_meta["product_resolver"] = resolve_data
+                            mat.extracted_metadata = json.dumps(existing_meta, ensure_ascii=False)
+                            mat.processing_status = "pending_product_match"
                             db.commit()
-                            item.product_name = new_product.name
-                            item.product_ticker = new_product.ticker
-                            item.add_log(f"Novo produto criado: {new_product.name}", "success")
+
+                            if resolve_result.has_candidates:
+                                candidate_names = ", ".join(
+                                    f"{c.product_name} ({c.score:.0%})"
+                                    for c in resolve_result.candidates[:3]
+                                )
+                                item.add_log(
+                                    f"Produto não confirmado. Candidatos: {candidate_names}",
+                                    "warning"
+                                )
+                            else:
+                                item.add_log(
+                                    f"Produto não encontrado: {metadata.fund_name or 'N/A'}. "
+                                    f"Requer confirmação manual.",
+                                    "warning"
+                                )
                 except Exception as meta_err:
                     item.add_log(f"Aviso: Metadados falhou ({str(meta_err)[:100]})", "warning")
 

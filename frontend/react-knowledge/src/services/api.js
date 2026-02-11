@@ -148,6 +148,14 @@ export const blocksAPI = {
 export const reviewAPI = {
   listPending: () => fetchAPI('/products/review/pending'),
 
+  listPendingProducts: () => fetchAPI('/products/review/pending-products'),
+
+  resolveProduct: (data) =>
+    fetchAPI('/products/review/resolve-product', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
   approve: (itemId) =>
     fetchAPI(`/products/review/${itemId}/approve`, {
       method: 'POST',
@@ -161,6 +169,12 @@ export const reviewAPI = {
 
   reject: (itemId, data) =>
     fetchAPI(`/products/review/${itemId}/reject`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  mergeProducts: (data) =>
+    fetchAPI('/products/merge-products', {
       method: 'POST',
       body: JSON.stringify(data),
     }),
