@@ -15,6 +15,11 @@ async function fetchAPI(endpoint, options = {}) {
     credentials: 'include',
   });
 
+  if (response.status === 401) {
+    window.location.href = '/login';
+    throw new Error('Sessão expirada');
+  }
+
   if (!response.ok) {
     const error = await response.json().catch(() => ({ detail: 'Erro desconhecido' }));
     throw new Error(error.detail || `HTTP ${response.status}`);

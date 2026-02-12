@@ -141,16 +141,16 @@ async def login_form(
         }
     )
     
-    # Redireciona para o dashboard de insights
     redirect = RedirectResponse(url="/insights", status_code=status.HTTP_302_FOUND)
+    redirect.delete_cookie(key="access_token", path="/api/auth")
+    redirect.delete_cookie(key="access_token", path="/api")
     redirect.set_cookie(
         key="access_token",
         value=access_token,
         httponly=True,
         max_age=86400,
         samesite="lax",
-        path="/",
-        secure=request.url.scheme == "https"
+        path="/"
     )
     return redirect
 
@@ -160,6 +160,8 @@ async def logout(response: Response):
     """Remove o cookie de autenticação."""
     redirect = RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
     redirect.delete_cookie(key="access_token", path="/")
+    redirect.delete_cookie(key="access_token", path="/api/auth")
+    redirect.delete_cookie(key="access_token", path="/api")
     return redirect
 
 
@@ -461,14 +463,15 @@ async def microsoft_callback(
         )
         
         redirect = RedirectResponse(url="/insights", status_code=status.HTTP_302_FOUND)
+        redirect.delete_cookie(key="access_token", path="/api/auth")
+        redirect.delete_cookie(key="access_token", path="/api")
         redirect.set_cookie(
             key="access_token",
             value=access_token,
             httponly=True,
             max_age=86400,
             samesite="lax",
-            path="/",
-            secure=request.url.scheme == "https"
+            path="/"
         )
         return redirect
         
