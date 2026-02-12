@@ -69,15 +69,136 @@ async def lifespan(app: FastAPI):
     upload_queue_instance = UploadQueue.get_instance()
     upload_queue_instance.initialize()
     
+    reindex_task = asyncio.create_task(check_and_reindex_embeddings())
     confirmation_task = asyncio.create_task(confirmation_timeout_scheduler())
     
     yield
+    
+    reindex_task.cancel()
+    try:
+        await reindex_task
+    except asyncio.CancelledError:
+        pass
     
     confirmation_task.cancel()
     try:
         await confirmation_task
     except asyncio.CancelledError:
         pass
+
+
+async def check_and_reindex_embeddings():
+    """
+    Verifica blocos aprovados sem embedding no pgvector e indexa automaticamente.
+    Roda uma vez na inicialização como tarefa em background.
+    """
+    await asyncio.sleep(5)
+    
+    try:
+        from database.models import ContentBlock, Material, Product
+        from sqlalchemy import text as sql_text
+        
+        db = SessionLocal()
+        try:
+            existing_doc_ids = set()
+            rows = db.execute(sql_text("SELECT doc_id FROM document_embeddings")).fetchall()
+            for row in rows:
+                existing_doc_ids.add(row[0])
+            
+            blocks = db.query(ContentBlock).filter(
+                ContentBlock.status.in_(['auto_approved', 'approved'])
+            ).all()
+            
+            missing_blocks = []
+            for block in blocks:
+                expected_doc_id = f"product_block_{block.id}"
+                if expected_doc_id not in existing_doc_ids:
+                    missing_blocks.append(block)
+            
+            if not missing_blocks:
+                total = db.execute(sql_text("SELECT COUNT(*) FROM document_embeddings")).scalar()
+                print(f"[REINDEX] Todos os blocos aprovados já possuem embedding. Total: {total}")
+                return
+            
+            print(f"[REINDEX] Encontrados {len(missing_blocks)} blocos aprovados sem embedding. Indexando...")
+            
+            from services.vector_store import get_vector_store
+            vs = get_vector_store()
+            
+            indexed = 0
+            errors = 0
+            
+            for block in missing_blocks:
+                try:
+                    material = db.query(Material).filter(Material.id == block.material_id).first()
+                    product = None
+                    if material and material.product_id:
+                        product = db.query(Product).filter(Product.id == material.product_id).first()
+                    
+                    content = block.content or ""
+                    if not content.strip():
+                        continue
+                    
+                    global_context = ""
+                    if product:
+                        global_context = f"Produto: {product.name}"
+                        if product.ticker:
+                            global_context += f" ({product.ticker})"
+                        if product.manager:
+                            global_context += f" | Gestora: {product.manager}"
+                    
+                    if global_context:
+                        enriched_content = f"{global_context}\n---\n{content}"
+                    else:
+                        enriched_content = content
+                    
+                    metadata = {
+                        'product_name': product.name if product else '',
+                        'product_ticker': product.ticker if product else '',
+                        'gestora': product.manager if product else '',
+                        'category': product.category if product else '',
+                        'block_type': block.block_type or 'text',
+                        'material_type': material.material_type if material else '',
+                        'publish_status': material.publish_status if material else 'publicado',
+                        'block_id': str(block.id),
+                        'material_id': str(material.id) if material else '',
+                        'title': material.name if material else '',
+                        'source': f"{product.name if product else 'Desconhecido'} - {material.name if material else ''}",
+                    }
+                    
+                    if hasattr(block, 'topic') and block.topic:
+                        metadata['topic'] = block.topic
+                    if hasattr(block, 'concepts') and block.concepts:
+                        metadata['concepts'] = block.concepts
+                    if hasattr(block, 'keywords') and block.keywords:
+                        metadata['keywords'] = block.keywords
+                    
+                    if material and material.valid_until:
+                        metadata['valid_until'] = material.valid_until.isoformat()
+                    
+                    doc_id = f"product_block_{block.id}"
+                    vs.add_document(doc_id, enriched_content, metadata)
+                    indexed += 1
+                    
+                    if indexed % 10 == 0:
+                        print(f"[REINDEX] Progresso: {indexed}/{len(missing_blocks)}...")
+                    
+                    await asyncio.sleep(0.1)
+                    
+                except asyncio.CancelledError:
+                    raise
+                except Exception as e:
+                    errors += 1
+                    print(f"[REINDEX] Erro ao indexar bloco {block.id}: {e}")
+            
+            print(f"[REINDEX] Concluído: {indexed} indexados, {errors} erros")
+            
+        finally:
+            db.close()
+    except asyncio.CancelledError:
+        print("[REINDEX] Tarefa cancelada")
+    except Exception as e:
+        print(f"[REINDEX] Erro na re-indexação: {e}")
 
 
 async def confirmation_timeout_scheduler():

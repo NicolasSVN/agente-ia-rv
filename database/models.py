@@ -5,6 +5,7 @@ Define as tabelas User, Ticket, Interaction, TicketCategory e Integration.
 from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Text, Boolean, Float, Index
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
+from pgvector.sqlalchemy import Vector
 from database.database import Base
 from datetime import datetime
 import enum
@@ -1195,5 +1196,41 @@ class FixedCost(Base):
     category = Column(String(50), default='infrastructure')
     is_active = Column(Boolean, default=True)
     plan_details = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class DocumentEmbedding(Base):
+    __tablename__ = "document_embeddings"
+
+    id = Column(Integer, primary_key=True, index=True)
+    doc_id = Column(String(500), unique=True, nullable=False, index=True)
+    content = Column(Text, nullable=False)
+    embedding = Column(Vector(3072), nullable=False)
+
+    product_name = Column(String(500), nullable=True)
+    product_ticker = Column(String(50), nullable=True, index=True)
+    gestora = Column(String(200), nullable=True)
+    category = Column(String(200), nullable=True)
+    source = Column(String(500), nullable=True)
+    title = Column(String(500), nullable=True)
+    block_type = Column(String(100), nullable=True)
+    material_type = Column(String(100), nullable=True)
+    publish_status = Column(String(50), default='publicado')
+    topic = Column(String(200), nullable=True)
+    concepts = Column(Text, nullable=True)
+    keywords = Column(Text, nullable=True)
+    strategy = Column(String(500), nullable=True)
+    valid_until = Column(String(100), nullable=True)
+    created_at_source = Column(String(100), nullable=True)
+    block_id = Column(String(100), nullable=True, index=True)
+    material_id = Column(String(100), nullable=True)
+    structure_slug = Column(String(200), nullable=True)
+    tab = Column(String(200), nullable=True)
+    doc_type = Column(String(100), nullable=True)
+    has_diagram = Column(String(10), nullable=True)
+    diagram_image_path = Column(String(500), nullable=True)
+    extra_metadata = Column(Text, nullable=True)
+
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

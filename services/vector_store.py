@@ -1,14 +1,16 @@
 """
-Gerenciador do banco de dados vetorial ChromaDB.
+Gerenciador do banco de dados vetorial usando pgvector (PostgreSQL).
 Permite armazenar e buscar documentos usando embeddings.
 """
-import chromadb
 import json
 import re
 from openai import OpenAI
 from typing import List, Optional, Set, Dict, Tuple
 from core.config import get_settings
 from services.cost_tracker import cost_tracker
+from database.database import SessionLocal
+from database.models import DocumentEmbedding
+from sqlalchemy import text as sql_text
 
 
 TICKER_PATTERN = re.compile(r'\b([A-Z]{4,5})\s*11\b', re.IGNORECASE)
@@ -87,29 +89,72 @@ def levenshtein_distance(s1: str, s2: str) -> int:
 
 settings = get_settings()
 
+KNOWN_METADATA_FIELDS = [
+    'product_name', 'product_ticker', 'gestora', 'category', 'source',
+    'title', 'block_type', 'material_type', 'publish_status', 'topic',
+    'concepts', 'keywords', 'strategy', 'valid_until', 'structure_slug',
+    'tab', 'has_diagram', 'diagram_image_path'
+]
+
+FIELD_MAP_TO_COLUMN = {
+    'created_at': 'created_at_source',
+    'block_id': 'block_id',
+    'material_id': 'material_id',
+    'type': 'doc_type',
+}
+
 
 class VectorStore:
-    """Gerenciador de busca semântica usando ChromaDB e OpenAI embeddings."""
+    """Gerenciador de busca semântica usando pgvector e OpenAI embeddings."""
     
     def __init__(self):
-        # Inicializa o cliente ChromaDB com persistência local
-        self.chroma_client = chromadb.PersistentClient(
-            path=settings.CHROMA_PERSIST_DIRECTORY
-        )
-        
-        # Cria ou obtém a coleção principal
-        self.collection = self.chroma_client.get_or_create_collection(
-            name="knowledge_base",
-            metadata={"description": "Base de conhecimento do Notion"}
-        )
-        
-        # Cliente OpenAI para geração de embeddings
         self.openai_client = None
         if settings.OPENAI_API_KEY:
             self.openai_client = OpenAI(api_key=settings.OPENAI_API_KEY)
         
-        # Cache de produtos por gestora (lazy loading)
         self._products_cache = None
+    
+    def _row_to_metadata(self, row):
+        meta = {}
+        for field in KNOWN_METADATA_FIELDS:
+            val = getattr(row, field, None)
+            if val is not None:
+                meta[field] = val
+        if row.created_at_source:
+            meta['created_at'] = row.created_at_source
+        if row.block_id:
+            meta['block_id'] = row.block_id
+        if row.material_id:
+            meta['material_id'] = row.material_id
+        if row.doc_type:
+            meta['type'] = row.doc_type
+        if row.extra_metadata:
+            try:
+                extra = json.loads(row.extra_metadata)
+                for k, v in extra.items():
+                    if k not in meta:
+                        meta[k] = v
+            except Exception:
+                pass
+        return meta
+    
+    def _metadata_to_columns(self, metadata: dict) -> dict:
+        if not metadata:
+            return {'extra_metadata': None}
+        
+        columns = {}
+        extra = {}
+        
+        for key, value in metadata.items():
+            if key in KNOWN_METADATA_FIELDS:
+                columns[key] = value
+            elif key in FIELD_MAP_TO_COLUMN:
+                columns[FIELD_MAP_TO_COLUMN[key]] = value
+            else:
+                extra[key] = value
+        
+        columns['extra_metadata'] = json.dumps(extra) if extra else None
+        return columns
     
     def get_all_products(self) -> Dict[str, Dict]:
         """
@@ -121,25 +166,28 @@ class VectorStore:
         if self._products_cache is not None:
             return self._products_cache
         
-        results = self.collection.get(limit=1000, include=['metadatas'])
-        
-        products = {}
-        for meta in results.get('metadatas', []):
-            if not meta:
-                continue
+        db = SessionLocal()
+        try:
+            rows = db.execute(sql_text(
+                "SELECT DISTINCT product_ticker, product_name FROM document_embeddings "
+                "WHERE product_ticker IS NOT NULL AND product_ticker != ''"
+            )).fetchall()
             
-            ticker = meta.get('product_ticker', '')
-            name = meta.get('product_name', '')
+            products = {}
+            for row in rows:
+                ticker = row[0]
+                name = row[1] or ''
+                if ticker and ticker not in products:
+                    gestora = self._infer_gestora_from_name(name)
+                    products[ticker] = {
+                        'name': name,
+                        'gestora': gestora
+                    }
             
-            if ticker and ticker not in products:
-                gestora = self._infer_gestora_from_name(name)
-                products[ticker] = {
-                    'name': name,
-                    'gestora': gestora
-                }
-        
-        self._products_cache = products
-        return products
+            self._products_cache = products
+            return products
+        finally:
+            db.close()
     
     def _infer_gestora_from_name(self, product_name: str) -> str:
         """
@@ -261,13 +309,37 @@ class VectorStore:
             metadata: Metadados opcionais (título, fonte, etc.)
         """
         embedding = self._generate_embedding(text)
+        embedding_str = '[' + ','.join(str(x) for x in embedding) + ']'
         
-        self.collection.add(
-            ids=[doc_id],
-            embeddings=[embedding],
-            documents=[text],
-            metadatas=[metadata or {}]
-        )
+        columns = self._metadata_to_columns(metadata or {})
+        
+        db = SessionLocal()
+        try:
+            set_clauses = ["content = :content", "embedding = :embedding"]
+            params = {
+                'doc_id': doc_id,
+                'content': text,
+                'embedding': embedding_str,
+            }
+            
+            col_names = ['doc_id', 'content', 'embedding']
+            col_placeholders = [':doc_id', ':content', ':embedding']
+            
+            for col_key, col_val in columns.items():
+                params[col_key] = col_val
+                col_names.append(col_key)
+                col_placeholders.append(f':{col_key}')
+                set_clauses.append(f"{col_key} = :{col_key}")
+            
+            query = sql_text(
+                f"INSERT INTO document_embeddings ({', '.join(col_names)}) "
+                f"VALUES ({', '.join(col_placeholders)}) "
+                f"ON CONFLICT (doc_id) DO UPDATE SET {', '.join(set_clauses)}"
+            )
+            db.execute(query, params)
+            db.commit()
+        finally:
+            db.close()
     
     def add_documents(self, doc_ids: List[str], texts: List[str], metadatas: Optional[List[dict]] = None) -> None:
         """
@@ -278,14 +350,9 @@ class VectorStore:
             texts: Lista de conteúdos
             metadatas: Lista de metadados opcionais
         """
-        embeddings = [self._generate_embedding(text) for text in texts]
-        
-        self.collection.add(
-            ids=doc_ids,
-            embeddings=embeddings,
-            documents=texts,
-            metadatas=metadatas or [{}] * len(texts)
-        )
+        metas = metadatas or [{}] * len(texts)
+        for i, (doc_id, text) in enumerate(zip(doc_ids, texts)):
+            self.add_document(doc_id, text, metas[i])
     
     def delete_document(self, doc_id: str) -> bool:
         """
@@ -298,8 +365,13 @@ class VectorStore:
             True se removido com sucesso
         """
         try:
-            self.collection.delete(ids=[doc_id])
-            return True
+            db = SessionLocal()
+            try:
+                db.execute(sql_text("DELETE FROM document_embeddings WHERE doc_id = :doc_id"), {'doc_id': doc_id})
+                db.commit()
+                return True
+            finally:
+                db.close()
         except Exception as e:
             print(f"[VECTOR_STORE] Erro ao deletar documento {doc_id}: {e}")
             return False
@@ -319,25 +391,21 @@ class VectorStore:
             dict com status da operação
         """
         try:
-            old_count = self.collection.count()
-            
-            self.chroma_client.delete_collection(name="knowledge_base")
-            
-            self.collection = self.chroma_client.create_collection(
-                name="knowledge_base",
-                metadata={
-                    "description": "Base de conhecimento do Notion",
-                    "embedding_model": "text-embedding-3-large",
-                    "dimensions": 3072,
-                    "migrated_at": __import__("datetime").datetime.now().isoformat()
+            db = SessionLocal()
+            try:
+                old_count_result = db.execute(sql_text("SELECT COUNT(*) FROM document_embeddings")).scalar()
+                old_count = old_count_result or 0
+                
+                db.execute(sql_text("TRUNCATE TABLE document_embeddings"))
+                db.commit()
+                
+                return {
+                    "success": True,
+                    "old_count": old_count,
+                    "message": f"Collection resetada. {old_count} documentos removidos. Reindexação necessária."
                 }
-            )
-            
-            return {
-                "success": True,
-                "old_count": old_count,
-                "message": f"Collection resetada. {old_count} documentos removidos. Reindexação necessária."
-            }
+            finally:
+                db.close()
         except Exception as e:
             return {
                 "success": False,
@@ -434,34 +502,89 @@ class VectorStore:
         
         query_type = self._classify_query_type(query)
         
-        where_filter = None
-        if product_filter:
-            where_filter = {"product_ticker": {"$eq": product_filter.upper()}}
-        
         fetch_count = n_results * 3
         
+        embedding_str = '[' + ','.join(str(x) for x in query_embedding) + ']'
+        
+        db = SessionLocal()
         try:
-            results = self.collection.query(
-                query_embeddings=[query_embedding],
-                n_results=fetch_count,
-                where=where_filter
-            )
-        except Exception as e:
-            print(f"[VECTOR_STORE] Erro com filtro, buscando sem filtro: {e}")
-            results = self.collection.query(
-                query_embeddings=[query_embedding],
-                n_results=fetch_count
-            )
+            if product_filter:
+                try:
+                    rows = db.execute(sql_text(
+                        "SELECT *, (embedding <=> :query_vec) as distance "
+                        "FROM document_embeddings "
+                        "WHERE product_ticker = :product_filter "
+                        "ORDER BY embedding <=> :query_vec "
+                        "LIMIT :fetch_count"
+                    ), {
+                        'query_vec': embedding_str,
+                        'product_filter': product_filter.upper(),
+                        'fetch_count': fetch_count
+                    }).fetchall()
+                except Exception as e:
+                    print(f"[VECTOR_STORE] Erro com filtro, buscando sem filtro: {e}")
+                    rows = db.execute(sql_text(
+                        "SELECT *, (embedding <=> :query_vec) as distance "
+                        "FROM document_embeddings "
+                        "ORDER BY embedding <=> :query_vec "
+                        "LIMIT :fetch_count"
+                    ), {
+                        'query_vec': embedding_str,
+                        'fetch_count': fetch_count
+                    }).fetchall()
+            else:
+                rows = db.execute(sql_text(
+                    "SELECT *, (embedding <=> :query_vec) as distance "
+                    "FROM document_embeddings "
+                    "ORDER BY embedding <=> :query_vec "
+                    "LIMIT :fetch_count"
+                ), {
+                    'query_vec': embedding_str,
+                    'fetch_count': fetch_count
+                }).fetchall()
+        finally:
+            db.close()
         
         documents = []
-        if results and results['documents']:
+        if rows:
             from datetime import datetime
             now = datetime.now()
             
             query_upper = query.upper()
             
-            for i, doc in enumerate(results['documents'][0]):
-                metadata = results['metadatas'][0][i] if results['metadatas'] else {}
+            for row in rows:
+                metadata = {}
+                for field in KNOWN_METADATA_FIELDS:
+                    val = getattr(row, field, None) if hasattr(row, field) else row._mapping.get(field)
+                    if val is not None:
+                        metadata[field] = val
+                
+                created_at_source = getattr(row, 'created_at_source', None) if hasattr(row, 'created_at_source') else row._mapping.get('created_at_source')
+                if created_at_source:
+                    metadata['created_at'] = created_at_source
+                block_id_val = getattr(row, 'block_id', None) if hasattr(row, 'block_id') else row._mapping.get('block_id')
+                if block_id_val:
+                    metadata['block_id'] = block_id_val
+                material_id_val = getattr(row, 'material_id', None) if hasattr(row, 'material_id') else row._mapping.get('material_id')
+                if material_id_val:
+                    metadata['material_id'] = material_id_val
+                doc_type_val = getattr(row, 'doc_type', None) if hasattr(row, 'doc_type') else row._mapping.get('doc_type')
+                if doc_type_val:
+                    metadata['type'] = doc_type_val
+                
+                extra_meta_val = getattr(row, 'extra_metadata', None) if hasattr(row, 'extra_metadata') else row._mapping.get('extra_metadata')
+                if extra_meta_val:
+                    try:
+                        extra = json.loads(extra_meta_val)
+                        for k, v in extra.items():
+                            if k not in metadata:
+                                metadata[k] = v
+                    except Exception:
+                        pass
+                
+                doc_content = row._mapping.get('content', '') if hasattr(row, '_mapping') else getattr(row, 'content', '')
+                original_distance = row._mapping.get('distance', 0) if hasattr(row, '_mapping') else getattr(row, 'distance', 0)
+                doc_id = row._mapping.get('doc_id', '') if hasattr(row, '_mapping') else getattr(row, 'doc_id', '')
                 
                 valid_until_str = metadata.get("valid_until", "")
                 if valid_until_str:
@@ -480,8 +603,6 @@ class VectorStore:
                 publish_status = metadata.get("publish_status", "publicado")
                 if publish_status in ["rascunho", "arquivado"]:
                     continue
-                
-                original_distance = results['distances'][0][i] if results['distances'] else 0
                 
                 if original_distance > similarity_threshold:
                     continue
@@ -559,7 +680,7 @@ class VectorStore:
                 composite_score = min(composite_score, 1.0)
                 
                 documents.append({
-                    "content": doc,
+                    "content": doc_content,
                     "metadata": metadata,
                     "distance": 1.0 - composite_score,
                     "original_distance": original_distance,
@@ -576,7 +697,7 @@ class VectorStore:
         seen_ids = set()
         
         for doc in ticker_results:
-            doc_id = doc.get('chroma_id') or doc.get('metadata', {}).get('block_id') or f"ticker_{len(seen_ids)}"
+            doc_id = doc.get('doc_id') or doc.get('chroma_id') or doc.get('metadata', {}).get('block_id') or f"ticker_{len(seen_ids)}"
             if doc_id not in seen_ids:
                 seen_ids.add(doc_id)
                 if 'composite_score' not in doc:
@@ -584,7 +705,7 @@ class VectorStore:
                 all_documents.append(doc)
         
         for doc in documents:
-            doc_id = doc.get('chroma_id') or doc.get('metadata', {}).get('block_id') or f"semantic_{len(seen_ids)}"
+            doc_id = doc.get('doc_id') or doc.get('chroma_id') or doc.get('metadata', {}).get('block_id') or f"semantic_{len(seen_ids)}"
             if doc_id not in seen_ids:
                 seen_ids.add(doc_id)
                 all_documents.append(doc)
@@ -797,7 +918,7 @@ class VectorStore:
     def search_by_ticker(self, ticker: str, n_results: int = 10) -> List[dict]:
         """
         Busca chunks pelo ticker do produto usando metadados.
-        Usa operador $eq no campo product_ticker para busca exata.
+        Usa filtro exato no campo product_ticker.
         
         Args:
             ticker: Ticker do produto (ex: MANA11)
@@ -809,19 +930,50 @@ class VectorStore:
         try:
             ticker_upper = ticker.upper().strip()
             
-            results = self.collection.get(
-                where={"product_ticker": {"$eq": ticker_upper}},
-                limit=n_results
-            )
+            db = SessionLocal()
+            try:
+                rows = db.execute(sql_text(
+                    "SELECT * FROM document_embeddings WHERE product_ticker = :ticker LIMIT :limit"
+                ), {'ticker': ticker_upper, 'limit': n_results}).fetchall()
+            finally:
+                db.close()
             
             documents = []
-            if results and results['documents']:
+            if rows:
                 from datetime import datetime
                 now = datetime.now()
                 
-                for i, doc in enumerate(results['documents']):
-                    metadata = results['metadatas'][i] if results['metadatas'] else {}
-                    chroma_id = results['ids'][i] if results['ids'] else f"ticker_doc_{i}"
+                for i, row in enumerate(rows):
+                    metadata = {}
+                    for field in KNOWN_METADATA_FIELDS:
+                        val = row._mapping.get(field)
+                        if val is not None:
+                            metadata[field] = val
+                    
+                    created_at_source = row._mapping.get('created_at_source')
+                    if created_at_source:
+                        metadata['created_at'] = created_at_source
+                    block_id_val = row._mapping.get('block_id')
+                    if block_id_val:
+                        metadata['block_id'] = block_id_val
+                    material_id_val = row._mapping.get('material_id')
+                    if material_id_val:
+                        metadata['material_id'] = material_id_val
+                    doc_type_val = row._mapping.get('doc_type')
+                    if doc_type_val:
+                        metadata['type'] = doc_type_val
+                    extra_meta_val = row._mapping.get('extra_metadata')
+                    if extra_meta_val:
+                        try:
+                            extra = json.loads(extra_meta_val)
+                            for k, v in extra.items():
+                                if k not in metadata:
+                                    metadata[k] = v
+                        except Exception:
+                            pass
+                    
+                    doc_id = row._mapping.get('doc_id', f"ticker_doc_{i}")
+                    doc_content = row._mapping.get('content', '')
                     
                     valid_until_str = metadata.get("valid_until", "")
                     if valid_until_str:
@@ -848,12 +1000,12 @@ class VectorStore:
                         priority = 0.05
                     
                     documents.append({
-                        "content": doc,
+                        "content": doc_content,
                         "metadata": metadata,
                         "distance": priority,
                         "original_distance": priority,
                         "source": "ticker_metadata",
-                        "chroma_id": chroma_id
+                        "doc_id": doc_id
                     })
             
             documents.sort(key=lambda x: x.get("distance", 0))
@@ -884,18 +1036,49 @@ class VectorStore:
         try:
             product_upper = product_name.upper().strip()
             
-            results = self.collection.get(
-                where={"product_ticker": {"$eq": product_upper}},
-                limit=n_results
-            )
+            db = SessionLocal()
+            try:
+                rows = db.execute(sql_text(
+                    "SELECT * FROM document_embeddings WHERE product_ticker = :ticker LIMIT :limit"
+                ), {'ticker': product_upper, 'limit': n_results}).fetchall()
+            finally:
+                db.close()
             
             documents = []
-            if results and results['documents']:
+            if rows:
                 from datetime import datetime
                 now = datetime.now()
                 
-                for i, doc in enumerate(results['documents']):
-                    metadata = results['metadatas'][i] if results['metadatas'] else {}
+                for i, row in enumerate(rows):
+                    metadata = {}
+                    for field in KNOWN_METADATA_FIELDS:
+                        val = row._mapping.get(field)
+                        if val is not None:
+                            metadata[field] = val
+                    
+                    created_at_source = row._mapping.get('created_at_source')
+                    if created_at_source:
+                        metadata['created_at'] = created_at_source
+                    block_id_val = row._mapping.get('block_id')
+                    if block_id_val:
+                        metadata['block_id'] = block_id_val
+                    material_id_val = row._mapping.get('material_id')
+                    if material_id_val:
+                        metadata['material_id'] = material_id_val
+                    doc_type_val = row._mapping.get('doc_type')
+                    if doc_type_val:
+                        metadata['type'] = doc_type_val
+                    extra_meta_val = row._mapping.get('extra_metadata')
+                    if extra_meta_val:
+                        try:
+                            extra = json.loads(extra_meta_val)
+                            for k, v in extra.items():
+                                if k not in metadata:
+                                    metadata[k] = v
+                        except Exception:
+                            pass
+                    
+                    doc_content = row._mapping.get('content', '')
                     
                     valid_until_str = metadata.get("valid_until", "")
                     if valid_until_str:
@@ -922,7 +1105,7 @@ class VectorStore:
                         priority = -1
                     
                     documents.append({
-                        "content": doc,
+                        "content": doc_content,
                         "metadata": metadata,
                         "distance": priority
                     })
@@ -946,18 +1129,26 @@ class VectorStore:
         tickers = set()
         
         try:
-            all_docs = self.collection.get()
-            if all_docs and all_docs.get('documents'):
-                for doc in all_docs['documents']:
+            db = SessionLocal()
+            try:
+                ticker_rows = db.execute(sql_text(
+                    "SELECT DISTINCT product_ticker FROM document_embeddings "
+                    "WHERE product_ticker IS NOT NULL AND product_ticker != ''"
+                )).fetchall()
+                for row in ticker_rows:
+                    t = row[0]
+                    if t:
+                        tickers.add(t.upper())
+                
+                content_rows = db.execute(sql_text(
+                    "SELECT content FROM document_embeddings"
+                )).fetchall()
+                for row in content_rows:
+                    doc = row[0] or ''
                     found = ticker_pattern.findall(doc.upper())
                     tickers.update(found)
-                    
-            if all_docs and all_docs.get('metadatas'):
-                for meta in all_docs['metadatas']:
-                    products = meta.get('products', '')
-                    if products:
-                        found = ticker_pattern.findall(products.upper())
-                        tickers.update(found)
+            finally:
+                db.close()
         except Exception as e:
             print(f"[VECTOR_STORE] Erro ao extrair tickers: {e}")
         
@@ -974,15 +1165,31 @@ class VectorStore:
         products = set()
         
         try:
-            all_docs = self.collection.get()
-            if all_docs and all_docs.get('metadatas'):
-                for meta in all_docs['metadatas']:
-                    product_str = meta.get('products', '')
-                    if product_str:
-                        for p in product_str.split(','):
-                            cleaned = p.strip().upper()
-                            if cleaned and len(cleaned) >= 3:
-                                products.add(cleaned)
+            db = SessionLocal()
+            try:
+                rows = db.execute(sql_text(
+                    "SELECT DISTINCT product_ticker FROM document_embeddings "
+                    "WHERE product_ticker IS NOT NULL AND product_ticker != ''"
+                )).fetchall()
+                for row in rows:
+                    ticker = row[0]
+                    if ticker:
+                        cleaned = ticker.strip().upper()
+                        if cleaned and len(cleaned) >= 3:
+                            products.add(cleaned)
+                
+                name_rows = db.execute(sql_text(
+                    "SELECT DISTINCT product_name FROM document_embeddings "
+                    "WHERE product_name IS NOT NULL AND product_name != ''"
+                )).fetchall()
+                for row in name_rows:
+                    name = row[0]
+                    if name:
+                        cleaned = name.strip().upper()
+                        if cleaned and len(cleaned) >= 3:
+                            products.add(cleaned)
+            finally:
+                db.close()
         except Exception as e:
             print(f"[VECTOR_STORE] Erro ao extrair produtos: {e}")
         
@@ -1271,21 +1478,23 @@ class VectorStore:
     
     def clear(self) -> None:
         """Limpa toda a base de conhecimento."""
+        db = SessionLocal()
         try:
-            self.chroma_client.delete_collection("knowledge_base")
-        except Exception:
-            pass
-        self.collection = self.chroma_client.get_or_create_collection(
-            name="knowledge_base",
-            metadata={"description": "Base de conhecimento do Notion"}
-        )
+            db.execute(sql_text("DELETE FROM document_embeddings"))
+            db.commit()
+        finally:
+            db.close()
     
     def count(self) -> int:
         """Retorna o número de documentos na base."""
-        return self.collection.count()
+        db = SessionLocal()
+        try:
+            result = db.execute(sql_text("SELECT COUNT(*) FROM document_embeddings")).scalar()
+            return result or 0
+        finally:
+            db.close()
 
 
-# Inicialização lazy do vector store
 _vector_store = None
 
 def get_vector_store() -> VectorStore:
@@ -1295,7 +1504,6 @@ def get_vector_store() -> VectorStore:
         _vector_store = VectorStore()
     return _vector_store
 
-# Para compatibilidade com código existente
 vector_store = None
 try:
     vector_store = VectorStore()
