@@ -10,6 +10,7 @@ from datetime import datetime
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 from database.database import SessionLocal
 from database.models import Product, Material, ContentBlock, WhatsAppScript, User, Assessor
 
@@ -40,6 +41,7 @@ def seed_table(db, model, records, id_field='id', skip_existing_ids=None):
         existing_ids = skip_existing_ids
     
     count = 0
+    skipped = 0
     for record in records:
         record_id = record.get(id_field)
         if record_id in existing_ids:
@@ -54,11 +56,19 @@ def seed_table(db, model, records, id_field='id', skip_existing_ids=None):
                     val = parse_datetime(val)
                 setattr(obj, col.name, val)
         
-        db.add(obj)
-        count += 1
+        try:
+            nested = db.begin_nested()
+            db.add(obj)
+            nested.commit()
+            count += 1
+        except IntegrityError:
+            skipped += 1
+        except Exception as e:
+            print(f"  Erro inesperado ao inserir {model.__tablename__}: {e}")
+            skipped += 1
     
-    if count > 0:
-        db.flush()
+    if skipped > 0:
+        print(f"  ({skipped} registros duplicados ignorados)")
     
     return count
 
