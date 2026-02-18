@@ -65,32 +65,32 @@ async def lifespan(app: FastAPI):
     finally:
         db.close()
     
-    try:
-        from scripts.seed_production import run_seed
-        run_seed()
-    except Exception as e:
-        print(f"[SEED] Aviso: {e}")
-    
     from services.upload_queue import UploadQueue
     upload_queue_instance = UploadQueue.get_instance()
     upload_queue_instance.initialize()
     
+    seed_task = asyncio.create_task(run_seed_background())
     reindex_task = asyncio.create_task(check_and_reindex_embeddings())
     confirmation_task = asyncio.create_task(confirmation_timeout_scheduler())
     
     yield
     
-    reindex_task.cancel()
+    for task in [seed_task, reindex_task, confirmation_task]:
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+
+async def run_seed_background():
+    """Roda o seed de produção em background para não bloquear o startup."""
+    await asyncio.sleep(2)
     try:
-        await reindex_task
-    except asyncio.CancelledError:
-        pass
-    
-    confirmation_task.cancel()
-    try:
-        await confirmation_task
-    except asyncio.CancelledError:
-        pass
+        from scripts.seed_production import run_seed
+        await asyncio.to_thread(run_seed)
+    except Exception as e:
+        print(f"[SEED] Aviso: {e}")
 
 
 async def check_and_reindex_embeddings():
@@ -307,9 +307,9 @@ app.include_router(costs.router)
 # ========== Rotas de Páginas HTML ==========
 
 @app.get("/", response_class=HTMLResponse)
-async def root():
-    """Redireciona para a página de login."""
-    return RedirectResponse(url="/login")
+async def root(request: Request):
+    """Página inicial - serve a página de login diretamente."""
+    return templates.TemplateResponse("login.html", {"request": request})
 
 
 @app.get("/login", response_class=HTMLResponse)
