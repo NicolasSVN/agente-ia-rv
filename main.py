@@ -20,18 +20,65 @@ from core.security import decode_token
 async def lifespan(app: FastAPI):
     """
     Gerencia o ciclo de vida da aplicação.
-    Cria as tabelas do banco de dados na inicialização.
+    Yield imediato para responder health checks rápido.
+    Inicialização pesada roda em background.
     """
-    # Cria todas as tabelas
-    Base.metadata.create_all(bind=engine)
+    background_tasks = []
     
-    # Cria usuário admin padrão se não existir
-    # Credenciais podem ser configuradas via variáveis de ambiente
+    init_task = asyncio.create_task(run_init_background())
+    background_tasks.append(init_task)
+    
+    reindex_task = asyncio.create_task(check_and_reindex_embeddings())
+    background_tasks.append(reindex_task)
+    
+    confirmation_task = asyncio.create_task(confirmation_timeout_scheduler())
+    background_tasks.append(confirmation_task)
+    
+    yield
+    
+    for task in background_tasks:
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+
+async def run_init_background():
+    """Inicialização pesada em background: tabelas, admin, seed, upload queue."""
+    try:
+        await asyncio.to_thread(_sync_init_database)
+        print("[INIT] Banco de dados inicializado com sucesso.")
+    except Exception as e:
+        print(f"[INIT] Erro na inicialização do banco: {e}")
+        import traceback
+        traceback.print_exc()
+
+    try:
+        from services.upload_queue import UploadQueue
+        upload_queue_instance = UploadQueue.get_instance()
+        upload_queue_instance.initialize()
+    except Exception as e:
+        print(f"[INIT] Erro no upload queue: {e}")
+
+    try:
+        from scripts.seed_production import run_seed
+        await asyncio.to_thread(run_seed)
+    except Exception as e:
+        print(f"[SEED] Aviso: {e}")
+
+
+def _sync_init_database():
+    """Operações síncronas de inicialização do banco (roda em thread separada)."""
     import os
+    from database.models import Product
+
+    Base.metadata.create_all(bind=engine)
+
     admin_username = os.getenv("ADMIN_USERNAME", "admin")
     admin_password = os.getenv("ADMIN_PASSWORD", "admin123")
     admin_email = os.getenv("ADMIN_EMAIL", "admin@example.com")
-    
+
     db = SessionLocal()
     try:
         admin = crud.get_user_by_username(db, admin_username)
@@ -44,12 +91,11 @@ async def lifespan(app: FastAPI):
                 role="admin"
             )
             print(f"Usuário admin criado. Configure ADMIN_PASSWORD em produção!")
-        
+
         crud.init_default_integrations(db)
         crud.init_default_categories(db)
         crud.init_default_agent_config(db)
-        
-        from database.models import Product
+
         system_product = db.query(Product).filter(Product.ticker == "__SYSTEM_UNASSIGNED__").first()
         if not system_product:
             system_product = Product(
@@ -64,33 +110,6 @@ async def lifespan(app: FastAPI):
             print("Produto de sistema '__SYSTEM_UNASSIGNED__' criado.")
     finally:
         db.close()
-    
-    from services.upload_queue import UploadQueue
-    upload_queue_instance = UploadQueue.get_instance()
-    upload_queue_instance.initialize()
-    
-    seed_task = asyncio.create_task(run_seed_background())
-    reindex_task = asyncio.create_task(check_and_reindex_embeddings())
-    confirmation_task = asyncio.create_task(confirmation_timeout_scheduler())
-    
-    yield
-    
-    for task in [seed_task, reindex_task, confirmation_task]:
-        task.cancel()
-        try:
-            await task
-        except asyncio.CancelledError:
-            pass
-
-
-async def run_seed_background():
-    """Roda o seed de produção em background para não bloquear o startup."""
-    await asyncio.sleep(2)
-    try:
-        from scripts.seed_production import run_seed
-        await asyncio.to_thread(run_seed)
-    except Exception as e:
-        print(f"[SEED] Aviso: {e}")
 
 
 async def check_and_reindex_embeddings():
@@ -98,8 +117,9 @@ async def check_and_reindex_embeddings():
     Verifica blocos aprovados sem embedding no pgvector e indexa automaticamente.
     Roda uma vez na inicialização como tarefa em background.
     Inclui retry com backoff exponencial e para após falhas consecutivas.
+    Aguarda 30s para garantir que o init do banco completou.
     """
-    await asyncio.sleep(5)
+    await asyncio.sleep(30)
     
     MAX_CONSECUTIVE_ERRORS = 3
     BASE_DELAY = 0.5
@@ -302,6 +322,14 @@ app.include_router(insights.router)
 app.include_router(search.router)
 app.include_router(trusted_sources.router)
 app.include_router(costs.router)
+
+
+# ========== Health Check ==========
+
+@app.get("/health")
+async def health_check():
+    """Health check endpoint - responde 200 imediatamente sem dependência de banco."""
+    return {"status": "ok"}
 
 
 # ========== Rotas de Páginas HTML ==========
@@ -763,17 +791,6 @@ async def revisao_page(request: Request):
         return RedirectResponse(url="/login?error=permission")
     
     return templates.TemplateResponse("revisao.html", {"request": request, "user_role": user_role})
-
-
-# ========== Health Check ==========
-
-@app.get("/health")
-async def health_check():
-    """Endpoint de verificação de saúde da aplicação."""
-    return {
-        "status": "healthy",
-        "version": "1.0.0"
-    }
 
 
 if __name__ == "__main__":
