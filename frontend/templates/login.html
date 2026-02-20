@@ -94,7 +94,7 @@
             Usuário ou senha incorretos. Tente novamente.
         </div>
         
-        <div id="microsoft-login-container" style="margin-bottom: 24px;">
+        <div id="microsoft-login-container">
             <a href="/api/auth/microsoft/login" class="btn-microsoft" style="display: flex; align-items: center; justify-content: center; gap: 12px; width: 100%; padding: 14px; font-size: 1rem; background: #fff; border: 1px solid #8c8c8c; border-radius: 8px; color: #5e5e5e; text-decoration: none; font-weight: 500; transition: all 0.2s ease;">
                 <svg xmlns="http://www.w3.org/2000/svg" width="21" height="21" viewBox="0 0 21 21">
                     <rect x="1" y="1" width="9" height="9" fill="#f25022"/>
@@ -104,29 +104,9 @@
                 </svg>
                 Entrar com Microsoft
             </a>
-            
-            <div style="display: flex; align-items: center; margin: 20px 0; gap: 12px;">
-                <div style="flex: 1; height: 1px; background: var(--border-color);"></div>
-                <span style="color: var(--text-secondary); font-size: 0.85rem;">ou</span>
-                <div style="flex: 1; height: 1px; background: var(--border-color);"></div>
-            </div>
         </div>
         
-        <form action="/api/auth/login-form" method="POST">
-            <div class="form-group">
-                <label class="form-label" for="username">Usuário</label>
-                <input type="text" class="form-input" id="username" name="username" required autocomplete="username">
-            </div>
-            
-            <div class="form-group">
-                <label class="form-label" for="password">Senha</label>
-                <input type="password" class="form-input" id="password" name="password" required autocomplete="current-password">
-            </div>
-            
-            <button type="submit" class="btn btn-primary" style="width: 100%; padding: 14px; font-size: 1rem;">Entrar</button>
-        </form>
-        
-        <div class="footer">
+        <div class="footer" style="margin-top: 28px;">
             Acesso restrito a administradores e assessores
         </div>
     </div>

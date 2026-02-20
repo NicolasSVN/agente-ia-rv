@@ -26,9 +26,9 @@ Essas duas frases resumem 80% do pensamento de segurança que você precisa ter 
 
 ### Como funciona neste projeto
 
-A autenticação funciona em duas camadas que precisam ser entendidas separadamente. A **camada de identidade** é gerenciada pelo SSO da Microsoft: ela responde à pergunta "quem é você?" usando o Azure AD. A **camada de sessão** é gerenciada pela aplicação: após a autenticação bem-sucedida via SSO, a aplicação emite um JWT próprio que é usado nas requisições subsequentes.
+A autenticação funciona em duas camadas que precisam ser entendidas separadamente. A **camada de identidade** é gerenciada exclusivamente pelo SSO da Microsoft: ela responde à pergunta "quem é você?" usando o Azure AD com MFA. A **camada de sessão** é gerenciada pela aplicação: após a autenticação bem-sucedida via SSO, a aplicação emite um JWT próprio que é usado nas requisições subsequentes.
 
-O login interno (`/api/auth/login-form`) existe como rota de emergência. Em produção, deve ser considerado um caminho de risco, pois bypassa o MFA do Azure AD. Qualquer decisão de ativá-lo ou desativá-lo deve ser consciente e documentada.
+**O login interno (usuário/senha) foi permanentemente desabilitado.** As rotas `/api/auth/login` e `/api/auth/login-form` existem apenas como stubs que retornam erro 410 (Gone) e registram a tentativa no log de segurança. Não existe nenhum caminho de autenticação por credenciais locais — toda autenticação passa obrigatoriamente pelo Azure AD. Nunca reintroduza login por senha sem uma decisão arquitetural documentada e aprovada.
 
 ### Como funciona o middleware de autenticação global
 

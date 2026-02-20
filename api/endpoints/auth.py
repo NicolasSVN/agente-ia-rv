@@ -7,7 +7,6 @@ import secrets
 import hashlib
 import msal
 from fastapi import APIRouter, Depends, HTTPException, status, Request, Response
-from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
@@ -16,7 +15,7 @@ from typing import Optional
 from database.database import get_db
 from database import crud
 from core.security import create_access_token, decode_token, create_refresh_token, decode_refresh_token
-from core.security_middleware import limiter, is_account_locked, record_failed_login, record_successful_login, record_security_event, get_remote_address
+from core.security_middleware import record_successful_login, record_security_event, get_remote_address
 
 IS_PRODUCTION = bool(os.getenv("REPL_DEPLOYMENT") or os.getenv("REPLIT_DEPLOYMENT"))
 
@@ -72,123 +71,25 @@ class Token(BaseModel):
     token_type: str
 
 
-class LoginRequest(BaseModel):
-    """Schema para requisição de login."""
-    username: str
-    password: str
 
-
-@router.post("/login", response_model=Token)
-@limiter.limit("5/minute")
-async def login(
-    request: Request,
-    form_data: OAuth2PasswordRequestForm = Depends(),
-    db: Session = Depends(get_db)
-):
-    """
-    Endpoint de login.
-    Recebe username e password, retorna um token JWT.
-    """
-    ip = get_remote_address(request)
-    username = form_data.username
-
-    if is_account_locked(username):
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="Conta temporariamente bloqueada por excesso de tentativas. Tente novamente em alguns minutos.",
-        )
-
-    user = crud.authenticate_user(db, username, form_data.password)
-    
-    if not user:
-        record_failed_login(username, ip)
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Usuário ou senha incorretos",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    
-    token_data = {
-        "sub": user.username,
-        "user_id": user.id,
-        "role": user.role
-    }
-    access_token = create_access_token(data=token_data)
-    refresh_token = create_refresh_token(data=token_data)
-
-    record_successful_login(user.username, user.id, ip, "password")
-    
-    return {"access_token": access_token, "refresh_token": refresh_token, "token_type": "bearer"}
+@router.post("/login")
+async def login(request: Request):
+    """Login interno desabilitado. Autenticação exclusivamente via SSO Microsoft."""
+    record_security_event("login_internal_blocked", ip=get_remote_address(request))
+    raise HTTPException(
+        status_code=status.HTTP_410_GONE,
+        detail="Login interno desabilitado. Utilize o SSO Microsoft para autenticação.",
+    )
 
 
 @router.post("/login-form")
-@limiter.limit("5/minute")
-async def login_form(
-    request: Request,
-    response: Response,
-    db: Session = Depends(get_db)
-):
-    """
-    Endpoint de login via formulário HTML.
-    Define um cookie com o token e redireciona para o painel.
-    """
-    form_data = await request.form()
-    username = form_data.get("username")
-    password = form_data.get("password")
-    ip = get_remote_address(request)
-
-    if is_account_locked(username):
-        return RedirectResponse(
-            url="/login?error=locked",
-            status_code=status.HTTP_302_FOUND
-        )
-
-    user = crud.authenticate_user(db, username, password)
-    
-    if not user:
-        record_failed_login(username, ip)
-        return RedirectResponse(
-            url="/login?error=1",
-            status_code=status.HTTP_302_FOUND
-        )
-    
-    if user.role not in ["admin", "broker", "gestao_rv"]:
-        return RedirectResponse(
-            url="/login?error=permission",
-            status_code=status.HTTP_302_FOUND
-        )
-    
-    token_data = {
-        "sub": user.username,
-        "user_id": user.id,
-        "role": user.role
-    }
-    access_token = create_access_token(data=token_data)
-    refresh_token = create_refresh_token(data=token_data)
-
-    record_successful_login(user.username, user.id, ip, "password")
-    
-    redirect = RedirectResponse(url="/insights", status_code=status.HTTP_302_FOUND)
-    redirect.delete_cookie(key="access_token", path="/api/auth")
-    redirect.delete_cookie(key="access_token", path="/api")
-    redirect.set_cookie(
-        key="access_token",
-        value=access_token,
-        httponly=True,
-        max_age=86400,
-        samesite="lax",
-        path="/"
+async def login_form(request: Request):
+    """Login via formulário desabilitado. Autenticação exclusivamente via SSO Microsoft."""
+    record_security_event("login_internal_blocked", ip=get_remote_address(request))
+    return RedirectResponse(
+        url="/login?error=microsoft&detail=Login+interno+desabilitado.+Utilize+o+SSO+Microsoft.",
+        status_code=status.HTTP_302_FOUND,
     )
-    redirect.set_cookie(
-        key="refresh_token",
-        value=refresh_token,
-        httponly=True,
-        max_age=7*86400,
-        samesite="lax",
-        path="/api/auth",
-        secure=IS_PRODUCTION
-    )
-    return redirect
 
 
 @router.post("/logout")
