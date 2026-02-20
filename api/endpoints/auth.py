@@ -15,7 +15,10 @@ from typing import Optional
 
 from database.database import get_db
 from database import crud
-from core.security import create_access_token, decode_token
+from core.security import create_access_token, decode_token, create_refresh_token, decode_refresh_token
+from core.security_middleware import limiter, is_account_locked, record_failed_login, record_successful_login, record_security_event, get_remote_address
+
+IS_PRODUCTION = bool(os.getenv("REPL_DEPLOYMENT") or os.getenv("REPLIT_DEPLOYMENT"))
 
 router = APIRouter(prefix="/api/auth", tags=["Autenticação"])
 
@@ -65,6 +68,7 @@ def get_redirect_uri(request: Request) -> str:
 class Token(BaseModel):
     """Schema para resposta de token."""
     access_token: str
+    refresh_token: str
     token_type: str
 
 
@@ -75,7 +79,9 @@ class LoginRequest(BaseModel):
 
 
 @router.post("/login", response_model=Token)
+@limiter.limit("5/minute")
 async def login(
+    request: Request,
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: Session = Depends(get_db)
 ):
@@ -83,28 +89,40 @@ async def login(
     Endpoint de login.
     Recebe username e password, retorna um token JWT.
     """
-    user = crud.authenticate_user(db, form_data.username, form_data.password)
+    ip = get_remote_address(request)
+    username = form_data.username
+
+    if is_account_locked(username):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Conta temporariamente bloqueada por excesso de tentativas. Tente novamente em alguns minutos.",
+        )
+
+    user = crud.authenticate_user(db, username, form_data.password)
     
     if not user:
+        record_failed_login(username, ip)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Usuário ou senha incorretos",
             headers={"WWW-Authenticate": "Bearer"},
         )
     
-    # Cria o token JWT com informações do usuário
-    access_token = create_access_token(
-        data={
-            "sub": user.username,
-            "user_id": user.id,
-            "role": user.role
-        }
-    )
+    token_data = {
+        "sub": user.username,
+        "user_id": user.id,
+        "role": user.role
+    }
+    access_token = create_access_token(data=token_data)
+    refresh_token = create_refresh_token(data=token_data)
+
+    record_successful_login(user.username, user.id, ip, "password")
     
-    return {"access_token": access_token, "token_type": "bearer"}
+    return {"access_token": access_token, "refresh_token": refresh_token, "token_type": "bearer"}
 
 
 @router.post("/login-form")
+@limiter.limit("5/minute")
 async def login_form(
     request: Request,
     response: Response,
@@ -117,29 +135,38 @@ async def login_form(
     form_data = await request.form()
     username = form_data.get("username")
     password = form_data.get("password")
-    
+    ip = get_remote_address(request)
+
+    if is_account_locked(username):
+        return RedirectResponse(
+            url="/login?error=locked",
+            status_code=status.HTTP_302_FOUND
+        )
+
     user = crud.authenticate_user(db, username, password)
     
     if not user:
+        record_failed_login(username, ip)
         return RedirectResponse(
             url="/login?error=1",
             status_code=status.HTTP_302_FOUND
         )
     
-    # Verifica se o usuário tem permissão para acessar o painel
     if user.role not in ["admin", "broker", "gestao_rv"]:
         return RedirectResponse(
             url="/login?error=permission",
             status_code=status.HTTP_302_FOUND
         )
     
-    access_token = create_access_token(
-        data={
-            "sub": user.username,
-            "user_id": user.id,
-            "role": user.role
-        }
-    )
+    token_data = {
+        "sub": user.username,
+        "user_id": user.id,
+        "role": user.role
+    }
+    access_token = create_access_token(data=token_data)
+    refresh_token = create_refresh_token(data=token_data)
+
+    record_successful_login(user.username, user.id, ip, "password")
     
     redirect = RedirectResponse(url="/insights", status_code=status.HTTP_302_FOUND)
     redirect.delete_cookie(key="access_token", path="/api/auth")
@@ -152,17 +179,58 @@ async def login_form(
         samesite="lax",
         path="/"
     )
+    redirect.set_cookie(
+        key="refresh_token",
+        value=refresh_token,
+        httponly=True,
+        max_age=7*86400,
+        samesite="lax",
+        path="/api/auth",
+        secure=IS_PRODUCTION
+    )
     return redirect
 
 
 @router.post("/logout")
-async def logout(response: Response):
+async def logout(request: Request, response: Response):
     """Remove o cookie de autenticação."""
+    record_security_event("logout", ip=get_remote_address(request))
     redirect = RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
     redirect.delete_cookie(key="access_token", path="/")
     redirect.delete_cookie(key="access_token", path="/api/auth")
     redirect.delete_cookie(key="access_token", path="/api")
+    redirect.delete_cookie(key="refresh_token", path="/api/auth")
     return redirect
+
+
+@router.post("/refresh")
+async def refresh_token_endpoint(request: Request):
+    """
+    Renova o access token usando o refresh token do cookie.
+    """
+    token = request.cookies.get("refresh_token")
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Refresh token não encontrado"
+        )
+
+    payload = decode_refresh_token(token)
+    if not payload:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Refresh token inválido ou expirado"
+        )
+
+    new_access_token = create_access_token(
+        data={
+            "sub": payload.get("sub"),
+            "user_id": payload.get("user_id"),
+            "role": payload.get("role", "broker"),
+        }
+    )
+
+    return {"access_token": new_access_token, "token_type": "bearer"}
 
 
 @router.get("/me")
@@ -381,13 +449,17 @@ async def microsoft_callback(
     db: Session = Depends(get_db)
 ):
     """Callback do SSO Microsoft após autenticação."""
+    ip = get_remote_address(request)
+
     if error:
+        record_security_event("sso_error", ip=ip, error=error)
         return RedirectResponse(
             url=f"/login?error=microsoft&detail={error_description or error}",
             status_code=status.HTTP_302_FOUND
         )
     
     if not validate_oauth_state(state):
+        record_security_event("sso_invalid_state", ip=ip)
         return RedirectResponse(
             url="/login?error=microsoft&detail=Requisição inválida. Tente novamente.",
             status_code=status.HTTP_302_FOUND
@@ -416,6 +488,7 @@ async def microsoft_callback(
         )
         
         if "error" in result:
+            record_security_event("sso_token_error", ip=ip, error=result.get("error"))
             return RedirectResponse(
                 url=f"/login?error=microsoft&detail={result.get('error_description', result.get('error'))}",
                 status_code=status.HTTP_302_FOUND
@@ -440,6 +513,7 @@ async def microsoft_callback(
         
         if not user:
             print(f"[Microsoft SSO] Usuário não encontrado para email: {email}")
+            record_security_event("sso_user_not_found", ip=ip, email=email)
             return RedirectResponse(
                 url=f"/login?error=microsoft&detail=Usuário não encontrado. Solicite cadastro ao administrador.",
                 status_code=status.HTTP_302_FOUND
@@ -448,19 +522,22 @@ async def microsoft_callback(
         print(f"[Microsoft SSO] Usuário encontrado: {user.username} (ID: {user.id})")
         
         if user.role not in ["admin", "broker", "gestao_rv"]:
+            record_security_event("sso_permission_denied", ip=ip, username=user.username, role=user.role)
             return RedirectResponse(
                 url="/login?error=permission",
                 status_code=status.HTTP_302_FOUND
             )
         
-        access_token = create_access_token(
-            data={
-                "sub": user.username,
-                "user_id": user.id,
-                "role": user.role,
-                "auth_method": "microsoft_sso"
-            }
-        )
+        token_data = {
+            "sub": user.username,
+            "user_id": user.id,
+            "role": user.role,
+            "auth_method": "microsoft_sso"
+        }
+        access_token = create_access_token(data=token_data)
+        refresh_token = create_refresh_token(data=token_data)
+
+        record_successful_login(user.username, user.id, ip, "microsoft_sso")
         
         redirect = RedirectResponse(url="/insights", status_code=status.HTTP_302_FOUND)
         redirect.delete_cookie(key="access_token", path="/api/auth")
@@ -473,10 +550,20 @@ async def microsoft_callback(
             samesite="lax",
             path="/"
         )
+        redirect.set_cookie(
+            key="refresh_token",
+            value=refresh_token,
+            httponly=True,
+            max_age=7*86400,
+            samesite="lax",
+            path="/api/auth",
+            secure=IS_PRODUCTION
+        )
         return redirect
         
     except Exception as e:
+        record_security_event("sso_exception", ip=ip)
         return RedirectResponse(
-            url=f"/login?error=microsoft&detail=Erro na autenticação: {str(e)[:100]}",
+            url=f"/login?error=microsoft&detail=Erro na autenticação. Tente novamente.",
             status_code=status.HTTP_302_FOUND
         )

@@ -1830,15 +1830,27 @@ async def upload_pdf_to_material(
     if not product:
         raise HTTPException(status_code=404, detail="Produto não encontrado")
     
-    if not file.filename.lower().endswith('.pdf'):
-        raise HTTPException(status_code=400, detail="Apenas arquivos PDF são suportados")
+    from core.upload_validator import validate_upload
+    from core.security_middleware import record_security_event
+    
+    content, file_hash = await validate_upload(file)
     
     unique_filename = f"{uuid.uuid4()}.pdf"
     file_path = os.path.join(UPLOAD_DIR, unique_filename)
     
-    content = await file.read()
     with open(file_path, "wb") as f:
         f.write(content)
+    
+    record_security_event(
+        "file_upload",
+        user_id=current_user.id,
+        username=current_user.username,
+        filename=file.filename,
+        file_hash=file_hash,
+        size_bytes=len(content),
+        product_id=product_id,
+        material_id=material_id,
+    )
     
     document_title = f"{product.name} - {material.name or material.material_type}"
     
@@ -1853,7 +1865,8 @@ async def upload_pdf_to_material(
     
     return {
         "success": True,
-        "message": "PDF enviado para processamento. Os blocos serão criados em alguns instantes."
+        "message": "PDF enviado para processamento. Os blocos serão criados em alguns instantes.",
+        "file_hash": file_hash
     }
 
 

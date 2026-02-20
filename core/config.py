@@ -8,10 +8,14 @@ from functools import lru_cache
 
 
 class Settings(BaseSettings):
-    # Chave secreta para JWT - obrigatória
-    SECRET_KEY: str = os.getenv("SESSION_SECRET", "dev-secret-key-change-in-production")
+    SECRET_KEY: str = os.getenv("SESSION_SECRET", "")
     ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24  # 24 horas
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+    JWT_ISSUER: str = "stevan-api"
+    JWT_AUDIENCE: str = "stevan-frontend"
+    
+    ALLOWED_ORIGINS: str = os.getenv("ALLOWED_ORIGINS", "")
     
     # API Keys - serão carregadas das Secrets do Replit
     OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")

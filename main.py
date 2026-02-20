@@ -285,8 +285,13 @@ app = FastAPI(
     title="Assessor IA - API",
     description="API para agente de IA de assessores financeiros com integração WhatsApp",
     version="1.0.0",
-    lifespan=lifespan
+    lifespan=lifespan,
+    docs_url="/docs" if not bool(os.getenv("REPL_DEPLOYMENT") or os.getenv("REPLIT_DEPLOYMENT")) else None,
+    redoc_url=None,
 )
+
+from core.security_middleware import setup_security
+setup_security(app)
 
 # Configura templates Jinja2 (auto_reload=True evita cache de templates)
 templates = Jinja2Templates(directory="frontend/templates")
