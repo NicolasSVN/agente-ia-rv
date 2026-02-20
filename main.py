@@ -307,7 +307,8 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan,
     docs_url="/docs" if not bool(os.getenv("REPL_DEPLOYMENT") or os.getenv("REPLIT_DEPLOYMENT")) else None,
-    redoc_url=None,
+    redoc_url="/redoc" if not bool(os.getenv("REPL_DEPLOYMENT") or os.getenv("REPLIT_DEPLOYMENT")) else None,
+    openapi_url="/openapi.json" if not bool(os.getenv("REPL_DEPLOYMENT") or os.getenv("REPLIT_DEPLOYMENT")) else None,
 )
 
 from core.security_middleware import setup_security
