@@ -657,6 +657,12 @@ class VectorStore:
                     metadata.get("gestora", "")
                 )
                 
+                # SCORING NÍVEL 1 (Seleção de candidatos)
+                # Este score determina quais docs passam para o top-N retornado.
+                # O EnhancedSearch (Nível 2) recalcula o score do zero usando
+                # original_distance, ignorando recency e exact_match daqui.
+                # Portanto, este scoring atua como FILTRO DE CANDIDATOS, não como
+                # ranking final.
                 composite_score = (
                     vector_score * 0.70 +
                     recency_score * 0.20 +

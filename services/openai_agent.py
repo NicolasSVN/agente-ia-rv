@@ -1009,6 +1009,34 @@ Agente: "Oi {PrimeiroNome}! O que precisa?"
 
 === FIM DO BLOCO DE PERSONALIDADE ==="""
     
+    def _get_temperature(self, categoria: str, config: dict = None) -> float:
+        """Temperatura adaptiva por tipo de resposta."""
+        if config and "temperature" in config:
+            return config.get("temperature", 0.7)
+
+        temperature_map = {
+            "DOCUMENTAL": 0.2,
+            "ESCOPO":     0.3,
+            "MERCADO":    0.4,
+            "PITCH":      0.7,
+            "SAUDACAO":   0.5,
+        }
+        return temperature_map.get(categoria, 0.4)
+
+    def _get_max_tokens(self, categoria: str, config: dict = None) -> int:
+        """Max tokens adaptivo por tipo de resposta."""
+        if config and "max_tokens" in config:
+            return config.get("max_tokens", 500)
+
+        tokens_map = {
+            "DOCUMENTAL": 900,
+            "PITCH":      800,
+            "ESCOPO":     700,
+            "MERCADO":    600,
+            "SAUDACAO":   150,
+        }
+        return tokens_map.get(categoria, 600)
+
     def _build_system_prompt(self, config: dict = None) -> str:
         """
         Constrói o prompt do sistema.
@@ -1768,10 +1796,12 @@ REGRAS PARA INFORMAÇÕES DA INTERNET:
         config = self._get_config_from_db()
         system_prompt = self._build_system_prompt(config)
         model = config.get("model", "gpt-4o") if config else "gpt-4o"
-        temperature = config.get("temperature", 0.7) if config else 0.7
-        max_tokens = config.get("max_tokens", 500) if config else 500
         
         categoria, extracted_products = self._classify_message(user_message)
+        
+        temperature = self._get_temperature(categoria, config)
+        max_tokens = self._get_max_tokens(categoria, config)
+        print(f"[OpenAI] Parâmetros adaptativos - Categoria: {categoria}, Temp: {temperature}, MaxTokens: {max_tokens}")
         
         pending_derivatives = self._check_pending_derivatives_selection(user_message, conversation_history)
         if pending_derivatives:
@@ -1870,7 +1900,33 @@ REGRAS PARA INFORMAÇÕES DA INTERNET:
         elif categoria == "FORA_ESCOPO":
             print(f"[OpenAI] Fora de escopo - NÃO consultando documentos")
         elif categoria == "MERCADO":
-            print(f"[OpenAI] Categoria MERCADO - priorizando busca na web (sem consulta interna)")
+            print(f"[OpenAI] Categoria MERCADO - buscando base interna + web")
+            try:
+                enhanced_search = get_enhanced_search()
+                internal_results = enhanced_search.search(
+                    query=enriched_query,
+                    n_results=3,
+                    similarity_threshold=0.75
+                )
+                high_quality_internal = [
+                    r for r in internal_results
+                    if r.composite_score > 0.5
+                ]
+                if high_quality_internal:
+                    for result in high_quality_internal:
+                        context_documents.append({
+                            'content': result.content,
+                            'metadata': result.metadata,
+                            'distance': result.vector_distance,
+                            'composite_score': result.composite_score,
+                            'confidence_level': result.confidence_level,
+                            'source': f"internal_{result.source}"
+                        })
+                    print(f"[OpenAI] MERCADO - {len(high_quality_internal)} docs internos de alta qualidade encontrados")
+                else:
+                    print(f"[OpenAI] MERCADO - nenhum doc interno com score > 0.5")
+            except Exception as e:
+                print(f"[OpenAI] MERCADO - busca interna falhou (seguindo para web): {e}")
         elif categoria == "PITCH" and vs:
             print(f"[OpenAI] Categoria PITCH - buscando documentos para criar texto de venda")
             if extracted_products:

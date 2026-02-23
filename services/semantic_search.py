@@ -693,6 +693,12 @@ class CompositeScorer:
             distance = r.get('distance', 1.0)
             original_distance = r.get('original_distance', distance)
             
+            # SCORING NÍVEL 2 (Ranking final)
+            # Usa original_distance (distância cosseno bruta do pgvector),
+            # NÃO o composite_score do VectorStore (Nível 1).
+            # O Nível 1 serve apenas como filtro de candidatos (quais docs
+            # chegam aqui). Este Nível 2 recalcula do zero com fatores
+            # diferentes: fuzzy, ticker, gestora, contexto conversacional.
             vector_score = max(0, 1.0 - original_distance)
             
             result = SearchResult(
