@@ -15,7 +15,8 @@ from typing import Optional
 from database.database import get_db
 from database import crud
 from core.security import create_access_token, decode_token, create_refresh_token, decode_refresh_token, revoke_token
-from core.security_middleware import limiter, record_successful_login, record_security_event, get_remote_address
+from core.security_middleware import limiter, record_successful_login, record_security_event
+from slowapi.util import get_remote_address
 
 IS_PRODUCTION = bool(os.getenv("REPL_DEPLOYMENT") or os.getenv("REPLIT_DEPLOYMENT"))
 

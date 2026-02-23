@@ -262,7 +262,7 @@ async def confirmation_timeout_scheduler():
     Envia mensagem de confirmação após 5 minutos sem resposta do assessor.
     """
     from services.conversation_flow import check_pending_confirmations
-    from services.whatsapp_client import get_zapi_client
+    from services.whatsapp_client import zapi_client
     
     while True:
         try:
@@ -270,7 +270,6 @@ async def confirmation_timeout_scheduler():
             
             db = SessionLocal()
             try:
-                zapi_client = get_zapi_client()
                 await check_pending_confirmations(db, zapi_client, timeout_minutes=5)
             except Exception as e:
                 print(f"[SCHEDULER] Erro no scheduler de confirmação: {e}")
