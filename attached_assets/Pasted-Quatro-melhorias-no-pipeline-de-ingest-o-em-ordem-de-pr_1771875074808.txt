@@ -1,0 +1,163 @@
+Quatro melhorias no pipeline de ingestão, em ordem de prioridade.
+Implemente e confirme uma por vez.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+MELHORIA 1 — Confirmar e corrigir indexação de tabelas
+(crítico — tabelas podem estar sendo embedadas como JSON bruto)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Responda primeiro, antes de qualquer mudança:
+
+No fluxo de indexação, quando o vector_store.py pega o conteúdo
+de um ContentBlock do tipo TABLE para gerar o embedding, o que
+exatamente é passado para _generate_embedding()?
+
+(a) O JSON bruto: '{"headers": ["Classe", "%"], "rows": [...]}'
+(b) O texto narrativo gerado pelo semantic_transformer.py:
+    "Linha 1: • Classe: CRI • %: 45%"
+(c) Outra transformação?
+
+Mostre o trecho exato do código que lê o ContentBlock e passa
+o conteúdo para a indexação.
+
+SE for (a) — JSON bruto — implemente a seguinte correção:
+
+Antes de chamar _generate_embedding() para blocos do tipo TABLE,
+aplique o semantic_transformer:
+
+from services.semantic_transformer import SemanticTransformer
+
+def _prepare_content_for_embedding(self, block_content: str,
+                                    block_type: str) -> str:
+    if block_type == "TABLE":
+        try:
+            table_data = json.loads(block_content)
+            transformer = SemanticTransformer()
+            semantic = transformer.parse_table_to_semantic(table_data)
+            narrative = transformer.semantic_to_narrative_chunks(semantic)
+            # Usa narrativa se gerada com sucesso e tem conteúdo
+            if narrative and len(narrative) > len(block_content) * 0.3:
+                return narrative
+        except Exception:
+            pass  # Fallback para o conteúdo original se falhar
+    return block_content
+
+ATENÇÃO: Se tabelas estavam sendo embedadas como JSON bruto,
+os embeddings existentes de blocos TABLE precisam ser
+re-gerados. Consulte quantos blocos do tipo TABLE existem:
+
+SELECT count(*) FROM content_blocks WHERE block_type = 'TABLE';
+SELECT count(*) FROM document_embeddings WHERE block_type LIKE '%table%';
+
+Se o número for manejável (< 200), re-indexe apenas esses blocos.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+MELHORIA 2 — Filtro de cabeçalhos e rodapés repetidos
+(impacto médio-alto — limpa ruído do banco)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+No método analyze_page() do document_processor.py, adicione
+uma instrução explícita no prompt do Vision para ignorar
+conteúdo repetitivo de estrutura do documento:
+
+Adicione este bloco após as instruções existentes, antes do
+FORMATO DE RESPOSTA:
+
+"7. IGNORAR ELEMENTOS ESTRUTURAIS DO DOCUMENTO:
+   - NÃO extraia como fatos: cabeçalhos de página, rodapés,
+     numeração de página, logos, disclaimers legais repetitivos,
+     datas de emissão que aparecem em toda página, nomes do fundo
+     que aparecem apenas como título de seção.
+   - Esses elementos não têm valor informacional para busca.
+   - Se uma página contém APENAS esses elementos estruturais,
+     retorne facts: [] e content_type: 'structural_only'.
+   - Regra prática: se o mesmo texto já apareceu em páginas
+     anteriores sem novidade informacional, ignore."
+
+Adicione também o tratamento para content_type 'structural_only'
+no product_ingestor.py — esses blocos não devem ser indexados:
+
+if content_type == 'structural_only' or not facts:
+    stats["skipped_structural"] += 1
+    continue  # Pula para a próxima página
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+MELHORIA 3 — Aumentar DPI para tabelas densas
+(baixo risco, potencial alto em PDFs complexos)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+No document_processor.py, torne o DPI adaptivo ao tipo de
+conteúdo detectado. Como o Vision classifica o tipo ANTES
+de processar, use uma abordagem em dois passes para páginas
+com tabelas densas:
+
+DPI_BY_CONTENT = {
+    "text": 150,        # Suficiente para texto corrido
+    "mixed": 200,       # Mais seguro para combinações
+    "table": 250,       # Tabelas densas precisam de mais detalhe
+    "infographic": 200, # Gráficos se beneficiam de mais resolução
+    "image_only": 150,  # Sem texto, DPI não ajuda
+}
+
+# Primeiro passe: 150 DPI para classificar o tipo da página
+# Se for 'table' ou 'mixed', re-processa a 250 DPI
+
+Implemente como uma função separada para não afetar o
+pipeline atual em caso de erro:
+
+def _get_optimal_dpi(self, content_type: str) -> int:
+    return DPI_BY_CONTENT.get(content_type, 150)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+MELHORIA 4 — Verificação de duplicata por hash de arquivo
+(previne duplicação silenciosa no banco)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+No upload_validator.py, após gerar o file_hash, verifique
+se ele já existe no banco:
+
+from database.models import Material  # ou onde file_hash é armazenado
+
+def check_duplicate_file(self, file_hash: str,
+                          db: Session) -> Optional[dict]:
+    existing = db.query(Material).filter(
+        Material.file_hash == file_hash
+    ).first()
+    if existing:
+        return {
+            "is_duplicate": True,
+            "existing_material_id": existing.id,
+            "existing_material_name": existing.name,
+            "uploaded_at": existing.created_at.isoformat()
+        }
+    return None
+
+Se o Material não tem campo file_hash, adicione a migração:
+ALTER TABLE materials ADD COLUMN file_hash VARCHAR(64);
+CREATE INDEX idx_materials_file_hash ON materials(file_hash);
+
+Quando um duplicado for detectado, retorne um aviso ao usuário
+antes de processar (não bloqueie, mas informe):
+
+"⚠️ Este arquivo já foi carregado anteriormente como
+'[nome do material]' em [data]. Deseja criar uma nova
+versão ou substituir o existente?"
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+APÓS IMPLEMENTAR AS 4 MELHORIAS:
+
+Execute esta query de diagnóstico do estado atual da base:
+
+SELECT
+    block_type,
+    publish_status,
+    count(*) as total,
+    count(CASE WHEN content LIKE '{%' THEN 1 END) as json_format,
+    count(CASE WHEN content NOT LIKE '{%' THEN 1 END) as text_format
+FROM document_embeddings
+GROUP BY block_type, publish_status
+ORDER BY total DESC;
+
+Isso vai revelar quantos embeddings ainda estão em formato
+JSON bruto versus texto narrativo — e confirmar se a
+Melhoria 1 precisa de re-indexação retroativa.

@@ -1,0 +1,128 @@
+Implemente as melhorias nesta ordem exata. Confirme cada uma antes
+de avançar para a próxima.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+MELHORIA 4 PRIMEIRO — Hash de duplicata (maior risco operacional)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. Adicione a migração do campo file_hash na tabela materials:
+
+   ALTER TABLE materials
+   ADD COLUMN file_hash VARCHAR(64),
+   ADD COLUMN file_hash_checked_at TIMESTAMP;
+
+   CREATE INDEX idx_materials_file_hash
+   ON materials(file_hash)
+   WHERE file_hash IS NOT NULL;
+
+2. No upload_validator.py, após gerar o SHA-256, exponha o hash
+   como atributo do resultado de validação para ser usado pelo
+   ingestor.
+
+3. No product_ingestor.py, ao criar o Material, salve o file_hash.
+   Antes de processar um novo upload, verifique:
+
+   existing = db.query(Material).filter(
+       Material.file_hash == file_hash,
+       Material.file_hash != None
+   ).first()
+
+   if existing:
+       return {
+           "warning": "duplicate_file",
+           "message": (
+               f"⚠️ Este arquivo já foi carregado como "
+               f"'{existing.name}' em "
+               f"{existing.created_at.strftime('%d/%m/%Y')}. "
+               f"Deseja criar uma nova versão?"
+           ),
+           "existing_material_id": existing.id
+       }
+
+4. Após a migração, faça um backfill para materials existentes
+   que têm arquivo disponível — mas NÃO bloqueie o deploy por isso.
+   O backfill pode ser feito assincronamente.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+MELHORIA 2 — Filtro de elementos estruturais no prompt
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Adicione ao prompt do Vision, antes do bloco FORMATO DE RESPOSTA:
+
+"7. IGNORAR ELEMENTOS ESTRUTURAIS DO DOCUMENTO:
+   Não extraia como fatos: cabeçalhos de página, rodapés,
+   numeração de página, logos, disclaimers legais padrão,
+   datas que aparecem apenas como timbre do documento.
+   Esses elementos não têm valor para busca de informação.
+   Se uma página contém APENAS esses elementos, retorne:
+   content_type: 'structural_only' e facts: [].
+   Regra prática: se o texto seria idêntico em qualquer
+   outra página do mesmo documento, ignore-o."
+
+No product_ingestor.py, adicione o tratamento:
+
+if page_result.get("content_type") == "structural_only":
+    stats["skipped_structural"] = stats.get("skipped_structural", 0) + 1
+    logger.info(f"[INGESTOR] Página {page_num} ignorada — structural_only")
+    continue
+
+Registre o campo no IngestionLog:
+
+details_json["skipped_structural"] = stats.get("skipped_structural", 0)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+MELHORIA 1 — Corrigir o except:pass nas tabelas (obrigatório)
+e upgrade opcional para semantic_transformer
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+PARTE OBRIGATÓRIA — substitua o except:pass por:
+
+content_for_indexing = block.content  # fallback padrão
+
+if block.block_type == ContentBlockType.TABLE.value:
+    try:
+        table_data = json.loads(block.content)
+        text_repr = self._table_to_text(table_data)
+        content_for_indexing = f"Tabela: {block.title}\n{text_repr}"
+    except json.JSONDecodeError as e:
+        logger.warning(
+            f"[INGESTOR] Bloco TABLE {block.id} tem JSON inválido: {e}. "
+            f"Indexando conteúdo bruto como fallback."
+        )
+    except Exception as e:
+        logger.error(
+            f"[INGESTOR] Erro ao converter tabela {block.id}: {e}. "
+            f"Indexando conteúdo bruto como fallback."
+        )
+
+PARTE OPCIONAL (pode fazer depois) — se quiser usar o
+semantic_transformer para narrativas mais ricas, implemente
+como uma função separada que chama o transformer e cai
+de volta para _table_to_text() se o transformer falhar.
+Não misture os dois no mesmo bloco try/except.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+MELHORIA 3 — DPI adaptativo (AVALIE ANTES DE IMPLEMENTAR)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Antes de implementar, responda:
+
+1. Qual é o tempo médio atual de processamento de um PDF
+   de 10-15 páginas? (consulte o campo processing_time_ms
+   no IngestionLog para os últimos 10 uploads)
+
+2. O dois passes significa: primeiro converte a 150 DPI para
+   classificar o tipo, depois re-converte a 250 DPI se for tabela.
+   Isso dobra a chamada ao pdf2image E ao GPT-4o Vision para
+   páginas de tabela. Para um relatório com 8 páginas de tabela,
+   são 8 chamadas extras ao Vision a $0.01-0.02 cada.
+
+3. Uma alternativa mais simples: converter TODO o PDF a 200 DPI
+   (não 250, não dois passes). Aumenta o tempo em ~30% mas
+   elimina a complexidade de dois passes e já resolve 90% dos
+   casos de tabelas densas.
+
+Me mostre o processing_time_ms médio e eu decido entre:
+(a) Dois passes apenas para tabelas (mais preciso, mais complexo)
+(b) 200 DPI fixo para todos (mais simples, 30% mais lento)
+(c) 200 DPI configurável por tipo de material no painel admin
