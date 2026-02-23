@@ -565,7 +565,7 @@ async def search_knowledge(
                 chunks_retrieved.append(str(block_id))
                 chunk_versions[str(block_id)] = str(meta.get("version", "1"))
             
-            dist = r.get("original_distance") or r.get("distance", 0)
+            dist = r.get("distance", 0)
             if min_distance is None or dist < min_distance:
                 min_distance = dist
             if max_distance is None or dist > max_distance:

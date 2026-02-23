@@ -646,97 +646,18 @@ class VectorStore:
                 if original_distance > similarity_threshold:
                     continue
                 
-                vector_score = 1.0 - min(original_distance, 1.0)
-                
-                recency_score = self._calculate_recency_score(metadata.get("created_at", ""), now)
-                
-                exact_match_score = self._calculate_exact_match_score(
-                    query_upper,
-                    metadata.get("product_ticker", ""),
-                    metadata.get("product_name", ""),
-                    metadata.get("gestora", "")
-                )
-                
-                # SCORING NÍVEL 1 (Seleção de candidatos)
-                # Este score determina quais docs passam para o top-N retornado.
-                # O EnhancedSearch (Nível 2) recalcula o score do zero usando
-                # original_distance, ignorando recency e exact_match daqui.
-                # Portanto, este scoring atua como FILTRO DE CANDIDATOS, não como
-                # ranking final.
-                composite_score = (
-                    vector_score * 0.70 +
-                    recency_score * 0.20 +
-                    exact_match_score * 0.10
-                )
-                
-                if detected_concepts and metadata.get("topic"):
-                    chunk_topic = metadata.get("topic", "")
-                    chunk_concepts_str = metadata.get("concepts", "[]")
-                    try:
-                        chunk_concepts = json.loads(chunk_concepts_str) if isinstance(chunk_concepts_str, str) else chunk_concepts_str
-                    except Exception:
-                        chunk_concepts = []
-                    
-                    CONCEPT_TO_TOPIC = {
-                        "estrategia_investimento": "estrategia", "gestao_fundo": "estrategia",
-                        "objetivo_fundo": "estrategia", "tipo_fii": "estrategia",
-                        "composicao_carteira": "composicao", "cri": "composicao",
-                        "indexador": "composicao", "vacancia": "composicao",
-                        "incorporacao": "composicao", "abl": "composicao",
-                        "rentabilidade": "performance", "dividend_yield": "performance",
-                        "cota": "performance", "patrimonio": "performance",
-                        "cap_rate": "performance", "pvp": "performance",
-                        "dividendo": "dividendos", "guidance": "dividendos",
-                        "payout": "dividendos", "amortizacao": "dividendos",
-                        "ltv": "risco", "garantias": "risco", "risco_credito": "risco",
-                        "diversificacao": "risco", "hedge": "risco", "volatilidade": "risco",
-                        "liquidez": "mercado", "cotacao": "mercado", "cotistas": "mercado",
-                        "perspectivas": "perspectivas",
-                        "opcoes_basico": "derivativos", "collar": "derivativos",
-                        "covered_call": "derivativos", "gregas_delta": "derivativos",
-                    }
-                    
-                    expected_topics = set()
-                    for concept_id in detected_concepts:
-                        mapped = CONCEPT_TO_TOPIC.get(concept_id)
-                        if mapped:
-                            expected_topics.add(mapped)
-                    
-                    if chunk_topic in expected_topics:
-                        composite_score *= 1.15
-                    
-                    if chunk_concepts and detected_concepts:
-                        overlap = set(chunk_concepts) & set(detected_concepts)
-                        if overlap:
-                            composite_score *= (1.0 + 0.05 * len(overlap))
-                
-                material_type = metadata.get("material_type", "")
-                block_type = metadata.get("block_type", "text")
-                live_types = ["one_page", "atualizacao_taxas", "argumentos_comerciais"]
-                
-                if material_type in live_types:
-                    composite_score *= 1.15
-                
-                if query_type == 'numeric' and block_type == 'table':
-                    composite_score *= 1.20
-                elif query_type == 'conceptual' and block_type == 'text':
-                    composite_score *= 1.05
-                
-                composite_score = min(composite_score, 1.0)
-                
+                # NÍVEL 1 SIMPLIFICADO: Apenas distância cosseno + filtros.
+                # O ranking final é feito pelo CompositeScorer no EnhancedSearch (Nível 2),
+                # que aplica fuzzy, ticker, gestora, contexto e recência.
+                # Este nível serve apenas como seleção de candidatos por proximidade vetorial.
                 documents.append({
                     "content": doc_content,
                     "metadata": metadata,
-                    "distance": 1.0 - composite_score,
-                    "original_distance": original_distance,
-                    "composite_score": composite_score,
-                    "vector_score": vector_score,
-                    "recency_score": recency_score,
-                    "exact_match_score": exact_match_score,
-                    "query_type": query_type
+                    "distance": original_distance,
+                    "source": "vector"
                 })
         
-        documents.sort(key=lambda x: x.get("composite_score", 0), reverse=True)
+        documents.sort(key=lambda x: x.get("distance", 1.0))
         
         all_documents = []
         seen_ids = set()
@@ -745,8 +666,8 @@ class VectorStore:
             doc_id = doc.get('doc_id') or doc.get('chroma_id') or doc.get('metadata', {}).get('block_id') or f"ticker_{len(seen_ids)}"
             if doc_id not in seen_ids:
                 seen_ids.add(doc_id)
-                if 'composite_score' not in doc:
-                    doc['composite_score'] = 0.95
+                if 'distance' not in doc:
+                    doc['distance'] = 0.05
                 all_documents.append(doc)
         
         for doc in documents:
@@ -755,7 +676,7 @@ class VectorStore:
                 seen_ids.add(doc_id)
                 all_documents.append(doc)
         
-        all_documents.sort(key=lambda x: x.get("composite_score", 0), reverse=True)
+        all_documents.sort(key=lambda x: x.get("distance", 1.0))
         
         deduplicated = self._deduplicate_results(all_documents)
         
@@ -796,7 +717,7 @@ class VectorStore:
         for doc in documents:
             content = doc.get("content", "")
             metadata = doc.get("metadata", {})
-            current_score = doc.get("composite_score", 0)
+            current_distance = doc.get("distance", 1.0)
             
             if "---" in content:
                 content = content.split("---", 1)[1]
@@ -838,7 +759,7 @@ class VectorStore:
                             break
             
             if is_duplicate:
-                if duplicate_idx >= 0 and current_score > deduplicated[duplicate_idx].get("composite_score", 0):
+                if duplicate_idx >= 0 and current_distance < deduplicated[duplicate_idx].get("distance", 1.0):
                     deduplicated[duplicate_idx] = doc
             else:
                 deduplicated.append(doc)
@@ -863,13 +784,13 @@ class VectorStore:
         import json
         
         chunk_ids = [str(r.get("metadata", {}).get("block_id", "?")) for r in results]
-        scores = [f"{r.get('composite_score', 0):.3f}" for r in results]
+        distances = [f"{r.get('distance', 1.0):.3f}" for r in results]
         products = list(set(r.get("metadata", {}).get("product_name", "?") for r in results))
         
-        min_dist = min([r.get("original_distance", 0) for r in results]) if results else None
-        max_dist = max([r.get("original_distance", 0) for r in results]) if results else None
+        min_dist = min([r.get("distance", 1.0) for r in results]) if results else None
+        max_dist = max([r.get("distance", 1.0) for r in results]) if results else None
         
-        print(f"[RETRIEVAL] Query: '{query[:50]}' | Type: {query_type} | Results: {len(results)}/{total_candidates} | Products: {products[:3]} | Scores: {scores[:3]}")
+        print(f"[RETRIEVAL] Query: '{query[:50]}' | Type: {query_type} | Results: {len(results)}/{total_candidates} | Products: {products[:3]} | Distances: {distances[:3]}")
         
         try:
             from database.database import SessionLocal
@@ -1052,7 +973,6 @@ class VectorStore:
                         "content": doc_content,
                         "metadata": metadata,
                         "distance": priority,
-                        "original_distance": priority,
                         "source": "ticker_metadata",
                         "doc_id": doc_id
                     })
@@ -1517,7 +1437,6 @@ class VectorStore:
                     "content": enriched_content,
                     "metadata": metadata,
                     "distance": 0.1,
-                    "composite_score": 0.95,
                     "source": "comite_vigent"
                 })
             

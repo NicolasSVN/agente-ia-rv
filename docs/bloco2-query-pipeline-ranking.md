@@ -61,7 +61,7 @@ composite_score = (
 ```
 1. Para cada query expandida (máx 3):
    └→ VectorStore.search(query, n_results * 2, threshold=0.85)
-   └→ VectorStore aplica scoring Nível 1 (70/20/10)
+   └→ VectorStore retorna apenas distância cosseno + filtros (publish_status, valid_until)
    └→ Deduplicação por block_id
 
 2. Para cada ticker detectado (máx 2):
@@ -74,16 +74,27 @@ composite_score = (
    └→ FuzzyMatcher: Levenshtein contra todos os produtos
    └→ threshold de fuzzy: 0.6
 
-5. CompositeScorer (Nível 2): recalcula score de todos os resultados (40/25/15/10/10)
+5. CompositeScorer: scoring único com 6 fatores (45/20/15/10/05/05)
 6. Ordena por composite_score decrescente
 7. Retorna top n_results (8)
 ```
 
 ### Quem faz o reranking?
 
-**Lógica Python pura em dois estágios:**
-1. **VectorStore** (Nível 1): scoring 70% vetor + 20% recência + 10% match exato + bonus conceitual
-2. **CompositeScorer** (Nível 2): scoring 40% vetor + 25% fuzzy + 15% ticker + 10% gestora + 10% contexto
+**Scoring único no CompositeScorer (lógica Python pura):**
+
+O VectorStore (Nível 1) atua apenas como **filtro de candidatos**: seleciona documentos por proximidade vetorial (distância cosseno) e aplica filtros de publicação e validade. Não faz scoring.
+
+O **CompositeScorer** (Nível 2) faz todo o ranking final com 6 fatores:
+
+| Fator | Peso | Descrição |
+|-------|------|-----------|
+| `vector_score` | 0.45 | 1.0 - distância cosseno bruta |
+| `fuzzy_score` | 0.20 | Overlap de tokens da query no conteúdo |
+| `ticker_match` | 0.15 | Ticker do produto encontrado nos metadados |
+| `gestora_match` | 0.10 | Gestora encontrada nos metadados ou conteúdo |
+| `context_match` | 0.05 | Produto mencionado no contexto da conversa |
+| `recency_score` | 0.05 | Documento recente = score mais alto (decai em 730 dias) |
 
 Não há modelo de reranking dedicado (como Cohere Rerank ou cross-encoder).
 

@@ -636,31 +636,27 @@ class SearchResult:
     ticker_match: bool = False
     gestora_match: bool = False
     context_match: bool = False
+    recency_score: float = 0.5
     composite_score: float = 0.0
     confidence_level: str = "low"
     source: str = "vector"
     
     def calculate_composite_score(self):
-        """Calcula o score composto baseado em múltiplos fatores."""
-        base_score = self.vector_score * 0.4
+        """Calcula o score composto com 6 fatores (pesos somam 1.0)."""
+        score = (
+            self.vector_score * 0.45 +
+            self.fuzzy_score * 0.20 +
+            (0.15 if self.ticker_match else 0.0) +
+            (0.10 if self.gestora_match else 0.0) +
+            (0.05 if self.context_match else 0.0) +
+            self.recency_score * 0.05
+        )
         
-        if self.fuzzy_score > 0:
-            base_score += self.fuzzy_score * 0.25
+        self.composite_score = min(1.0, score)
         
-        if self.ticker_match:
-            base_score += 0.15
-        
-        if self.gestora_match:
-            base_score += 0.10
-        
-        if self.context_match:
-            base_score += 0.10
-        
-        self.composite_score = min(1.0, base_score)
-        
-        if self.composite_score >= 0.75:
+        if self.composite_score >= 0.7:
             self.confidence_level = "high"
-        elif self.composite_score >= 0.5:
+        elif self.composite_score >= 0.4:
             self.confidence_level = "medium"
         else:
             self.confidence_level = "low"
@@ -691,32 +687,34 @@ class CompositeScorer:
         
         for r in results:
             distance = r.get('distance', 1.0)
-            original_distance = r.get('original_distance', distance)
             
-            # SCORING NÍVEL 2 (Ranking final)
-            # Usa original_distance (distância cosseno bruta do pgvector),
-            # NÃO o composite_score do VectorStore (Nível 1).
-            # O Nível 1 serve apenas como filtro de candidatos (quais docs
-            # chegam aqui). Este Nível 2 recalcula do zero com fatores
-            # diferentes: fuzzy, ticker, gestora, contexto conversacional.
-            vector_score = max(0, 1.0 - original_distance)
+            # SCORING NÍVEL 2 (Ranking final único)
+            # O VectorStore (Nível 1) agora retorna apenas distância cosseno bruta.
+            # Todo o ranking é feito aqui com 6 fatores:
+            # vetor (0.45), fuzzy (0.20), ticker (0.15), gestora (0.10),
+            # contexto (0.05), recência (0.05)
+            vector_score = max(0, 1.0 - distance)
+            
+            metadata = r.get('metadata', {})
+            recency_score = cls._calculate_recency_score(metadata)
             
             result = SearchResult(
                 content=r.get('content', ''),
-                metadata=r.get('metadata', {}),
-                vector_distance=original_distance,
+                metadata=metadata,
+                vector_distance=distance,
                 vector_score=vector_score,
+                recency_score=recency_score,
                 source=r.get('source', 'vector')
             )
             
-            products_meta = r.get('metadata', {}).get('products', '').upper()
+            products_meta = metadata.get('products', '').upper()
             for ticker in tokens.possible_tickers:
                 if ticker in products_meta:
                     result.ticker_match = True
                     break
             
             for gestora in tokens.possible_gestoras:
-                gestora_meta = r.get('metadata', {}).get('gestora', '').lower()
+                gestora_meta = metadata.get('gestora', '').lower()
                 if gestora.lower() in gestora_meta or gestora.lower() in result.content.lower():
                     result.gestora_match = True
                     break
@@ -738,6 +736,35 @@ class CompositeScorer:
         
         scored_results.sort(key=lambda x: x.composite_score, reverse=True)
         return scored_results
+    
+    @staticmethod
+    def _calculate_recency_score(metadata: Dict) -> float:
+        """Score de recência baseado em created_at ou valid_until."""
+        from datetime import datetime, timezone
+        
+        date_str = metadata.get("created_at") or metadata.get("created_at_source") or metadata.get("valid_until")
+        if not date_str:
+            return 0.5
+        
+        try:
+            if isinstance(date_str, str):
+                if 'T' in date_str:
+                    doc_date = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+                else:
+                    doc_date = datetime.strptime(date_str[:10], "%Y-%m-%d")
+                    doc_date = doc_date.replace(tzinfo=timezone.utc)
+            elif isinstance(date_str, datetime):
+                doc_date = date_str if date_str.tzinfo else date_str.replace(tzinfo=timezone.utc)
+            else:
+                return 0.5
+            
+            now = datetime.now(timezone.utc)
+            days_old = (now - doc_date).days
+            
+            recency_score = max(0.2, 1.0 - (days_old / 730))
+            return recency_score
+        except Exception:
+            return 0.5
 
 
 # =============================================================================
@@ -944,7 +971,6 @@ class EnhancedSearch:
                                f"Descrição: {db_result['description'] or 'Sem descrição'}",
                     'metadata': db_result,
                     'distance': 0.2,
-                    'original_distance': 0.2,
                     'source': 'database_fallback'
                 })
         
