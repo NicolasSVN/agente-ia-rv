@@ -1,0 +1,66 @@
+Preciso documentar o pipeline de upload com o mesmo nível de
+detalhe que fizemos para a busca. Responda cada ponto com
+trechos exatos do código:
+
+BLOCO A — Extração via GPT-4o Vision
+
+1. Qual é o prompt exato enviado ao GPT-4o Vision para cada
+   página do PDF? Cole o prompt completo — é a peça mais
+   importante do pipeline de ingestão.
+
+2. O que acontece quando uma página tem:
+   - Tabelas com dados financeiros (ex: DRE, carteira)?
+   - Gráficos ou imagens sem texto?
+   - Cabeçalhos/rodapés repetidos em todas as páginas?
+   O código trata esses casos de forma especial?
+
+3. Qual é o formato exato do retorno do GPT-4o Vision?
+   JSON estruturado, markdown, texto livre?
+   Cole um exemplo real de extração de uma página.
+
+4. Há algum retry ou fallback se o Vision retornar vazio
+   ou malformado para uma página específica?
+
+5. PDFs com proteção de senha, PDFs escaneados (imagem pura
+   sem texto) ou PDFs corrompidos — o que acontece?
+
+BLOCO B — Do fato atômico ao chunk final
+
+6. Após a extração, como os fatos são agrupados antes de
+   gerar o embedding? Um fato por chunk, ou há alguma
+   lógica de agrupamento por tema/seção?
+
+7. O texto exato que vai para _generate_embedding() —
+   mostre o código que monta esse texto. Sabemos que
+   há um prefixo semântico com produto/ticker/gestora,
+   mas qual é a estrutura completa? Formato exato.
+
+8. Existe algum limite de tamanho do chunk?
+   Se um "fato atômico" extraído for muito longo
+   (ex: uma tabela inteira transcrita), ele é truncado?
+
+9. Os summaries conceituais gerados pelo GPT-4o-mini:
+   - Quando são gerados (antes ou depois do embedding)?
+   - São indexados como chunks separados com embedding
+     próprio, ou apenas armazenados como metadado?
+   - Qual é o prompt usado para gerá-los?
+
+BLOCO C — Qualidade e rastreabilidade
+
+10. Como o sistema detecta que um PDF já foi indexado
+    antes (re-upload do mesmo arquivo)?
+    Ele re-indexa, atualiza, ou ignora o duplicado?
+
+11. Se uma página do PDF falha na extração (erro da API,
+    timeout), o documento inteiro falha ou continua
+    sem aquela página?
+
+12. Após a indexação, há alguma validação de qualidade?
+    Por exemplo: verificar se o número de chunks gerados
+    é razoável para o tamanho do PDF, ou se os embeddings
+    foram corretamente armazenados?
+
+13. O IngestionLog mencionado no .md — o que ele registra
+    exatamente? Cole a estrutura do modelo.
+    Ele permite reconstruir o que foi extraído de cada
+    página de cada documento?
