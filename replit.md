@@ -45,6 +45,15 @@ The application is built using FastAPI with a modular architecture.
 
 **Feature Specifications:** Dynamic control over AI behavior parameters, real-time campaign sending with SSE, background document processing, customizable fields, and automatic admin user creation.
 
+## Database Environment (CRÍTICO)
+**Desenvolvimento e produção usam bancos PostgreSQL SEPARADOS.** A ferramenta de SQL do agente executa contra o banco de desenvolvimento por padrão. O banco de produção aceita apenas consultas de leitura (SELECT) via ferramenta.
+
+**Consequências práticas:**
+- Alterações de dados (INSERT, UPDATE, DELETE) feitas pelo agente **NÃO refletem em produção**.
+- Para alterar dados em produção, usar a interface do app em produção ou criar endpoints admin específicos.
+- Migrações de schema (ALTER TABLE, CREATE INDEX) também precisam rodar em produção — isso acontece automaticamente no startup via `init_database()`, mas dados não são migrados.
+- Ao republicar, apenas o **código** é atualizado. Os dados do banco de produção permanecem como estavam.
+
 ## External Dependencies
 - **API OpenAI:** AI agent interactions and text embeddings.
 - **Z-API:** WhatsApp messaging integration.
