@@ -400,7 +400,7 @@
                 renderItems();
             } catch (error) {
                 console.error('Erro:', error);
-                AppNotifications.show('Erro ao carregar itens pendentes', 'error');
+                AppNotifications.error('Erro ao carregar itens pendentes');
             }
         }
 
@@ -470,7 +470,7 @@
 
         async function bulkApprove() {
             if (selectedItems.size === 0) {
-                AppNotifications.show('Selecione ao menos um item', 'warning');
+                AppNotifications.warning('Selecione ao menos um item');
                 return;
             }
 
@@ -499,7 +499,7 @@
                 }
 
                 const result = await response.json();
-                AppNotifications.show(`${result.approved_count} itens aprovados!`, 'success');
+                AppNotifications.success(`${result.approved_count} itens aprovados!`);
                 
                 allItems = allItems.filter(i => !selectedItems.has(i.block_id));
                 selectedItems.clear();
@@ -507,7 +507,7 @@
                 updateSelectionUI();
                 renderItems();
             } catch (error) {
-                AppNotifications.show(error.message || 'Erro ao aprovar itens', 'error');
+                AppNotifications.error(error.message || 'Erro ao aprovar itens');
             }
         }
 
@@ -597,12 +597,12 @@
                     credentials: 'include'
                 });
                 if (!response.ok) throw new Error('Erro ao aprovar');
-                AppNotifications.show('Item aprovado com sucesso', 'success');
+                AppNotifications.success('Item aprovado com sucesso');
                 allItems = allItems.filter(i => i.id !== id);
                 updateCounters();
                 renderItems();
             } catch (error) {
-                AppNotifications.show('Erro ao aprovar item', 'error');
+                AppNotifications.error('Erro ao aprovar item');
             }
         }
 
@@ -613,12 +613,12 @@
                     credentials: 'include'
                 });
                 if (!response.ok) throw new Error('Erro ao rejeitar');
-                AppNotifications.show('Item rejeitado', 'warning');
+                AppNotifications.warning('Item rejeitado');
                 allItems = allItems.filter(i => i.id !== id);
                 updateCounters();
                 renderItems();
             } catch (error) {
-                AppNotifications.show('Erro ao rejeitar item', 'error');
+                AppNotifications.error('Erro ao rejeitar item');
             }
         }
 
@@ -895,14 +895,14 @@
                 if (item) item.extracted_content = newContent;
                 
                 if (typeof AppNotifications !== 'undefined') {
-                    AppNotifications.show('Conteúdo atualizado', 'success');
+                    AppNotifications.success('Conteúdo atualizado');
                 }
                 closeEditModal();
                 renderItems();
             } catch (error) {
                 console.error('Erro saveEdit:', error);
                 if (typeof AppNotifications !== 'undefined') {
-                    AppNotifications.show('Erro ao salvar edição', 'error');
+                    AppNotifications.error('Erro ao salvar edição');
                 }
             } finally {
                 isSaving = false;
@@ -937,12 +937,12 @@
                 renderItems();
                 
                 if (typeof AppNotifications !== 'undefined') {
-                    AppNotifications.show('Conteúdo editado e aprovado', 'success');
+                    AppNotifications.success('Conteúdo editado e aprovado');
                 }
             } catch (error) {
                 console.error('Erro saveAndApprove:', error);
                 if (typeof AppNotifications !== 'undefined') {
-                    AppNotifications.show('Erro ao salvar e aprovar', 'error');
+                    AppNotifications.error('Erro ao salvar e aprovar');
                 }
             } finally {
                 isSaving = false;

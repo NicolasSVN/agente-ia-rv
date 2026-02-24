@@ -224,13 +224,18 @@ const AppNotifications = (function() {
     `;
     document.head.appendChild(style);
 
+    function show(message, type = 'info', options = {}) {
+        return showToast(type, message, options);
+    }
+
     return {
         success,
         error,
         warning,
         info,
         confirm,
-        showToast
+        showToast,
+        show
     };
 })();
 
