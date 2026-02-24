@@ -790,7 +790,7 @@ class UploadQueue:
                 mat.processing_status = ProcessingStatus.SUCCESS.value
                 db.commit()
 
-                if not mat.product or (mat.product.ticker and mat.product.ticker == "__SYSTEM_UNASSIGNED__"):
+                if not mat.product:
                     auto_product = self._auto_create_product_from_material_name(db, mat, item)
                     if auto_product:
                         mat.product_id = auto_product.id
