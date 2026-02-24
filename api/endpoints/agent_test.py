@@ -13,7 +13,7 @@ from database.database import get_db
 from database.models import User
 from api.endpoints.auth import get_current_user
 from services.openai_agent import openai_agent
-from services.vector_store import get_vector_store
+from services.vector_store import get_vector_store, filter_expired_results
 
 router = APIRouter(prefix="/api/agent", tags=["Agent Test"])
 
@@ -80,11 +80,35 @@ async def test_agent_message(
         for msg in history[-10:]
     ]
     
+    knowledge_context = ""
+    search_results = []
+    try:
+        vector_store = get_vector_store()
+        if vector_store:
+            search_results = vector_store.search(message, n_results=6, similarity_threshold=0.8)
+            search_results = filter_expired_results(search_results, db)[:3]
+            
+            if search_results:
+                knowledge_context = "\n\n--- Informações da Base de Conhecimento ---\n"
+                for i, result in enumerate(search_results, 1):
+                    title = result.get("metadata", {}).get("document_title", "Documento")
+                    product_name = result.get("metadata", {}).get("product_name", "")
+                    content = result.get("content", "")[:500]
+                    knowledge_context += f"\n[{i}] {title}"
+                    if product_name:
+                        knowledge_context += f" (Produto: {product_name})"
+                    knowledge_context += f":\n{content}\n"
+                print(f"[AGENT_TEST] Busca RAG: {len(search_results)} documentos encontrados para '{message[:50]}'")
+            else:
+                print(f"[AGENT_TEST] Busca RAG: nenhum documento encontrado para '{message[:50]}'")
+    except Exception as e:
+        print(f"[AGENT_TEST] Erro ao buscar na base de conhecimento: {e}")
+    
     try:
         response, should_create_ticket, context = await openai_agent.generate_response(
             message,
             history_for_ai,
-            extra_context=None,
+            extra_context=knowledge_context if knowledge_context else None,
             sender_phone=None,
             identified_assessor=session.get("identified_assessor")
         )
@@ -99,7 +123,7 @@ async def test_agent_message(
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Erro ao gerar resposta: {str(e)}")
     
-    knowledge_documents = context.get("documents", []) if context else []
+    knowledge_documents = search_results if search_results else (context.get("documents", []) if context else [])
     
     history.append({
         "role": "user",
