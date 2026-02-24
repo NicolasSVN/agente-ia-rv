@@ -11,7 +11,7 @@ from enum import Enum
 import json
 
 from openai import OpenAI
-from pdf2image import convert_from_path, convert_from_bytes
+import fitz
 from PIL import Image
 
 from core.config import get_settings
@@ -42,13 +42,42 @@ class DocumentProcessor:
         image.save(buffer, format=format)
         return base64.b64encode(buffer.getvalue()).decode("utf-8")
     
-    def _pdf_to_images(self, pdf_path: str = None, pdf_bytes: bytes = None) -> List[Image.Image]:
-        """Converte PDF em lista de imagens (uma por página)."""
+    def _pdf_to_images(self, pdf_path: str = None, pdf_bytes: bytes = None, dpi: int = 150) -> List[Image.Image]:
+        """Converte PDF em lista de imagens (uma por página) usando PyMuPDF."""
+        doc = None
         if pdf_path:
-            return convert_from_path(pdf_path, dpi=150)
+            doc = fitz.open(pdf_path)
         elif pdf_bytes:
-            return convert_from_bytes(pdf_bytes, dpi=150)
-        return []
+            doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+        
+        if not doc:
+            return []
+        
+        images = []
+        zoom = dpi / 72.0
+        matrix = fitz.Matrix(zoom, zoom)
+        try:
+            for page in doc:
+                pix = page.get_pixmap(matrix=matrix)
+                img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+                images.append(img)
+        finally:
+            doc.close()
+        return images
+    
+    def _pdf_page_to_image(self, pdf_path: str, page_num: int, dpi: int = 150) -> Optional[Image.Image]:
+        """Converte uma única página do PDF em imagem usando PyMuPDF."""
+        doc = fitz.open(pdf_path)
+        try:
+            if page_num < 1 or page_num > len(doc):
+                return None
+            page = doc[page_num - 1]
+            zoom = dpi / 72.0
+            matrix = fitz.Matrix(zoom, zoom)
+            pix = page.get_pixmap(matrix=matrix)
+            return Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+        finally:
+            doc.close()
     
     def analyze_page(self, image: Image.Image, document_title: str = "", page_number: int = 0) -> Dict[str, Any]:
         """
@@ -380,10 +409,12 @@ Responda APENAS com o JSON, sem markdown ou explicações."""
         }
     
     def get_pdf_page_count(self, pdf_path: str) -> int:
-        """Retorna o número de páginas de um PDF sem processá-lo."""
+        """Retorna o número de páginas de um PDF sem processá-lo (usa PyMuPDF)."""
         try:
-            images = self._pdf_to_images(pdf_path=pdf_path)
-            return len(images) if images else 0
+            doc = fitz.open(pdf_path)
+            count = len(doc)
+            doc.close()
+            return count
         except Exception as e:
             print(f"[DOC_PROCESSOR] Erro ao contar páginas: {e}")
             return 0

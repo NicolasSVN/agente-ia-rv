@@ -29,7 +29,7 @@ from typing import Dict, Any, List, Optional
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from openai import OpenAI
-from pdf2image import convert_from_path
+import fitz
 from PIL import Image
 
 from core.config import get_settings
@@ -123,7 +123,14 @@ def extract_diagrams(structures: List[Dict], pdf_paths: Dict[str, str]) -> Dict[
         
         try:
             print(f"  [EXTRACT] {s['name']}...")
-            images = convert_from_path(pdf_path, dpi=200)
+            doc = fitz.open(pdf_path)
+            zoom = 200 / 72.0
+            matrix = fitz.Matrix(zoom, zoom)
+            images = []
+            for pg in doc:
+                pix = pg.get_pixmap(matrix=matrix)
+                images.append(Image.frombytes("RGB", [pix.width, pix.height], pix.samples))
+            doc.close()
             
             if len(images) >= 1:
                 best_image = images[0]
@@ -142,7 +149,14 @@ def extract_diagrams(structures: List[Dict], pdf_paths: Dict[str, str]) -> Dict[
 def process_pdf_with_vision(pdf_path: str, structure_name: str, client: OpenAI) -> str:
     """Processa um PDF via GPT-4 Vision e extrai conteúdo textual técnico."""
     try:
-        images = convert_from_path(pdf_path, dpi=150)
+        doc = fitz.open(pdf_path)
+        zoom = 150 / 72.0
+        matrix = fitz.Matrix(zoom, zoom)
+        images = []
+        for pg in doc:
+            pix = pg.get_pixmap(matrix=matrix)
+            images.append(Image.frombytes("RGB", [pix.width, pix.height], pix.samples))
+        doc.close()
     except Exception as e:
         print(f"    ERRO ao converter PDF: {e}")
         return ""

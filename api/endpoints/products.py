@@ -1529,19 +1529,16 @@ async def reprocess_single_page(
     """Reprocessa uma única página do PDF com o prompt melhorado."""
     from database.database import SessionLocal
     from services.document_processor import DocumentProcessor
-    from pdf2image import convert_from_path
     import json
     
     db = SessionLocal()
     try:
         processor = DocumentProcessor()
         
-        images = convert_from_path(file_path, dpi=150, first_page=page_num, last_page=page_num)
-        if not images:
+        image = processor._pdf_page_to_image(file_path, page_num, dpi=150)
+        if not image:
             print(f"[REPROCESS] Erro: não foi possível converter página {page_num}")
             return
-        
-        image = images[0]
         
         result = processor.analyze_page(image, f"Reprocessamento - Página {page_num}")
         
