@@ -79,6 +79,35 @@ async def run_init_background():
         print(f"[SEED] Aviso: {e}")
 
 
+def _apply_incremental_migrations():
+    """
+    Aplica migrações incrementais de schema que o create_all não cobre.
+    Usa ADD COLUMN IF NOT EXISTS (idempotente no PostgreSQL) — seguro para rodar
+    no startup de dev e produção quantas vezes for necessário.
+    """
+    from sqlalchemy import text as sql_text
+    migrations = [
+        # RetrievalLog — campos de observabilidade RAG (adicionados na sprint de melhorias RAG)
+        "ALTER TABLE retrieval_logs ADD COLUMN IF NOT EXISTS intent_detected VARCHAR(50)",
+        "ALTER TABLE retrieval_logs ADD COLUMN IF NOT EXISTS entities_detected TEXT",
+        "ALTER TABLE retrieval_logs ADD COLUMN IF NOT EXISTS composite_score_max FLOAT",
+        "ALTER TABLE retrieval_logs ADD COLUMN IF NOT EXISTS web_search_used BOOLEAN DEFAULT FALSE",
+        "ALTER TABLE retrieval_logs ADD COLUMN IF NOT EXISTS blocks_with_scores TEXT",
+        "ALTER TABLE retrieval_logs ADD COLUMN IF NOT EXISTS is_comparative BOOLEAN DEFAULT FALSE",
+    ]
+    db = SessionLocal()
+    try:
+        for sql in migrations:
+            db.execute(sql_text(sql))
+        db.commit()
+        print(f"[INIT] Migrações incrementais aplicadas: {len(migrations)} instruções")
+    except Exception as e:
+        db.rollback()
+        print(f"[INIT] Aviso: erro em migração incremental: {e}")
+    finally:
+        db.close()
+
+
 def _sync_init_database():
     """Operações síncronas de inicialização do banco (roda em thread separada)."""
     import os
@@ -92,6 +121,12 @@ def _sync_init_database():
         print("[INIT] ALERTA CRÍTICO: App conectado a SQLite! Verifique DATABASE_URL.")
 
     Base.metadata.create_all(bind=engine)
+
+    # MIGRATIONS INCREMENTAIS — colunas novas em tabelas existentes.
+    # create_all não adiciona colunas a tabelas já existentes; fazemos aqui via IF NOT EXISTS.
+    # Seguro para rodar múltiplas vezes: ADD COLUMN IF NOT EXISTS é idempotente no PostgreSQL.
+    if not is_sqlite:
+        _apply_incremental_migrations()
 
     admin_username = os.getenv("ADMIN_USERNAME", "admin")
     admin_password = os.getenv("ADMIN_PASSWORD", "admin123")
