@@ -29,15 +29,19 @@ class _TCPHealthShim(_threading.Thread):
 
     def start_listening(self) -> bool:
         """Tenta bind na porta. Retorna False silenciosamente se já ocupada (dev)."""
+        import sys as _sys
         try:
             self._sock.bind(('0.0.0.0', self._port))
             self._sock.listen(10)
             self._sock.settimeout(0.5)
             self._active = True
             self.start()
-            print(f"[SHIM] Health check shim ativo na porta {self._port}")
+            _sys.stderr.write(f"[SHIM] Health check shim ativo na porta {self._port}\n")
+            _sys.stderr.flush()
             return True
-        except OSError:
+        except OSError as e:
+            _sys.stderr.write(f"[SHIM] Bind falhou na porta {self._port}: {e}\n")
+            _sys.stderr.flush()
             return False
 
     def stop(self):
@@ -87,11 +91,21 @@ async def lifespan(app: FastAPI):
     Gerencia o ciclo de vida da aplicação.
     Yield imediato para responder health checks rápido.
     Inicialização pesada (check_critical_dependencies, banco, seed, queue) roda em background.
+    O shim TCP é parado via background task 10s após o uvicorn subir, eliminando gap de transição.
     """
-    _health_shim.stop()
+    async def _delayed_shim_stop():
+        """Para o shim 10s após o uvicorn estar operacional (evita gap de transição)."""
+        await asyncio.sleep(10)
+        _health_shim.stop()
+        import sys as _sys
+        _sys.stderr.write("[SHIM] Health check shim parado — uvicorn operacional.\n")
+        _sys.stderr.flush()
 
     background_tasks = []
-    
+
+    shim_stop_task = asyncio.create_task(_delayed_shim_stop())
+    background_tasks.append(shim_stop_task)
+
     init_task = asyncio.create_task(run_init_background())
     background_tasks.append(init_task)
     

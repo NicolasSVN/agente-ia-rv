@@ -61,19 +61,27 @@ The application is built using FastAPI with a modular architecture.
 
 **TCP Health Shim + Lazy Router Registration (cold start fix):** O `main.py` usa dois mecanismos combinados para garantir que o health check passe mesmo em containers frios:
 
-1. **TCP Health Shim** (`_TCPHealthShim` — primeiras linhas de `main.py`): Antes de qualquer import pesado, um servidor TCP raw (stdlib `socket` + `threading`) bind na porta 5000 com `SO_REUSEPORT`. Responde HTTP 200 a qualquer request em <1ms. O shim coexiste com o uvicorn via SO_REUSEPORT e é parado no `lifespan` quando o uvicorn está pronto.
+1. **TCP Health Shim** (`_TCPHealthShim` — primeiras linhas de `main.py`): Antes de qualquer import pesado, um servidor TCP raw (stdlib `socket` + `threading`) bind na porta 5000 com `SO_REUSEPORT`. Responde HTTP 200 a qualquer request em <1ms. O shim loga em **stderr** (visível nos logs de deployment). O shim é parado via **background task com delay de 10s** após o lifespan yield, eliminando o gap de transição entre shim e uvicorn.
 
 2. **Lazy Router Registration**: Os 16 módulos de endpoint (`api/endpoints/*.py`) são importados em uma worker thread via `asyncio.to_thread()` dentro de `run_init_background()`, APÓS o uvicorn já estar respondendo. Rotas ficam disponíveis ~10-25s após o uvicorn subir.
 
+3. **Rota `/health` no nível do app** (não via lazy router): Registrada antes do lifespan, retorna `{"status":"ok"}` instantaneamente sem dependências. Ideal para o health check do deployment.
+
 **Timeline em produção (cold start):**
-- t=0s: Python inicia → shim bind() → health checks recebem 200 ✅
-- t=12s: Imports compilados → uvicorn bind (SO_REUSEPORT coexiste com shim)
-- t=14s: lifespan → shim.stop() → uvicorn exclusivo
-- t=25s: Routers registrados em background → app completo
+- t=0s: Python inicia → shim bind(5000) → stderr: `[SHIM] Health check shim ativo` ✅
+- t=0s: Health checks chegam → shim responde 200 ✅
+- t=12s: Imports compilados
+- t=14s: Uvicorn cria servidor (SO_REUSEPORT coexiste com shim)
+- t=14s: Lifespan yield → background tasks iniciam (`_delayed_shim_stop` aguarda 10s)
+- t=14-24s: OS load-balances entre shim e uvicorn → ambos retornam 200, zero gap ✅
+- t=24s: `_delayed_shim_stop` para o shim → stderr: `[SHIM] Health check shim parado` ✅
+- t=25s+: Apenas uvicorn → routers disponíveis → app completo ✅
 
 - **Não reverter este padrão**: importar os endpoints no top-level de `main.py` volta o cold start para 25s e quebra o health check.
+- **`_health_shim.stop()` deve ser em background task com delay**: chamá-lo antes do `yield` cria gap de transição onde o port fica temporariamente sem listener.
 - Rotas `/`, `/health`, arquivos estáticos e middleware de segurança são configurados no top-level (instantâneos).
 - `SESSION_SECRET` é obrigatória em produção: assina os JWTs emitidos após SSO Microsoft. Deve estar nos Secrets do Replit.
+- **`healthcheckPath`** no `.replit` é protegido e não pode ser editado via código. O health check usa `/` por padrão (retorna 200 com a página de login).
 
 **Resiliência de upload:**
 - `_resume_interrupted_uploads()` roda no startup: detecta materiais com `processing_status=processing/pending` e re-enfileira para retomada
