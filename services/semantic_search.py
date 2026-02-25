@@ -159,6 +159,25 @@ class TokenExtractor:
         'comparar', 'comparativo', 'versus', 'vs', 'melhor', 'pior',
         'ranking', 'top', 'mais', 'menos'
     }
+
+    TEMPORAL_KEYWORDS = {
+        'ultimo', 'ultima', 'recente', 'recentes', 'atual', 'atuais',
+        'hoje', 'esse mes', 'este mes', 'esse mês', 'este mês',
+        'mais recente', 'mais recentes', 'agora', 'vigente', 'vigentes',
+        'ultima carta', 'ultimo relatorio', 'ultimo one pager',
+    }
+
+    COMPARATIVE_KEYWORDS = {
+        'comparar', 'compare', 'comparativo', 'diferenca', 'diferença',
+        'versus', 'vs', 'ou', 'entre', 'melhor entre', 'qual melhor',
+        'qual é melhor', 'diferenca entre', 'diferença entre',
+    }
+
+    RANKING_KEYWORDS = {
+        'melhor', 'pior', 'maior', 'menor', 'top', 'ranking',
+        'mais alto', 'mais baixo', 'mais rentavel', 'mais rentável',
+        'maior dy', 'maior dividend', 'menor pvp', 'menor p/vp',
+    }
     
     @classmethod
     def extract(cls, query: str) -> ExtractedTokens:
@@ -194,6 +213,41 @@ class TokenExtractor:
         tokens.possible_fund_names = cls._extract_fund_names(query, tokens)
         
         return tokens
+
+    @classmethod
+    def detect_query_intent(cls, query: str, tokens: 'ExtractedTokens') -> str:
+        """
+        Detecta o tipo de intenção da query para guiar re-ranking.
+
+        Returns:
+            'comparative' - múltiplos produtos / palavras de comparação
+            'temporal'    - palavras de tempo / recência
+            'ranking'     - melhor, maior, top, etc.
+            'numeric'     - pergunta de dado numérico específico
+            'conceptual'  - pergunta conceitual/geral
+        """
+        query_norm = QueryNormalizer.normalize_for_comparison(query)
+
+        if len(tokens.possible_tickers) >= 2:
+            return 'comparative'
+
+        for kw in cls.COMPARATIVE_KEYWORDS:
+            if kw in query_norm:
+                return 'comparative'
+
+        for kw in cls.TEMPORAL_KEYWORDS:
+            if kw in query_norm:
+                return 'temporal'
+
+        for kw in cls.RANKING_KEYWORDS:
+            if kw in query_norm:
+                return 'ranking'
+
+        for kw in cls.FINANCIAL_KEYWORDS:
+            if kw in query_norm:
+                return 'numeric'
+
+        return 'conceptual'
     
     @classmethod
     def _extract_gestoras(cls, query: str) -> List[str]:
@@ -670,7 +724,8 @@ class CompositeScorer:
         cls,
         results: List[Dict],
         tokens: ExtractedTokens,
-        context: Optional[ConversationContext] = None
+        context: Optional[ConversationContext] = None,
+        query_intent: str = 'conceptual'
     ) -> List[SearchResult]:
         """
         Calcula scores compostos para uma lista de resultados.
@@ -679,6 +734,7 @@ class CompositeScorer:
             results: Resultados da busca vetorial
             tokens: Tokens extraídos da query
             context: Contexto da conversa (opcional)
+            query_intent: Tipo de intenção da query (numeric, temporal, comparative, ranking, conceptual)
             
         Returns:
             Lista de SearchResult com scores calculados
@@ -696,6 +752,8 @@ class CompositeScorer:
             vector_score = max(0, 1.0 - distance)
             
             metadata = r.get('metadata', {})
+
+            # Para queries temporais, aumentar peso de recência de 5% para 25%
             recency_score = cls._calculate_recency_score(metadata)
             
             result = SearchResult(
@@ -732,10 +790,61 @@ class CompositeScorer:
             result.fuzzy_score = min(1.0, result.fuzzy_score)
             
             result.calculate_composite_score()
+
+            # BOOST ORIENTADO POR INTENÇÃO — aplicado APÓS o composite score base
+            intent_boost = cls._calculate_intent_boost(result, query_intent)
+            result.composite_score = min(1.0, result.composite_score + intent_boost)
+
+            # Para queries temporais, re-calcular com peso maior de recência
+            if query_intent == 'temporal':
+                temporal_score = (
+                    result.vector_score * 0.35 +
+                    result.fuzzy_score * 0.15 +
+                    (0.10 if result.ticker_match else 0.0) +
+                    (0.08 if result.gestora_match else 0.0) +
+                    (0.07 if result.context_match else 0.0) +
+                    result.recency_score * 0.25
+                )
+                result.composite_score = min(1.0, temporal_score + intent_boost)
+
             scored_results.append(result)
         
         scored_results.sort(key=lambda x: x.composite_score, reverse=True)
         return scored_results
+
+    @classmethod
+    def _calculate_intent_boost(cls, result: 'SearchResult', query_intent: str) -> float:
+        """
+        Calcula boost adicional baseado na intenção detectada da query.
+
+        Para numeric: blocos com tabelas e dados numéricos recebem boost.
+        Para temporal: documentos mais recentes recebem boost extra (tratado no caller).
+        Para ranking: blocos de múltiplos produtos recebem boost.
+        """
+        boost = 0.0
+        block_type = result.metadata.get('block_type', '').lower()
+        topic = result.metadata.get('topic', '').lower()
+        content_lower = result.content.lower()
+
+        if query_intent == 'numeric':
+            # Tabelas e blocos com dados numéricos são prioritários
+            if block_type in ('table', 'key_metrics', 'chart'):
+                boost += 0.15
+            # Blocos com tópico de dividendos/performance têm bônus extra para queries numéricas
+            if topic in ('dividendos', 'performance', 'rentabilidade'):
+                boost += 0.08
+            # Conteúdo com % ou números explícitos
+            if any(c in content_lower for c in ['%', 'dy', 'p/vp', 'pvp', 'dividend', 'yield']):
+                boost += 0.05
+
+        elif query_intent == 'ranking':
+            # Blocos de múltiplos produtos ou comparativos
+            if topic in ('comparativo', 'ranking', 'performance'):
+                boost += 0.10
+            if block_type == 'table':
+                boost += 0.08
+
+        return boost
     
     @staticmethod
     def _calculate_recency_score(metadata: Dict) -> float:
@@ -917,13 +1026,19 @@ class EnhancedSearch:
             similarity_threshold: Threshold de similaridade
             
         Returns:
-            Lista de SearchResult ordenados por score composto
+            Lista de SearchResult ordenados por score composto.
+            Cada SearchResult tem atributo extra_meta['query_intent'] e
+            extra_meta['is_comparative'] para uso downstream.
         """
         import time
         start_time = time.time()
         
         tokens = TokenExtractor.extract(query)
         normalized_query = QueryNormalizer.normalize(query)
+
+        # DETECÇÃO DE INTENÇÃO DA QUERY — antes de qualquer busca
+        query_intent = TokenExtractor.detect_query_intent(query, tokens)
+        is_comparative = query_intent == 'comparative'
         
         context = None
         if conversation_id:
@@ -936,12 +1051,29 @@ class EnhancedSearch:
         
         all_results = []
         seen_ids = set()
+
+        # BUSCA MULTI-ENTIDADE PARA QUERIES COMPARATIVAS
+        # Para "compare MANA11 com LIFE11": busca separada por entidade,
+        # garantindo representação equilibrada de cada produto no contexto.
+        if is_comparative and len(tokens.possible_tickers) >= 2:
+            results_per_entity = max(3, n_results // len(tokens.possible_tickers))
+            for ticker in tokens.possible_tickers[:3]:
+                entity_results = self.vector_store.search_by_product(ticker, n_results=results_per_entity)
+                for r in entity_results:
+                    doc_id = r.get('metadata', {}).get('block_id', r.get('content', '')[:50])
+                    if doc_id not in seen_ids:
+                        seen_ids.add(doc_id)
+                        r['distance'] = r.get('distance', 0.1)
+                        r['entity_source'] = ticker
+                        all_results.append(r)
+            print(f"[EnhancedSearch] Comparativa detectada: {tokens.possible_tickers} | {len(all_results)} blocos multi-entidade")
         
         for q in expanded_queries[:3]:
             results = self.vector_store.search(
                 query=q,
                 n_results=n_results * 2,
-                similarity_threshold=similarity_threshold
+                similarity_threshold=similarity_threshold,
+                query_type=query_intent
             )
             for r in results:
                 doc_id = r.get('metadata', {}).get('block_id', r.get('content', '')[:50])
@@ -949,7 +1081,7 @@ class EnhancedSearch:
                     seen_ids.add(doc_id)
                     all_results.append(r)
         
-        if tokens.possible_tickers:
+        if tokens.possible_tickers and not is_comparative:
             for ticker in tokens.possible_tickers[:2]:
                 ticker_results = self.vector_store.search_by_product(ticker, n_results=5)
                 for r in ticker_results:
@@ -990,11 +1122,24 @@ class EnhancedSearch:
                             all_results.append(r)
                             fallback_used = True
         
-        scored_results = CompositeScorer.score_results(all_results, tokens, context)
+        # COMPOSITE SCORING com boost orientado por intenção
+        scored_results = CompositeScorer.score_results(all_results, tokens, context, query_intent=query_intent)
         
-        final_results = scored_results[:n_results]
+        # Para comparativas: garantir pelo menos 1 bloco por entidade no resultado final
+        if is_comparative and len(tokens.possible_tickers) >= 2:
+            final_results = self._ensure_entity_coverage(scored_results, tokens.possible_tickers, n_results)
+        else:
+            final_results = scored_results[:n_results]
         
+        # Anotar metadata de intent em cada resultado para uso no agente
+        for r in final_results:
+            if not hasattr(r, 'extra_meta'):
+                r.extra_meta = {}
+            r.extra_meta['query_intent'] = query_intent
+            r.extra_meta['is_comparative'] = is_comparative
+
         duration_ms = (time.time() - start_time) * 1000
+        print(f"[EnhancedSearch] query_intent={query_intent} | {len(final_results)} resultados | {duration_ms:.0f}ms")
         SearchAuditLog.log_search(
             original_query=query,
             normalized_query=normalized_query,
@@ -1023,6 +1168,52 @@ class EnhancedSearch:
             )
         
         return final_results
+
+    def _ensure_entity_coverage(
+        self,
+        scored_results: List[SearchResult],
+        tickers: List[str],
+        n_results: int
+    ) -> List[SearchResult]:
+        """
+        Para queries comparativas, garante que cada ticker tenha ao menos
+        1 bloco no resultado final. Preenche lacunas com os blocos de maior
+        score do ticker faltante, mesmo que estejam abaixo do corte normal.
+        """
+        covered = {t: False for t in tickers[:3]}
+        final: List[SearchResult] = []
+
+        for r in scored_results:
+            products_meta = r.metadata.get('products', '').upper()
+            for t in covered:
+                if t in products_meta:
+                    covered[t] = True
+            final.append(r)
+            if len(final) >= n_results and all(covered.values()):
+                break
+
+        # Preencher tickers não cobertos
+        if not all(covered.values()):
+            for t, is_covered in covered.items():
+                if not is_covered:
+                    extra = self.vector_store.search_by_product(t, n_results=2)
+                    for r in extra:
+                        doc_id = r.get('metadata', {}).get('block_id', r.get('content', '')[:50])
+                        if doc_id not in {
+                            res.metadata.get('block_id', res.content[:50]) for res in final
+                        }:
+                            sr = SearchResult(
+                                content=r.get('content', ''),
+                                metadata=r.get('metadata', {}),
+                                vector_distance=r.get('distance', 0.3),
+                                vector_score=max(0, 1.0 - r.get('distance', 0.3)),
+                                source='entity_coverage_fallback'
+                            )
+                            sr.calculate_composite_score()
+                            final.append(sr)
+                            break
+
+        return final[:n_results]
     
     def get_search_stats(self) -> Dict:
         """Retorna estatísticas de busca."""

@@ -489,6 +489,14 @@
                                     <span class="value" id="lastIntent">-</span>
                                 </div>
                                 <div class="info-item">
+                                    <span class="label">Tipo de Query</span>
+                                    <span class="value" id="lastQueryType">-</span>
+                                </div>
+                                <div class="info-item">
+                                    <span class="label">Entidades</span>
+                                    <span class="value" id="lastEntities">-</span>
+                                </div>
+                                <div class="info-item">
                                     <span class="label">Criaria Ticket?</span>
                                     <span class="value" id="lastTicket">-</span>
                                 </div>
@@ -678,6 +686,12 @@
 
                     document.getElementById("lastIntent").textContent =
                         data.intent || "question";
+                    document.getElementById("lastQueryType").textContent =
+                        data.query_type || "-";
+                    document.getElementById("lastEntities").textContent =
+                        (data.entities_detected && data.entities_detected.length > 0)
+                            ? data.entities_detected.join(", ")
+                            : "-";
                     document.getElementById("lastTicket").textContent =
                         data.should_create_ticket ? "Sim" : "Nao";
                     document.getElementById("lastTicket").className =
@@ -727,15 +741,26 @@
                 }
 
                 list.innerHTML = documents
-                    .map(
-                        (doc) => `
-                <div class="knowledge-item">
-                    <div class="title">${doc.title}</div>
-                    ${doc.category ? `<span class="category">${doc.category}</span>` : ""}
-                    <div class="preview">${doc.content_preview}</div>
-                </div>
-            `,
-                    )
+                    .map((doc) => {
+                        const score = doc.composite_score != null
+                            ? `<span style="font-size:0.75rem;font-weight:600;color:${doc.composite_score >= 0.7 ? '#16a34a' : doc.composite_score >= 0.5 ? '#d97706' : '#dc2626'};margin-left:6px;">Score: ${doc.composite_score.toFixed(2)}</span>`
+                            : '';
+                        const blockBadge = doc.block_type
+                            ? `<span style="font-size:0.7rem;background:#e0e7ff;color:#3730a3;border-radius:4px;padding:1px 5px;margin-left:4px;">${doc.block_type}</span>`
+                            : '';
+                        const productBadge = doc.product
+                            ? `<span style="font-size:0.7rem;background:#f0fdf4;color:#166534;border-radius:4px;padding:1px 5px;margin-left:4px;">${doc.product}</span>`
+                            : '';
+                        return `
+                            <div class="knowledge-item">
+                                <div class="title" style="display:flex;align-items:center;flex-wrap:wrap;gap:2px;">
+                                    <span>${doc.title}</span>${score}${blockBadge}${productBadge}
+                                </div>
+                                ${doc.category ? `<span class="category">${doc.category}</span>` : ""}
+                                <div class="preview">${doc.content_preview}</div>
+                            </div>
+                        `;
+                    })
                     .join("");
             }
 
@@ -764,6 +789,8 @@
                         </div>
                     `;
                         document.getElementById("lastIntent").textContent = "-";
+                        document.getElementById("lastQueryType").textContent = "-";
+                        document.getElementById("lastEntities").textContent = "-";
                         document.getElementById("lastTicket").textContent = "-";
                         document.getElementById("lastTicket").className =
                             "value";

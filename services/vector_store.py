@@ -463,7 +463,7 @@ class VectorStore:
         return 'conceptual'
     
     def search(self, query: str, n_results: int = 3, product_filter: str = None, 
-               similarity_threshold: float = 1.5) -> List[dict]:
+               similarity_threshold: float = 1.5, query_type: str = None) -> List[dict]:
         """
         Busca documentos relevantes para a consulta usando ranking híbrido inteligente.
         
@@ -484,6 +484,9 @@ class VectorStore:
             n_results: Número máximo de resultados
             product_filter: Filtrar por produto específico (opcional)
             similarity_threshold: Threshold máximo de distância (default 1.5)
+            query_type: Tipo de query detectado upstream ('temporal', 'numeric', etc.)
+                        Para 'temporal': SQL ordena primeiramente por created_at DESC
+                        antes do composite scorer aplicar recency_weight=0.25
             
         Returns:
             Lista de documentos relevantes com scores
@@ -535,23 +538,40 @@ class VectorStore:
         else:
             query_embedding = self._generate_embedding(query)
         
-        query_type = self._classify_query_type(query)
+        # Usar query_type passado upstream (EnhancedSearch) ou detectar localmente como fallback
+        effective_query_type = query_type or self._classify_query_type(query)
         
         fetch_count = n_results * 3
-        
+        # Para queries temporais, buscar mais candidatos para garantir cobertura
+        # de documentos recentes que podem ter score vetorial levemente menor
+        if effective_query_type == 'temporal':
+            fetch_count = n_results * 5
+
         embedding_str = '[' + ','.join(str(x) for x in query_embedding) + ']'
-        
+
+        # Para queries temporais: ORDER BY mistura distância vetorial e created_at
+        # para dar peso extra a documentos recentes sem descartar relevância semântica.
+        # Usa-se um score combinado: 0.7 * distância vetorial + 0.3 * penalização de idade
+        if effective_query_type == 'temporal':
+            order_clause = (
+                "(embedding <=> :query_vec) * 0.7 + "
+                "GREATEST(0, EXTRACT(EPOCH FROM (NOW() - created_at)) / 86400.0 / 365.0) * 0.3"
+            )
+            print(f"[VECTOR_STORE] Modo temporal: ORDER BY híbrido vetorial+recência")
+        else:
+            order_clause = "embedding <=> :query_vec"
+
         db = SessionLocal()
         try:
             if product_filter:
                 try:
                     rows = db.execute(sql_text(
-                        "SELECT *, (embedding <=> :query_vec) as distance "
-                        "FROM document_embeddings "
-                        "WHERE product_ticker = :product_filter "
+                        f"SELECT *, (embedding <=> :query_vec) as distance "
+                        f"FROM document_embeddings "
+                        f"WHERE product_ticker = :product_filter "
                         f"{PUBLISH_STATUS_FILTER} "
-                        "ORDER BY embedding <=> :query_vec "
-                        "LIMIT :fetch_count"
+                        f"ORDER BY {order_clause} "
+                        f"LIMIT :fetch_count"
                     ), {
                         'query_vec': embedding_str,
                         'product_filter': product_filter.upper(),
@@ -560,27 +580,27 @@ class VectorStore:
                 except Exception as e:
                     print(f"[VECTOR_STORE] Erro com filtro, buscando sem filtro: {e}")
                     rows = db.execute(sql_text(
-                        "SELECT *, (embedding <=> :query_vec) as distance "
-                        "FROM document_embeddings "
+                        f"SELECT *, (embedding <=> :query_vec) as distance "
+                        f"FROM document_embeddings "
                         f"WHERE 1=1 {PUBLISH_STATUS_FILTER} "
-                        "ORDER BY embedding <=> :query_vec "
-                        "LIMIT :fetch_count"
+                        f"ORDER BY {order_clause} "
+                        f"LIMIT :fetch_count"
                     ), {
                         'query_vec': embedding_str,
                         'fetch_count': fetch_count
                     }).fetchall()
             else:
                 rows = db.execute(sql_text(
-                    "SELECT *, (embedding <=> :query_vec) as distance "
-                    "FROM document_embeddings "
+                    f"SELECT *, (embedding <=> :query_vec) as distance "
+                    f"FROM document_embeddings "
                     f"WHERE 1=1 {PUBLISH_STATUS_FILTER} "
-                    "ORDER BY embedding <=> :query_vec "
-                    "LIMIT :fetch_count"
+                    f"ORDER BY {order_clause} "
+                    f"LIMIT :fetch_count"
                 ), {
                     'query_vec': embedding_str,
                     'fetch_count': fetch_count
                 }).fetchall()
-            print(f"[VECTOR_STORE] SQL retornou {len(rows)} rows (fetch_count={fetch_count})")
+            print(f"[VECTOR_STORE] SQL retornou {len(rows)} rows (fetch_count={fetch_count}, query_type={effective_query_type})")
         finally:
             db.close()
         
@@ -774,7 +794,13 @@ class VectorStore:
         total_candidates: int,
         threshold: float,
         conversation_id: str = None,
-        user_id: int = None
+        user_id: int = None,
+        intent_detected: str = None,
+        entities_detected: list = None,
+        composite_score_max: float = None,
+        web_search_used: bool = False,
+        blocks_with_scores: list = None,
+        is_comparative: bool = False
     ) -> None:
         """
         Loga a busca para observabilidade.
@@ -790,7 +816,7 @@ class VectorStore:
         min_dist = min([r.get("distance", 1.0) for r in results]) if results else None
         max_dist = max([r.get("distance", 1.0) for r in results]) if results else None
         
-        print(f"[RETRIEVAL] Query: '{query[:50]}' | Type: {query_type} | Results: {len(results)}/{total_candidates} | Products: {products[:3]} | Distances: {distances[:3]}")
+        print(f"[RETRIEVAL] Query: '{query[:50]}' | Type: {query_type} | Intent: {intent_detected} | Entities: {entities_detected} | Results: {len(results)}/{total_candidates} | Products: {products[:3]} | MaxScore: {composite_score_max}")
         
         try:
             from database.database import SessionLocal
@@ -807,7 +833,13 @@ class VectorStore:
                     max_distance=f"{max_dist:.4f}" if max_dist else None,
                     threshold_applied=f"{threshold:.2f}",
                     conversation_id=conversation_id,
-                    user_id=user_id
+                    user_id=user_id,
+                    intent_detected=intent_detected,
+                    entities_detected=json.dumps(entities_detected or []),
+                    composite_score_max=composite_score_max,
+                    web_search_used=web_search_used,
+                    blocks_with_scores=json.dumps(blocks_with_scores or []),
+                    is_comparative=is_comparative
                 )
                 db.add(log_entry)
                 db.commit()

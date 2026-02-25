@@ -1035,7 +1035,7 @@ class RetrievalLog(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     query = Column(Text, nullable=False)
-    query_type = Column(String(50), nullable=True)  # numeric, conceptual, ticker, etc.
+    query_type = Column(String(50), nullable=True)  # numeric, conceptual, ticker, comparative, temporal, ranking
     chunks_retrieved = Column(Text, nullable=True)  # JSON array de chunk IDs
     chunks_used = Column(Text, nullable=True)  # JSON array de chunks efetivamente usados
     chunk_versions = Column(Text, nullable=True)  # JSON dict {chunk_id: version}
@@ -1050,6 +1050,13 @@ class RetrievalLog(Base):
     conversation_id = Column(String(100), nullable=True)
     response_time_ms = Column(Integer, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    # Campos de observabilidade adicionados para diagnóstico de qualidade
+    intent_detected = Column(String(50), nullable=True)       # intent macro (DOCUMENTAL, PITCH, etc.)
+    entities_detected = Column(Text, nullable=True)           # JSON: ["MANA11", "LIFE11"]
+    composite_score_max = Column(Float, nullable=True)        # maior composite_score retornado
+    web_search_used = Column(Boolean, default=False)          # se web search foi ativada
+    blocks_with_scores = Column(Text, nullable=True)          # JSON: [{block_id, score, block_type}]
+    is_comparative = Column(Boolean, default=False)           # se foi query comparativa multi-entidade
     
     user = relationship("User", foreign_keys=[user_id])
 
