@@ -1,0 +1,101 @@
+Sobre os 169 embeddings órfãos — vamos com a Opção A (UPDATE SQL),
+mas em três etapas. Não execute nada sem confirmar cada etapa.
+
+ETAPA 1 — Validação antes do update (obrigatória):
+
+Confirme que o mapeamento entre doc_id e produto está correto.
+O doc_id tem formato "product_block_{block_id}". Precisamos garantir
+que o bloco referenciado pertence ao produto certo antes de atualizar.
+
+Execute:
+SELECT
+    de.id,
+    de.doc_id,
+    de.product_ticker as ticker_errado,
+    de.title,
+    cb.id as block_id,
+    m.name as material_nome,
+    p.ticker as ticker_correto,
+    p.name as produto_correto
+FROM document_embeddings de
+JOIN content_blocks cb ON de.doc_id = 'product_block_' || cb.id::text
+JOIN materials m ON cb.material_id = m.id
+JOIN products p ON m.product_id = p.id
+WHERE de.product_ticker = '__SYSTEM_UNASSIGNED__'
+LIMIT 20;
+
+Mostre o resultado completo. Preciso confirmar que para cada
+embedding órfão, o produto correto foi identificado via JOIN.
+Se alguma linha retornar ticker_correto = NULL ou produto fantasma,
+pare e me informe antes de continuar.
+
+---
+
+ETAPA 2 — UPDATE SQL (só execute após validar Etapa 1):
+
+UPDATE document_embeddings de
+SET
+    product_ticker = p.ticker,
+    product_name   = p.name,
+    gestora        = COALESCE(p.gestora, de.gestora),
+    category       = COALESCE(p.category, de.category)
+FROM content_blocks cb
+JOIN materials m ON cb.material_id = m.id
+JOIN products p ON m.product_id = p.id
+WHERE de.doc_id = 'product_block_' || cb.id::text
+  AND de.product_ticker = '__SYSTEM_UNASSIGNED__';
+
+Após executar, mostre:
+SELECT product_ticker, COUNT(*) 
+FROM document_embeddings 
+GROUP BY product_ticker 
+ORDER BY count DESC;
+
+O ticker '__SYSTEM_UNASSIGNED__' deve ter desaparecido ou ter
+contagem zero.
+
+---
+
+ETAPA 3 — Validação pós-update:
+
+Faça uma busca de teste direta no vector store para confirmar:
+
+SELECT product_ticker, product_name, COUNT(*) as embeddings
+FROM document_embeddings
+GROUP BY product_ticker, product_name
+ORDER BY embeddings DESC;
+
+Os 7 fundos (LIFE11, LVBI11, MCRE11, PCIP11, RZAT11, TVRI11, VGHF11)
+devem aparecer com seus embeddings corretamente associados.
+
+---
+
+PREVENÇÃO FUTURA — Expandir _resolve_orphan_materials():
+
+Após confirmar que o update funcionou, adicione ao código da função
+_resolve_orphan_materials() em main.py a atualização dos embeddings
+no vector store, para que isso não volte a acontecer automaticamente:
+
+async def _resolve_orphan_materials(db: Session):
+    """Resolve materiais sem produto associado e corrige embeddings."""
+    # ... código existente de resolução de produto ...
+    
+    # NOVO: Após resolver o produto, atualiza embeddings órfãos
+    if product_resolved:
+        updated = db.execute("""
+            UPDATE document_embeddings de
+            SET
+                product_ticker = :ticker,
+                product_name   = :name
+            FROM content_blocks cb
+            JOIN materials m ON cb.material_id = m.id
+            WHERE de.doc_id = 'product_block_' || cb.id::text
+              AND m.id = :material_id
+              AND de.product_ticker = '__SYSTEM_UNASSIGNED__'
+        """, {"ticker": product.ticker, "name": product.name,
+               "material_id": material.id})
+        
+        logger.info(
+            f"[ORPHAN] Material {material.id} resolvido → "
+            f"{product.ticker} | {updated.rowcount} embeddings atualizados"
+        )
