@@ -52,12 +52,15 @@ class _TCPHealthShim(_threading.Thread):
             pass
 
     def run(self):
+        import time as _time
         while self._active:
             try:
-                conn, _ = self._sock.accept()
+                conn, addr = self._sock.accept()
+                print(f"[SHIM] Conexão aceita de {addr} em {_time.time_ns()//1_000_000}ms", flush=True)
                 try:
                     conn.recv(2048)
                     conn.sendall(self._HTTP_200)
+                    print(f"[SHIM] Resposta enviada para {addr}", flush=True)
                 except Exception:
                     pass
                 finally:
@@ -661,6 +664,21 @@ app = FastAPI(
 
 from core.security_middleware import setup_security
 setup_security(app)
+
+@app.middleware("http")
+async def log_all_requests(request: Request, call_next):
+    import time
+    start = time.time()
+    print(
+        f"[ACCESS] {request.method} {request.url.path} "
+        f"from {request.client.host if request.client else 'unknown'} "
+        f"headers={dict(request.headers)}",
+        flush=True
+    )
+    response = await call_next(request)
+    duration = (time.time() - start) * 1000
+    print(f"[ACCESS] → {response.status_code} ({duration:.0f}ms)", flush=True)
+    return response
 
 # Configura templates Jinja2 (auto_reload=True evita cache de templates)
 templates = Jinja2Templates(directory="frontend/templates")
