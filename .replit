@@ -4,7 +4,42 @@ expertMode = true
 
 [nix]
 channel = "stable-25_05"
-packages = ["cairo", "cargo", "ffmpeg-full", "file", "freetype", "ghostscript", "glibcLocales", "gobject-introspection", "gtk3", "gumbo", "harfbuzz", "jbig2dec", "lcms2", "libiconv", "libimagequant", "libjpeg", "libjpeg_turbo", "libtiff", "libwebp", "libxcrypt", "mupdf", "openjpeg", "pkg-config", "poppler", "poppler_utils", "postgresql", "qhull", "rustc", "swig", "tcl", "tk", "xcbuild", "xcodebuild", "zlib"]
+packages = [
+  "cairo",
+  "cargo",
+  "ffmpeg-full",
+  "file",
+  "freetype",
+  "ghostscript",
+  "glibcLocales",
+  "gobject-introspection",
+  "gtk3",
+  "gumbo",
+  "harfbuzz",
+  "jbig2dec",
+  "lcms2",
+  "libiconv",
+  "libimagequant",
+  "libjpeg",
+  "libjpeg_turbo",
+  "libtiff",
+  "libwebp",
+  "libxcrypt",
+  "mupdf",
+  "openjpeg",
+  "pkg-config",
+  "poppler",
+  "poppler_utils",
+  "postgresql",
+  "qhull",
+  "rustc",
+  "swig",
+  "tcl",
+  "tk",
+  "xcbuild",
+  "xcodebuild",
+  "zlib",
+]
 
 [workflows]
 runButton = "Project"
@@ -34,13 +69,10 @@ outputType = "webview"
 localPort = 5000
 externalPort = 80
 
-[[ports]]
-localPort = 9876
-externalPort = 3000
-
 [deployment]
 deploymentTarget = "vm"
 run = ["python", "main.py"]
+healthcheckPath = "/health"
 
 [userenv]
 
