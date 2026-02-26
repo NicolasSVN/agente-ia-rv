@@ -181,6 +181,43 @@ class GlobalAuthMiddleware(BaseHTTPMiddleware):
 
         payload = decode_token(token)
         if not payload:
+            refresh_token = request.cookies.get("refresh_token")
+            if refresh_token:
+                refresh_payload = decode_token(refresh_token, expected_type="refresh")
+                if refresh_payload:
+                    try:
+                        from core.security import create_access_token, revoke_token
+                        new_access_token = create_access_token({
+                            "sub": refresh_payload.get("sub"),
+                            "user_id": refresh_payload.get("user_id"),
+                        })
+                        old_jti = None
+                        try:
+                            from jose import jwt as jwt_lib
+                            old_payload = jwt_lib.decode(token, options={"verify_signature": False, "verify_exp": False})
+                            old_jti = old_payload.get("jti")
+                            if old_jti:
+                                old_exp = old_payload.get("exp")
+                                if old_exp:
+                                    revoke_token(old_jti, datetime.utcfromtimestamp(old_exp))
+                        except Exception:
+                            pass
+
+                        response = await call_next(request)
+
+                        is_prod = bool(os.getenv("REPL_DEPLOYMENT") or os.getenv("REPLIT_DEPLOYMENT"))
+                        response.set_cookie(
+                            key="access_token",
+                            value=new_access_token,
+                            httponly=True,
+                            secure=is_prod,
+                            samesite="lax",
+                            max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+                        )
+                        return response
+                    except Exception as e:
+                        security_logger.error(f"Token refresh failed: {e}")
+
             if request.url.path.startswith("/api/"):
                 return JSONResponse(
                     status_code=401,

@@ -548,7 +548,7 @@ POSITIVE_CONFIRMATION_PATTERNS = [
     r'^(era isso|só isso|era só isso|só isso mesmo)$',
     r'^(resolvido|resolveu|conseguiu|ajudou)$',
     r'^(tudo certo|tá certo|tá bom|pode ser|tranquilo|suave)$',
-    r'^(\u{1F44D}|\u{1F44C}|\u{2705}|\u{1F64F}|\u{1F60A}|\u{1F389})$',  # thumbs up, ok, check, thanks, smile, party
+    r'^(👍|👌|✅|🙏|😊|🎉)$',
     r'^(por enquanto é isso|por agora sim|agora sim)$',
     r'^(massa|dahora|boa|boua|nice|show de bola)$',
 ]

@@ -243,6 +243,30 @@ def _build_global_context_for_block(material, product) -> str:
     
     return "\n".join(parts)
 
+def auto_publish_if_ready(material, db: Session):
+    pending_count = db.query(ContentBlock).filter(
+        ContentBlock.material_id == material.id,
+        ContentBlock.status == ContentBlockStatus.PENDING_REVIEW.value
+    ).count()
+    if pending_count == 0 and material.publish_status in (None, "rascunho"):
+        material.publish_status = "publicado"
+        db.commit()
+        total_blocks = db.query(ContentBlock).filter(
+            ContentBlock.material_id == material.id,
+            ContentBlock.status.in_([
+                ContentBlockStatus.AUTO_APPROVED.value,
+                ContentBlockStatus.APPROVED.value
+            ])
+        ).all()
+        product = db.query(Product).filter(Product.id == material.product_id).first()
+        if product and total_blocks:
+            for block in total_blocks:
+                reindex_block(block, db)
+        print(f"[AUTO_PUBLISH] Material {material.id} '{material.name}' auto-publicado ({len(total_blocks)} blocos reindexados)")
+        return True
+    return False
+
+
 UPLOAD_DIR = "uploads/materials"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
@@ -953,6 +977,7 @@ async def approve_block(
                 product_ticker=product.ticker,
                 db=db
             )
+        auto_publish_if_ready(material, db)
     
     return {"success": True, "status": block.status}
 
@@ -1018,6 +1043,7 @@ async def bulk_approve_blocks(
                     product_ticker=product.ticker,
                     db=db
                 )
+            auto_publish_if_ready(material, db)
     
     return {
         "success": True,

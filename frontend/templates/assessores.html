@@ -1208,12 +1208,12 @@
         });
 
         function openUploadModal() {
-            document.getElementById('upload-modal').classList.add('show');
+            document.getElementById('upload-modal').classList.add('active');
             resetUpload();
         }
 
         function closeUploadModal() {
-            document.getElementById('upload-modal').classList.remove('show');
+            document.getElementById('upload-modal').classList.remove('active');
         }
 
         function resetUpload() {
@@ -1422,12 +1422,12 @@
         }
 
         function openCustomFieldsModal() {
-            document.getElementById('custom-fields-modal').classList.add('show');
+            document.getElementById('custom-fields-modal').classList.add('active');
             renderCustomFields();
         }
 
         function closeCustomFieldsModal() {
-            document.getElementById('custom-fields-modal').classList.remove('show');
+            document.getElementById('custom-fields-modal').classList.remove('active');
         }
 
         document.getElementById('custom-field-form').addEventListener('submit', async (e) => {

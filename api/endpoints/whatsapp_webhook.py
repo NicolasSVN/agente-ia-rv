@@ -1105,15 +1105,6 @@ async def process_text_message(phone: str, message: str, db: Session, message_re
         print(f"[WEBHOOK] Erro ao processar mensagem: {e}")
         import traceback
         traceback.print_exc()
-        
-        if not response_sent_successfully:
-            error_msg = (
-                "Desculpe, ocorreu um erro ao processar sua mensagem. "
-                "Por favor, tente novamente mais tarde ou entre em contato com seu assessor."
-            )
-            await zapi_client.send_text(phone, error_msg)
-        else:
-            print(f"[WEBHOOK] Resposta já enviada com sucesso, não enviando mensagem de erro ao usuário")
 
 
 async def process_audio_message(phone: str, media_url: str, db: Session, message_record: WhatsAppMessage = None, conversation: Conversation = None):
@@ -1155,12 +1146,6 @@ async def process_audio_message(phone: str, media_url: str, db: Session, message
         print(f"[WEBHOOK] Erro ao processar áudio: {e}")
         import traceback
         traceback.print_exc()
-        
-        response = (
-            "Recebi seu áudio, mas ocorreu um erro no processamento. "
-            "Por favor, tente enviar sua mensagem por texto."
-        )
-        await zapi_client.send_text(phone, response, delay_typing=1)
 
 
 async def process_image_message(phone: str, media_url: str, caption: str, db: Session, message_record: WhatsAppMessage = None, conversation: Conversation = None):
@@ -1212,12 +1197,6 @@ async def process_image_message(phone: str, media_url: str, caption: str, db: Se
         
         if caption:
             await process_text_message(phone, caption, db, message_record, conversation)
-        else:
-            response = (
-                "Recebi sua imagem, mas ocorreu um erro no processamento. "
-                "Por favor, descreva sua dúvida em texto."
-            )
-            await zapi_client.send_text(phone, response, delay_typing=1)
 
 
 async def process_document_message(phone: str, media_url: str, filename: str, db: Session, message_record: WhatsAppMessage = None, conversation: Conversation = None):

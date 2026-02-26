@@ -446,7 +446,7 @@ Os números devem incluir o código do país (55 para Brasil)."></textarea>
             } catch (error) {
                 loadingEl.style.display = 'none';
                 formEl.style.display = 'block';
-                showStatus('Erro ao carregar configurações: ' + error.message, 'error');
+                toast.error('Erro ao carregar configurações: ' + error.message);
             }
         }
 
@@ -486,11 +486,11 @@ Os números devem incluir o código do país (55 para Brasil)."></textarea>
                     throw new Error('Erro ao salvar configurações');
                 }
                 
-                showStatus('Configurações salvas com sucesso! O agente já está usando as novas configurações.', 'success');
+                toast.success('Configurações salvas com sucesso! O agente já está usando as novas configurações.');
                 markAsSaved();
                 
             } catch (error) {
-                showStatus('Erro ao salvar: ' + error.message, 'error');
+                toast.error('Erro ao salvar: ' + error.message);
             } finally {
                 saveBtn.disabled = false;
                 if (!hasUnsavedChanges) {
@@ -564,7 +564,7 @@ PROIBIÇÕES FINANCEIRAS:
             tempValueEl.textContent = '0.7';
             
             markAsChanged();
-            showStatus('Configurações restauradas para o padrão. Clique em Salvar para aplicar.', 'success');
+            toast.success('Configurações restauradas para o padrão. Clique em Salvar para aplicar.');
         });
 
         async function logout() {

@@ -512,6 +512,8 @@ class ProductIngestor:
             "pending_review": 0
         }
         
+        redistributed_material_ids = set()
+        
         all_auto_tags = {
             "contexto": set(),
             "perfil": set(),
@@ -598,6 +600,9 @@ class ProductIngestor:
                     db.commit()
                     db.refresh(new_material)
                     target_material_id = new_material.id
+                    redistributed_material_ids.add(new_material.id)
+                if existing_material:
+                    redistributed_material_ids.add(existing_material.id)
             else:
                 log(f"Página {page_num}: Nenhum produto identificado - enviando para revisão", "warning")
             
@@ -709,6 +714,16 @@ class ProductIngestor:
         stats["auto_tags"] = {k: list(v) for k, v in all_auto_tags.items()}
         
         log(f"Processamento finalizado: {stats['blocks_created']} blocos, {len(stats['products_matched'])} produtos identificados", "success")
+        
+        try:
+            from api.endpoints.products import auto_publish_if_ready
+            for mid in redistributed_material_ids:
+                rmat = db.query(Material).filter(Material.id == mid).first()
+                if rmat:
+                    if auto_publish_if_ready(rmat, db):
+                        log(f"Material redistribuído {mid} auto-publicado", "success")
+        except Exception as e:
+            log(f"Aviso: auto-publicação de materiais redistribuídos falhou: {e}", "warning")
         
         ingestion_log = IngestionLog(
             material_id=material_id,

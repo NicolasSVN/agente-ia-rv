@@ -420,6 +420,28 @@ async def check_integration_status(
     )
 
 
+@router.delete("/{integration_id}")
+async def delete_integration(
+    integration_id: int,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_admin)
+):
+    """Exclui uma integração e seus settings associados (cascade)."""
+    from database.models import Integration
+    integration = db.query(Integration).filter(Integration.id == integration_id).first()
+    if not integration:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Integração não encontrada"
+        )
+
+    name = integration.name
+    db.delete(integration)
+    db.commit()
+
+    return {"message": f"Integração '{name}' excluída com sucesso", "deleted_id": integration_id}
+
+
 @router.post("/init-defaults")
 async def init_default_integrations(
     db: Session = Depends(get_db),

@@ -27,6 +27,7 @@ class WebSearchService:
             "valorinveste.globo.com",
             "b3.com.br",
             "investing.com",
+            "br.investing.com",
             "moneytimes.com.br",
             "suno.com.br",
         ]

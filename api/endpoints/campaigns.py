@@ -1774,7 +1774,9 @@ async def dispatch_campaign_stream(
         import os
         
         zapi_configured = zapi_client.is_configured()
-        replit_domain = os.getenv("REPLIT_DEV_DOMAIN", "")
+        replit_domain = os.getenv("REPLIT_DOMAINS", os.getenv("REPLIT_DEV_DOMAIN", ""))
+        if "," in replit_domain:
+            replit_domain = replit_domain.split(",")[0]
         sent_count = 0
         failed_count = 0
         current_index = 0
@@ -2143,7 +2145,9 @@ async def dispatch_campaign_from_base(campaign, db: Session):
     
     async def generate_events():
         zapi_configured = zapi_client.is_configured()
-        replit_domain = os.getenv("REPLIT_DEV_DOMAIN", "")
+        replit_domain = os.getenv("REPLIT_DOMAINS", os.getenv("REPLIT_DEV_DOMAIN", ""))
+        if "," in replit_domain:
+            replit_domain = replit_domain.split(",")[0]
         sent_count = 0
         failed_count = 0
         current_index = 0

@@ -6,6 +6,7 @@ Carrega configurações do banco de dados em tempo real.
 import re
 import json
 import random
+from datetime import datetime
 from openai import OpenAI
 from typing import List, Optional, Tuple, Dict, Any
 from core.config import get_settings
@@ -416,9 +417,11 @@ CLASSIFIQUE a mensagem em UMA das categorias:
    "quais as recomendações atuais?", "produto pra cliente conservador?"
    Para estas, adicione "COMITE" na lista de produtos para sinalizar busca por produtos vigentes.
 
-4. MERCADO - Perguntas sobre notícias, cotações ATUAIS, eventos do dia, preços EM TEMPO REAL:
+4. MERCADO - Perguntas sobre notícias, cotações ATUAIS, eventos do dia, preços EM TEMPO REAL,
+   índices de mercado (IFIX, IBOV, CDI, IPCA, SELIC, IGPM, dólar, S&P):
    "o que aconteceu com a Petrobras hoje?", "qual a cotação do PETR4?", "como está o mercado?",
-   "quais as notícias de Vale?", "tem novidades sobre o IBOV?", "o que está acontecendo com ações?"
+   "quais as notícias de Vale?", "tem novidades sobre o IBOV?", "o que está acontecendo com ações?",
+   "como está o IFIX hoje?", "como tá o IBOV?", "CDI está em quanto?", "qual o Selic?"
    Use APENAS para dados EM TEMPO REAL ou NOTÍCIAS.
    NÃO classifique como MERCADO perguntas que citam relatórios, documentos ou dados de períodos passados.
    "o que o relatório diz sobre..." -> DOCUMENTAL (é sobre o conteúdo de um documento)
@@ -453,6 +456,10 @@ Exemplos:
 "como funciona renda variável?" -> {"categoria": "ESCOPO", "produtos": []}
 "o que aconteceu com a Petrobras?" -> {"categoria": "MERCADO", "produtos": ["PETROBRAS"]}
 "qual a cotação do PETR4?" -> {"categoria": "MERCADO", "produtos": ["PETR4"]}
+"como está o IFIX hoje?" -> {"categoria": "MERCADO", "produtos": ["IFIX"]}
+"como tá o IBOV?" -> {"categoria": "MERCADO", "produtos": ["IBOV"]}
+"CDI está em quanto?" -> {"categoria": "MERCADO", "produtos": ["CDI"]}
+"qual o Selic?" -> {"categoria": "MERCADO", "produtos": ["SELIC"]}
 "o que o relatório do MANA11 diz sobre cotistas?" -> {"categoria": "DOCUMENTAL", "produtos": ["MANA11"]}
 "monta um pitch do XPLG11" -> {"categoria": "PITCH", "produtos": ["XPLG11"]}
 "quero falar com alguém" -> {"categoria": "ATENDIMENTO_HUMANO", "produtos": []}
@@ -1073,6 +1080,14 @@ Agente: "Oi {PrimeiroNome}! O que precisa?"
             if db_restrictions and not is_stevan_restrictions:
                 base_prompt += f"\n\nRESTRIÇÕES ADICIONAIS:\n{db_restrictions}"
         
+        dias_semana = ['segunda-feira', 'terça-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sábado', 'domingo']
+        meses = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro']
+        now = datetime.now()
+        dia_semana = dias_semana[now.weekday()]
+        mes = meses[now.month - 1]
+        data_formatada = f"{dia_semana}, {now.day} de {mes} de {now.year}, {now.strftime('%H:%M')}"
+        base_prompt += f"\n\nCONTEXTO TEMPORAL:\nData e hora atual: {data_formatada}\n"
+
         return get_enhanced_system_prompt(base_prompt)
     
     def _should_web_search(self, context_documents: List[dict], query: str) -> Tuple[bool, str]:
@@ -1089,7 +1104,8 @@ Agente: "Oi {PrimeiroNome}! O que precisa?"
             return True, "Documentos encontrados têm baixa relevância"
         
         market_keywords = ['cotação', 'cotacao', 'preço', 'preco', 'hoje', 'agora', 'atual', 
-                          'últimos dias', 'esta semana', 'notícia', 'noticia', 'fato relevante']
+                          'últimos dias', 'esta semana', 'notícia', 'noticia', 'fato relevante',
+                          'ifix', 'ibov', 'ibovespa', 'cdi', 'selic', 'ipca', 'igpm', 'dólar', 'dollar', 's&p']
         query_lower = query.lower()
         if any(kw in query_lower for kw in market_keywords):
             return True, "Consulta sobre dados de mercado em tempo real"

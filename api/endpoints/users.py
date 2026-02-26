@@ -126,6 +126,14 @@ async def create_user(
             detail="Email já cadastrado"
         )
     
+    if user.phone and user.phone.strip():
+        existing_phone = db.query(User).filter(User.phone == user.phone).first()
+        if existing_phone:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Já existe um usuário com este telefone"
+            )
+    
     new_user = crud.create_user(
         db,
         username=user.username,
@@ -161,7 +169,42 @@ async def update_user(
     current_user: dict = Depends(get_current_admin)
 ):
     """Atualiza um usuário (apenas admin)."""
-    user = crud.update_user(db, user_id, **user_update.model_dump(exclude_unset=True))
+    update_data = user_update.model_dump(exclude_unset=True)
+    
+    if "email" in update_data and update_data["email"]:
+        existing = db.query(User).filter(
+            User.email == update_data["email"],
+            User.id != user_id
+        ).first()
+        if existing:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Já existe um usuário com este e-mail"
+            )
+    
+    if "phone" in update_data and update_data["phone"] and update_data["phone"].strip():
+        existing = db.query(User).filter(
+            User.phone == update_data["phone"],
+            User.id != user_id
+        ).first()
+        if existing:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Já existe um usuário com este telefone"
+            )
+    
+    if "username" in update_data and update_data["username"]:
+        existing = db.query(User).filter(
+            User.username == update_data["username"],
+            User.id != user_id
+        ).first()
+        if existing:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Já existe um usuário com este nome de usuário"
+            )
+    
+    user = crud.update_user(db, user_id, **update_data)
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

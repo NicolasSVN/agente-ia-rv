@@ -128,7 +128,6 @@ class Ticket(Base):
 class IntegrationType(str, enum.Enum):
     """Tipos de integração disponíveis."""
     OPENAI = "openai"
-    NOTION = "notion"
     ZAPI = "zapi"
     CUSTOM = "custom"
 

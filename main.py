@@ -12,7 +12,7 @@ import os
 
 from database.database import engine, Base, SessionLocal
 from database import crud
-from core.security import decode_token
+from core.security import decode_token, revoke_token
 
 
 @asynccontextmanager
@@ -631,6 +631,30 @@ async def root(request: Request):
 async def login_page(request: Request):
     """Página de login."""
     return templates.TemplateResponse("login.html", {"request": request})
+
+
+@app.get("/logout")
+async def logout_page(request: Request):
+    access_token = request.cookies.get("access_token")
+    refresh_token = request.cookies.get("refresh_token")
+
+    for token, expected_type in [(access_token, "access"), (refresh_token, "refresh")]:
+        if token:
+            try:
+                payload = decode_token(token, expected_type=expected_type)
+                if payload:
+                    from datetime import datetime
+                    jti = payload.get("jti")
+                    exp = payload.get("exp")
+                    if jti and exp:
+                        revoke_token(jti, datetime.utcfromtimestamp(exp))
+            except Exception:
+                pass
+
+    response = RedirectResponse(url="/login", status_code=302)
+    response.delete_cookie("access_token")
+    response.delete_cookie("refresh_token")
+    return response
 
 
 @app.get("/admin", response_class=HTMLResponse)

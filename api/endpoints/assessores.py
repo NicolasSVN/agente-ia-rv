@@ -258,6 +258,7 @@ async def create_assessor(assessor: AssessorCreate, db: Session = Depends(get_db
         raise HTTPException(status_code=400, detail="Já existe um assessor com este e-mail")
     
     db_assessor = Assessor(
+        codigo_ai=assessor.codigo_ai,
         nome=assessor.nome,
         email=assessor.email,
         telefone_whatsapp=assessor.telefone_whatsapp,
@@ -296,6 +297,46 @@ async def update_assessor(assessor_id: int, assessor: AssessorUpdate, db: Sessio
     db.commit()
     db.refresh(db_assessor)
     return parse_custom_fields(db_assessor)
+
+
+class BulkDeleteByUnitsRequest(BaseModel):
+    unidades: List[str]
+
+
+@router.delete("/bulk-delete-by-units")
+async def bulk_delete_by_units(
+    data: BulkDeleteByUnitsRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin_or_gestao)
+):
+    from database.models import Conversation
+    from sqlalchemy.exc import IntegrityError
+
+    if not data.unidades:
+        raise HTTPException(status_code=400, detail="Lista de unidades não pode ser vazia")
+
+    assessor_ids = [
+        a.id for a in db.query(Assessor.id).filter(Assessor.unidade.in_(data.unidades)).all()
+    ]
+
+    if not assessor_ids:
+        return {"deleted": 0, "conversations_unlinked": 0, "unidades": data.unidades}
+
+    conversations_unlinked = db.query(Conversation).filter(
+        Conversation.assessor_id.in_(assessor_ids)
+    ).update({"assessor_id": None}, synchronize_session=False)
+
+    deleted = db.query(Assessor).filter(Assessor.id.in_(assessor_ids)).delete(synchronize_session=False)
+
+    db.commit()
+
+    logger.info(f"Bulk delete by units: {data.unidades} — {deleted} assessores excluídos, {conversations_unlinked} conversas desvinculadas")
+
+    return {
+        "deleted": deleted,
+        "conversations_unlinked": conversations_unlinked,
+        "unidades": data.unidades
+    }
 
 
 @router.delete("/{assessor_id}")

@@ -841,6 +841,12 @@ class UploadQueue:
                             "success"
                         )
 
+                try:
+                    from api.endpoints.products import auto_publish_if_ready
+                    auto_publish_if_ready(mat, db)
+                except Exception as pub_err:
+                    logger.warning(f"[UPLOAD_WORKER] Erro ao auto-publicar material {item.material_id}: {pub_err}")
+
             processing_job.status = ProcessingJobStatus.COMPLETED.value
             processing_job.processed_pages = processing_job.total_pages
             processing_job.last_processed_page = processing_job.total_pages
