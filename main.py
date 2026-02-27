@@ -10,10 +10,6 @@ from contextlib import asynccontextmanager
 import asyncio
 import os
 
-from database.database import engine, Base, SessionLocal
-from database import crud
-from core.security import decode_token, revoke_token
-
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -126,6 +122,7 @@ def _apply_incremental_migrations():
     Usa ADD COLUMN IF NOT EXISTS (idempotente no PostgreSQL) — seguro para rodar
     no startup de dev e produção quantas vezes for necessário.
     """
+    from database.database import SessionLocal
     from sqlalchemy import text as sql_text
     migrations = [
         # RetrievalLog — campos de observabilidade RAG (adicionados na sprint de melhorias RAG)
@@ -152,6 +149,8 @@ def _apply_incremental_migrations():
 def _sync_init_database():
     """Operações síncronas de inicialização do banco (roda em thread separada)."""
     import os
+    from database.database import engine, Base, SessionLocal
+    from database import crud
     from database.models import Product
 
     db_url_str = str(engine.url)
@@ -213,6 +212,7 @@ def _sync_init_database():
 
 def _resume_interrupted_uploads():
     from datetime import datetime
+    from database.database import SessionLocal
     from database.models import Material, ProcessingStatus, PersistentQueueItem, QueueItemStatus
     from database.models import DocumentProcessingJob, ProcessingJobStatus
     db = SessionLocal()
@@ -395,6 +395,7 @@ async def check_and_reindex_embeddings():
     BASE_DELAY = 0.5
     
     try:
+        from database.database import SessionLocal
         from database.models import ContentBlock, Material, Product
         from sqlalchemy import text as sql_text
         
@@ -528,6 +529,7 @@ async def confirmation_timeout_scheduler():
     Scheduler que verifica conversas aguardando confirmação a cada minuto.
     Envia mensagem de confirmação após 5 minutos sem resposta do assessor.
     """
+    from database.database import SessionLocal
     from services.conversation_flow import check_pending_confirmations
     from services.whatsapp_client import zapi_client
     
@@ -642,6 +644,7 @@ async def login_page(request: Request):
 
 @app.get("/logout")
 async def logout_page(request: Request):
+    from core.security import decode_token, revoke_token
     access_token = request.cookies.get("access_token")
     refresh_token = request.cookies.get("refresh_token")
 
@@ -670,6 +673,7 @@ async def admin_page(request: Request):
     Página de administração de usuários.
     Requer autenticação como admin.
     """
+    from core.security import decode_token
     token = request.cookies.get("access_token")
     
     if not token:
@@ -691,6 +695,7 @@ async def integrations_page(request: Request):
     Página de gerenciamento de integrações.
     Requer autenticação como admin.
     """
+    from core.security import decode_token
     token = request.cookies.get("access_token")
     
     if not token:
@@ -712,6 +717,7 @@ async def insights_page(request: Request):
     Dashboard de Insights para gestão de Renda Variável.
     Versão React. Requer autenticação como admin ou gestao_rv.
     """
+    from core.security import decode_token
     token = request.cookies.get("access_token")
     
     if not token:
@@ -765,6 +771,7 @@ async def custos_page(request: Request):
     Central de Custos - Monitoramento de gastos com APIs e serviços.
     Requer autenticação como admin ou gestao_rv.
     """
+    from core.security import decode_token
     token = request.cookies.get("access_token")
     
     if not token:
@@ -825,6 +832,7 @@ async def base_conhecimento_page(request: Request):
     Base de Conhecimento em React - integrado com menu admin.
     Acesso restrito a admin, gestao_rv e broker.
     """
+    from core.security import decode_token
     token = request.cookies.get("access_token")
     
     if not token:
@@ -859,6 +867,7 @@ async def base_conhecimento_page(request: Request):
 if os.path.exists(react_knowledge_dist_path):
     @app.get("/base-conhecimento/{path:path}")
     async def serve_react_knowledge(path: str, request: Request):
+        from core.security import decode_token
         token = request.cookies.get("access_token")
         
         if not token:
@@ -902,6 +911,7 @@ async def agent_brain_page(request: Request):
     Permite configurar personalidade, modelo e parâmetros da IA.
     Requer autenticação como admin ou gestao_rv.
     """
+    from core.security import decode_token
     token = request.cookies.get("access_token")
     
     if not token:
@@ -930,6 +940,7 @@ async def fila_revisao_page(request: Request):
     Fila de Revisão - aprovação de conteúdo de alto risco.
     Requer autenticação como admin ou gestao_rv.
     """
+    from core.security import decode_token
     token = request.cookies.get("access_token")
     
     if not token:
@@ -952,6 +963,7 @@ async def documentos_page(request: Request):
     Página de Documentos - gerenciamento de documentos da base de conhecimento.
     Requer autenticação como admin ou gestao_rv.
     """
+    from core.security import decode_token
     token = request.cookies.get("access_token")
     
     if not token:
@@ -974,6 +986,7 @@ async def assessores_page(request: Request):
     Página de gerenciamento da Base de Assessores.
     Requer autenticação como admin ou gestao_rv.
     """
+    from core.security import decode_token
     token = request.cookies.get("access_token")
     
     if not token:
@@ -996,6 +1009,7 @@ async def campanhas_page(request: Request):
     Página de Campanhas Ativas para disparo em massa.
     Requer autenticação como admin ou gestao_rv.
     """
+    from core.security import decode_token
     token = request.cookies.get("access_token")
     
     if not token:
@@ -1019,6 +1033,7 @@ async def teste_agente_page(request: Request):
     Simula conversa WhatsApp sem disparar mensagens reais.
     Requer autenticação como admin ou gestao_rv.
     """
+    from core.security import decode_token
     token = request.cookies.get("access_token")
     
     if not token:
@@ -1048,6 +1063,7 @@ async def conversas_page(request: Request):
     Mostra histórico de todas as conversas e permite intervenção humana.
     Requer autenticação como admin, gestao_rv ou broker.
     """
+    from core.security import decode_token
     token = request.cookies.get("access_token")
     
     if not token:
@@ -1095,6 +1111,7 @@ async def revisao_page(request: Request):
     Revisa e aprova conteúdos extraídos automaticamente de PDFs.
     Requer autenticação como admin ou gestao_rv.
     """
+    from core.security import decode_token
     token = request.cookies.get("access_token")
     
     if not token:
