@@ -2,39 +2,66 @@
 Ponto de entrada da aplicação FastAPI.
 Configura rotas, middleware e inicialização do banco de dados.
 
-PRE-STARTUP HEALTH SERVER: Replit VM faz health check em / com timeout de 5s
-a partir do start do container. Como Python+FastAPI levam ~10s para inicializar,
-um servidor HTTP mínimo (stdlib) sobe em <100ms e responde 200 ao health check
-enquanto o app real carrega. Uvicorn assume o port quando estiver pronto.
+PRE-STARTUP HEALTH SERVER (socket compartilhado):
+Replit VM faz health check em / com timeout de 5s a partir do start do container.
+Python+FastAPI levam ~10s para inicializar. Solução: criar o socket UMA vez no topo
+(antes de qualquer import pesado), usar um responder raw em daemon thread para
+atender health checks, e depois passar o MESMO socket para o uvicorn via
+server.serve(sockets=[_shared_sock]). Zero rebind, zero gap.
 """
-import socket
-import threading
-import time
-from http.server import HTTPServer, BaseHTTPRequestHandler
+import socket as _socket
+import threading as _threading
+import time as _time
+import sys as _sys
 
-_health_server = None
-_health_thread = None
+_START_TIME = _time.time()
 
-class _HealthHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        self.send_response(200)
-        self.send_header("Content-Type", "application/json")
-        self.end_headers()
-        self.wfile.write(b'{"status":"ok"}')
+def _log(msg):
+    elapsed = _time.time() - _START_TIME
+    line = f"[HEALTH] t={elapsed:.3f}s - {msg}"
+    print(line, flush=True)
+    _sys.stderr.write(line + "\n")
+    _sys.stderr.flush()
 
-    def log_message(self, format, *args):
-        pass
+_shared_sock = _socket.socket(_socket.AF_INET, _socket.SOCK_STREAM)
+_shared_sock.setsockopt(_socket.SOL_SOCKET, _socket.SO_REUSEADDR, 1)
+_shared_sock.bind(("0.0.0.0", 5000))
+_shared_sock.listen(10)
+_log("Socket bound e listening em :5000")
 
-try:
-    _health_server = HTTPServer(("0.0.0.0", 5000), _HealthHandler)
-    _health_server.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    _health_thread = threading.Thread(target=_health_server.serve_forever, daemon=True)
-    _health_thread.start()
-    print("[HEALTH] Pre-startup health server running on :5000", flush=True)
-except OSError as e:
-    print(f"[HEALTH] Pre-startup server skipped (port 5000 busy): {e}", flush=True)
-    _health_server = None
-    _health_thread = None
+_pre_startup_active = True
+
+def _pre_startup_responder():
+    RESPONSE = (
+        b"HTTP/1.1 200 OK\r\n"
+        b"Content-Type: application/json\r\n"
+        b"Content-Length: 15\r\n"
+        b"Connection: close\r\n\r\n"
+        b'{"status":"ok"}'
+    )
+    while _pre_startup_active:
+        try:
+            _shared_sock.settimeout(0.5)
+            conn, addr = _shared_sock.accept()
+            try:
+                conn.settimeout(2)
+                try:
+                    conn.recv(1024)
+                except _socket.timeout:
+                    pass
+                conn.sendall(RESPONSE)
+            except Exception:
+                pass
+            finally:
+                conn.close()
+        except _socket.timeout:
+            continue
+        except Exception:
+            break
+
+_pre_startup_thread = _threading.Thread(target=_pre_startup_responder, daemon=True)
+_pre_startup_thread.start()
+_log("Pre-startup responder iniciado")
 
 from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
@@ -52,8 +79,6 @@ async def lifespan(app: FastAPI):
     Yield imediato para responder health checks rápido.
     Inicialização pesada (check_critical_dependencies, banco, seed, queue) roda em background.
     """
-    _shutdown_health_server()
-
     background_tasks = []
 
     init_task = asyncio.create_task(run_init_background())
@@ -1164,18 +1189,15 @@ async def revisao_page(request: Request):
     return templates.TemplateResponse("revisao.html", {"request": request, "user_role": user_role})
 
 
-def _shutdown_health_server():
-    global _health_server, _health_thread
-    if _health_server is not None:
-        _health_server.shutdown()
-        _health_server.server_close()
-        if _health_thread is not None:
-            _health_thread.join(timeout=2.0)
-        _health_server = None
-        _health_thread = None
-        print("[HEALTH] Pre-startup server stopped, uvicorn taking over", flush=True)
-
 if __name__ == "__main__":
     import uvicorn
-    _shutdown_health_server()
-    uvicorn.run(app, host="0.0.0.0", port=5000, log_level="info")
+
+    _pre_startup_active = False
+    _pre_startup_thread.join(timeout=2)
+    _log("Pre-startup responder parado")
+
+    config = uvicorn.Config(app, log_level="info")
+    server = uvicorn.Server(config)
+
+    _log("Uvicorn assumindo o socket compartilhado")
+    asyncio.run(server.serve(sockets=[_shared_sock]))

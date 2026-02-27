@@ -496,12 +496,14 @@ healthcheckPath = "/health"
 
 ### Cold Start (Otimização Crítica — 3 Camadas)
 - **Timeout do health check VM é FIXO em 5 segundos** a partir do start do container — não configurável no Replit
-- **Camada 1: Pre-startup HTTP server** — no topo de `main.py`, ANTES de qualquer import pesado, um `http.server.HTTPServer` (stdlib) sobe em <100ms no port 5000 via daemon thread. Responde `{"status":"ok"}` a qualquer GET. Satisfaz o health check do Replit enquanto Python carrega o resto. Desligado antes de `uvicorn.run()`.
+- **Camada 1: Socket compartilhado + pre-startup responder** — no TOPO ABSOLUTO de `main.py`, ANTES de qualquer import pesado, um raw socket é criado com `socket.socket()`, `SO_REUSEADDR`, `bind('0.0.0.0', 5000)`, `listen(10)`. Um responder em daemon thread aceita conexões e responde HTTP 200 `{"status":"ok"}` manualmente. Esse **mesmo socket** (`_shared_sock`) é passado ao uvicorn via `server.serve(sockets=[_shared_sock])`. Zero rebind, zero gap — a porta 5000 NUNCA fica sem listener.
 - **Camada 2: Lazy imports** — imports pesados (`database.database`, `database.crud`, `core.security`) são feitos DENTRO das funções que os usam, NÃO no topo do módulo. **REGRA: NUNCA adicionar imports pesados no topo de main.py.**
 - **Camada 3: Lazy router registration** — 16 módulos de endpoint importados em background thread (~10-25s após startup)
 - Rotas `/`, `/health`, static files: disponíveis imediatamente após uvicorn iniciar
-- **Fluxo de startup:** pre-startup server (t=0) → Python imports (~5s) → pre-startup server shutdown → uvicorn bind port 5000 → lifespan → app ready
-- Lição aprendida: Python+FastAPI+SQLAlchemy+bcrypt levam ~10s para importar. Sem o pre-startup server, o health check de 5s sempre falhava
+- **Uvicorn startup**: usa `uvicorn.Config` + `uvicorn.Server` + `asyncio.run(server.serve(sockets=[_shared_sock]))` — NÃO usar `uvicorn.run()` (não aceita `sockets=`)
+- **Fluxo de startup:** socket bind :5000 (t<1ms) → pre-startup responder (t<1ms) → Python imports (~5-8s) → responder parado → uvicorn assume o MESMO socket → lifespan → app ready
+- **Logging diagnóstico**: `_log()` escreve em stdout E stderr com timestamp relativo para aparecer nos deploy logs do Replit
+- Lição aprendida: abordagem anterior com HTTPServer + `server_close()` + uvicorn rebind criava gap de ~4s onde nada ouvia na porta. Socket compartilhado elimina isso
 
 ### Resiliência de Upload
 - `_resume_interrupted_uploads()` roda no startup

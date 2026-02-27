@@ -61,7 +61,7 @@ The application is built using FastAPI with a modular architecture.
 
 **Cold Start Optimization (3 Camadas — CRÍTICO):** O `main.py` usa 3 camadas para sobreviver ao health check de 5s do Replit VM:
 
-1. **Pre-startup HTTP server (Camada 1):** No TOPO ABSOLUTO de `main.py`, antes de qualquer import pesado, um `http.server.HTTPServer` (stdlib) sobe em <100ms no port 5000 via daemon thread. Responde `{"status":"ok"}` a qualquer GET, satisfazendo o health check do Replit enquanto Python carrega o resto. É desligado antes de `uvicorn.run()`. **REGRA: O pre-startup server DEVE ser o primeiro código executável do arquivo.**
+1. **Pre-startup HTTP server (Camada 1):** No TOPO ABSOLUTO de `main.py`, antes de qualquer import pesado, um raw socket é criado com `socket.socket()`, `SO_REUSEADDR`, `bind('0.0.0.0', 5000)`, `listen(10)`. Um responder em daemon thread aceita conexões e responde HTTP 200 `{"status":"ok"}` manualmente. Esse **mesmo socket** (`_shared_sock`) é passado ao uvicorn via `server.serve(sockets=[_shared_sock])`. Zero rebind, zero gap. **REGRA: O socket bind DEVE ser o primeiro código executável do arquivo.**
 
 2. **Lazy Imports (Camada 2):** Imports pesados (`database.database`, `database.crud`, `core.security`) são feitos DENTRO das funções que os usam, NÃO no topo do módulo. **REGRA: NUNCA adicionar imports pesados no topo de main.py.**
 
@@ -71,9 +71,9 @@ The application is built using FastAPI with a modular architecture.
 
 5. **Health check VM bate em `/`** (não em `/health`): Deploy VM ignora `healthcheckPath` e faz health check na homepage com timeout de 5s. A rota `/` detecta `Accept: text/html` — browsers recebem `login.html`, health checkers recebem JSON `{"status":"ok"}`. **Rota `/` NUNCA deve ser pesada.**
 
-6. **Uvicorn bind padrão**: `uvicorn.run(app, host="0.0.0.0", port=5000)` — sem socket pré-criado, sem `SO_REUSEPORT`.
+6. **Uvicorn bind padrão**: `uvicorn.Config(app)` + `uvicorn.Server(config)` + `asyncio.run(server.serve(sockets=[_shared_sock]))` — NÃO usar `uvicorn.run()` (não aceita `sockets=`). Sem `SO_REUSEPORT`.
 
-**Fluxo de startup:** pre-startup server (t<100ms) → Python imports (~5s) → pre-startup shutdown → uvicorn bind :5000 → lifespan → app ready (~10s total, mas health check já passou em t<100ms).
+**Fluxo de startup:** socket bind :5000 (t<1ms) → pre-startup responder (t<1ms) → Python imports (~5-8s) → responder parado → uvicorn assume o MESMO socket → lifespan → app ready (~10s total, mas health check já passou em t<1ms).
 
 - Rotas `/`, `/health`, arquivos estáticos e middleware de segurança são configurados no top-level (instantâneos).
 - `SESSION_SECRET` é obrigatória em produção: assina os JWTs emitidos após SSO Microsoft. Deve estar nos Secrets do Replit.
