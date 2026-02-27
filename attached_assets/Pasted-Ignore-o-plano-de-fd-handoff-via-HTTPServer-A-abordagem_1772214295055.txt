@@ -1,0 +1,89 @@
+Ignore o plano de fd handoff via HTTPServer. A abordagem
+correta é criar o socket UMA vez, no topo do main.py,
+antes de qualquer import pesado, e passar esse mesmo
+socket tanto para o pre-startup server quanto para o uvicorn.
+
+Substitua toda a lógica do pre-startup server por isso:
+
+─── TOPO DO main.py (antes de qualquer import) ───────────────
+
+import socket as _socket
+import threading as _threading
+import time as _time
+
+_START_TIME = _time.time()
+
+def _log(msg):
+    elapsed = _time.time() - _START_TIME
+    print(f"[HEALTH] t={elapsed:.3f}s - {msg}", flush=True)
+    import sys; sys.stderr.write(f"[HEALTH] t={elapsed:.3f}s - {msg}\n"); sys.stderr.flush()
+
+# Cria o socket UMA vez — vai ser compartilhado com o uvicorn
+_shared_sock = _socket.socket(_socket.AF_INET, _socket.SOCK_STREAM)
+_shared_sock.setsockopt(_socket.SOL_SOCKET, _socket.SO_REUSEADDR, 1)
+_shared_sock.bind(('0.0.0.0', 5000))
+_shared_sock.listen(10)
+_log("Socket bound e listening em :5000")
+
+# Pre-startup responder: atende conexões no socket compartilhado
+# enquanto os imports pesados carregam
+_pre_startup_active = True
+
+def _pre_startup_responder():
+    RESPONSE = (
+        b"HTTP/1.1 200 OK\r\n"
+        b"Content-Type: application/json\r\n"
+        b"Content-Length: 15\r\n"
+        b"Connection: close\r\n\r\n"
+        b'{"status":"ok"}'
+    )
+    while _pre_startup_active:
+        try:
+            _shared_sock.settimeout(0.5)
+            conn, addr = _shared_sock.accept()
+            _log(f"Conexão aceita de {addr}")
+            try:
+                conn.settimeout(2)
+                try:
+                    conn.recv(1024)
+                except _socket.timeout:
+                    pass
+                conn.sendall(RESPONSE)
+                _log(f"Resposta 200 enviada para {addr}")
+            except Exception as e:
+                _log(f"Erro ao responder {addr}: {e}")
+            finally:
+                conn.close()
+        except _socket.timeout:
+            continue
+        except Exception:
+            break
+
+_pre_startup_thread = _threading.Thread(target=_pre_startup_responder, daemon=True)
+_pre_startup_thread.start()
+_log("Pre-startup responder iniciado")
+
+# ── imports pesados começam aqui ──────────────────────────────
+# from fastapi import FastAPI
+# ... todos os outros imports ...
+
+─── BLOCO if __name__ == "__main__" ─────────────────────────
+
+if __name__ == "__main__":
+    import uvicorn
+    
+    # Para o pre-startup responder
+    _pre_startup_active = False
+    _pre_startup_thread.join(timeout=2)
+    _log("Pre-startup responder parado")
+    
+    # Passa o MESMO socket para o uvicorn — zero gap, zero rebind
+    config = uvicorn.Config(app, log_level="info")
+    server = uvicorn.Server(config)
+    
+    import asyncio
+    _log("Uvicorn assumindo o socket compartilhado")
+    asyncio.run(server.serve(sockets=[_shared_sock]))
+    # NÃO feche _shared_sock — uvicorn gerencia a partir daqui
+
+─── LIFESPAN: remover qualquer chamada a _shutdown_health_server ─
