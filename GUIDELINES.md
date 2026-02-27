@@ -473,7 +473,16 @@ run = ["python", "main.py"]
 healthcheckPath = "/health"
 ```
 - **NÃO adicionar** entradas `[[ports]]` extras (conflita com VM deployment)
-- **`.replit` é protegido** — não pode ser editado por código, apenas manualmente
+
+**⚠️ REGRA CRÍTICA: `.replit` é ARQUIVO PROTEGIDO pelo Replit**
+- O agente IA **NÃO consegue editar** o arquivo `.replit` (nem `.replit`, nem `replit.nix`) — bloqueado pela plataforma
+- A função `deployConfig()` atualiza a configuração de deploy via API interna, mas **NÃO garante** que o texto do `.replit` reflita a mudança
+- **SEMPRE que uma tarefa exigir alteração no `.replit`** (deploymentTarget, ports, workflows, nix packages), o agente DEVE:
+  1. Informar o usuário explicitamente quais linhas precisam ser alteradas
+  2. Fornecer o texto exato a ser editado (antes/depois)
+  3. Aguardar confirmação do usuário antes de prosseguir
+- **Exemplos de mudanças que exigem edição manual do `.replit`:** deploymentTarget, healthcheckPath, ports, modules, nix packages
+- **Lição aprendida:** `deployConfig()` reportou sucesso ao trocar `cloudrun` → `vm`, mas o arquivo continuou com `cloudrun`. Isso causou deploys incorretos em produção
 
 ### Cold Start
 - Lazy router registration: routers importados em background thread (~10-25s)

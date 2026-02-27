@@ -69,7 +69,7 @@ The application is built using FastAPI with a modular architecture.
 
 - Rotas `/`, `/health`, arquivos estáticos e middleware de segurança são configurados no top-level (instantâneos).
 - `SESSION_SECRET` é obrigatória em produção: assina os JWTs emitidos após SSO Microsoft. Deve estar nos Secrets do Replit.
-- **`healthcheckPath`** no `.replit` é protegido e não pode ser editado via código.
+- **REGRA: `.replit` é ARQUIVO PROTEGIDO** — o agente IA NÃO consegue editar `.replit` nem `replit.nix`. A função `deployConfig()` pode não refletir no arquivo de texto. **Toda alteração necessária no `.replit` deve ser comunicada ao usuário com o texto exato antes/depois, e aguardar edição manual.**
 - **IMPORTANTE: NÃO usar `SO_REUSEPORT`** — interfere com o proxy interno do Replit (metasidecar) e impede que o health check alcance a aplicação. Confirmado após 6 tentativas de deploy falhadas.
 
 **Resiliência de upload:**
