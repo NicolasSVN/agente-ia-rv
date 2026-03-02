@@ -83,3 +83,7 @@ ZAPI_CLIENT_TOKEN = "F12c25cc2d27a4967a96c001a647f1381S"
 MICROSOFT_CLIENT_ID = "4829db7e-d75f-40a9-96c4-75bffc665a14"
 MICROSOFT_TENANT_ID = "91608a81-cb4c-4123-8e4f-ffc75f8c4b6c"
 ALLOWED_ORIGINS = "https://agente-ia-rv-svn.replit.app"
+
+[[ports]]
+localPort = 5000
+externalPort = 80
