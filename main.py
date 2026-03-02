@@ -31,13 +31,35 @@ _log("Socket bound e listening em :5000")
 
 _pre_startup_active = True
 
+_LOADING_HTML = (
+    b"<!DOCTYPE html><html><head><meta charset='utf-8'>"
+    b"<meta http-equiv='refresh' content='3'>"
+    b"<title>Agente IA - RV</title>"
+    b"<style>body{font-family:Inter,sans-serif;display:flex;align-items:center;"
+    b"justify-content:center;height:100vh;margin:0;background:#f8f9fa;color:#333}"
+    b".c{text-align:center}.s{width:40px;height:40px;border:4px solid #e0e0e0;"
+    b"border-top:4px solid #2563eb;border-radius:50%;animation:r .8s linear infinite;"
+    b"margin:0 auto 16px}@keyframes r{to{transform:rotate(360deg)}}</style></head>"
+    b"<body><div class='c'><div class='s'></div>"
+    b"<h2>Carregando...</h2>"
+    b"<p>O sistema est\xc3\xa1 iniciando. Aguarde alguns segundos.</p>"
+    b"</div></body></html>"
+)
+
 def _pre_startup_responder():
-    RESPONSE = (
+    JSON_RESPONSE = (
         b"HTTP/1.1 200 OK\r\n"
         b"Content-Type: application/json\r\n"
         b"Content-Length: 15\r\n"
         b"Connection: close\r\n\r\n"
         b'{"status":"ok"}'
+    )
+    HTML_RESPONSE = (
+        b"HTTP/1.1 200 OK\r\n"
+        b"Content-Type: text/html; charset=utf-8\r\n"
+        b"Content-Length: " + str(len(_LOADING_HTML)).encode() + b"\r\n"
+        b"Connection: close\r\n\r\n"
+        + _LOADING_HTML
     )
     while _pre_startup_active:
         try:
@@ -45,11 +67,15 @@ def _pre_startup_responder():
             conn, addr = _shared_sock.accept()
             try:
                 conn.settimeout(2)
+                raw = b""
                 try:
-                    conn.recv(1024)
+                    raw = conn.recv(2048)
                 except _socket.timeout:
                     pass
-                conn.sendall(RESPONSE)
+                if b"text/html" in raw:
+                    conn.sendall(HTML_RESPONSE)
+                else:
+                    conn.sendall(JSON_RESPONSE)
             except Exception:
                 pass
             finally:
