@@ -119,13 +119,6 @@ async def lifespan(app: FastAPI):
     token_cleanup_task = asyncio.create_task(revoked_tokens_cleanup_scheduler())
     background_tasks.append(token_cleanup_task)
 
-    global _pre_startup_active
-    if _pre_startup_active:
-        _pre_startup_active = False
-        _pre_startup_thread.join(timeout=3)
-        _shared_sock.settimeout(None)
-        _log("Pre-startup responder parado — uvicorn assumindo (lifespan ready)")
-    
     yield
     
     for task in background_tasks:
@@ -1225,8 +1218,17 @@ async def revisao_page(request: Request):
 if __name__ == "__main__":
     import uvicorn
 
-    _log("Iniciando uvicorn — pre-startup responder continua ativo até lifespan completar")
+    class _PatchedServer(uvicorn.Server):
+        async def startup(self, sockets=None):
+            await super().startup(sockets=sockets)
+            global _pre_startup_active
+            if _pre_startup_active:
+                _pre_startup_active = False
+                _pre_startup_thread.join(timeout=3)
+                _log("Pre-startup responder parado — uvicorn create_server completo, serving")
+
+    _log("Iniciando uvicorn — pre-startup responder continua ativo até create_server")
 
     config = uvicorn.Config(app, log_level="info")
-    server = uvicorn.Server(config)
+    server = _PatchedServer(config)
     asyncio.run(server.serve(sockets=[_shared_sock]))
