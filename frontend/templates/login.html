@@ -106,6 +106,12 @@
             </a>
         </div>
         
+        <div id="dev-login-container" style="margin-top: 16px; display: none;">
+            <a href="/api/auth/dev-login" class="btn-microsoft" style="display: flex; align-items: center; justify-content: center; gap: 12px; width: 100%; padding: 14px; font-size: 1rem; background: #fef3c7; border: 1px solid #f59e0b; border-radius: 8px; color: #92400e; text-decoration: none; font-weight: 500; transition: all 0.2s ease;">
+                Entrar como Admin (Dev)
+            </a>
+        </div>
+        
         <div class="footer" style="margin-top: 28px;">
             Acesso restrito a administradores e assessores
         </div>
@@ -125,6 +131,12 @@
             }
             errorEl.classList.add('show');
         }
+        
+        fetch('/api/auth/dev-login', {redirect: 'manual'}).then(r => {
+            if (r.status !== 404) {
+                document.getElementById('dev-login-container').style.display = 'block';
+            }
+        }).catch(() => {});
         
     </script>
 </body>

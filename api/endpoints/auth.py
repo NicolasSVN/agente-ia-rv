@@ -23,6 +23,28 @@ IS_PRODUCTION = is_production()
 
 router = APIRouter(prefix="/api/auth", tags=["Autenticação"])
 
+
+@router.get("/dev-login")
+async def dev_login(request: Request, response: Response, db: Session = Depends(get_db)):
+    if IS_PRODUCTION:
+        raise HTTPException(status_code=404)
+    admin_user = db.query(crud.User).filter(crud.User.role == "admin").first()
+    if not admin_user:
+        raise HTTPException(status_code=500, detail="Nenhum admin encontrado")
+    token_data = {
+        "sub": admin_user.username,
+        "user_id": admin_user.id,
+        "role": admin_user.role,
+        "email": admin_user.email or ""
+    }
+    access_token = create_access_token(data=token_data)
+    refresh_token = create_refresh_token(data={"sub": admin_user.username, "user_id": admin_user.id})
+    redirect = RedirectResponse(url="/", status_code=302)
+    redirect.set_cookie(key="access_token", value=access_token, httponly=True, max_age=86400, samesite="lax", path="/", secure=False)
+    redirect.set_cookie(key="refresh_token", value=refresh_token, httponly=True, max_age=7*86400, samesite="lax", path="/api/auth", secure=False)
+    return redirect
+
+
 MICROSOFT_CLIENT_ID = os.getenv("MICROSOFT_CLIENT_ID")
 MICROSOFT_CLIENT_SECRET = os.getenv("MICROSOFT_CLIENT_SECRET")
 MICROSOFT_TENANT_ID = os.getenv("MICROSOFT_TENANT_ID")
