@@ -91,6 +91,34 @@ O deploy no Replit foi abandonado porque o health check da VM (timeout 5s) falha
 - `_process_item` em `upload_queue.py` inclui logging diagnóstico: tipo do engine (PostgreSQL/SQLite), verificação pós-commit, contagem de blocos
 - Detecção de duplicatas: uploads com `file_hash` idêntico a material com `processing_status=success` são **bloqueados** (não apenas avisados)
 
+## React Frontend Builds (CRÍTICO)
+**O Dockerfile é Python-only (não tem Node.js). Builds React são compilados NO REPLIT e commitados no repo.**
+
+**4 apps React com builds pré-compilados:**
+| App | Pasta | Rota | Template |
+|-----|-------|------|----------|
+| Conversas | `frontend/react-conversations/dist/` | `/conversas` | `conversas_react.html` |
+| Insights | `frontend/react-insights/dist/` | `/insights` | lê `index.html` direto |
+| Custos | `frontend/react-costs/dist/` | `/custos` | `custos_react.html` |
+| Base Conhecimento | `frontend/react-knowledge/dist/` | `/base-conhecimento` | `base_conhecimento_react.html` |
+
+**Ao modificar qualquer frontend React:**
+```bash
+cd frontend/react-NOME
+npm run build
+cd ../..
+# Os dist/ são commitados automaticamente (não estão no .gitignore)
+```
+
+**NUNCA adicionar `dist/` ao `.gitignore`** — os builds DEVEM estar no repo para o Railway funcionar.
+
+## Higiene do Repositório (PERMANENTE)
+Consultar `attached_assets/INSTRUCOES_PARA_IA.md` para regras completas. Resumo:
+- **NUNCA criar:** `.legacy`, `.old`, `.backup`, `.bak`, `sed*`, `cookies.txt`
+- **NUNCA duplicar:** builds React em `static/react-*/` (fonte única: `frontend/react-*/dist/`)
+- **NUNCA versionar:** relatórios de teste (`tests/**/reports/`), `.env`, temporários
+- **SEMPRE:** deletar código antigo (Git guarda histórico), recompilar React após mudanças de frontend, manter `.env.example` atualizado
+
 ## External Dependencies
 - **API OpenAI:** AI agent interactions and text embeddings.
 - **Z-API:** WhatsApp messaging integration.

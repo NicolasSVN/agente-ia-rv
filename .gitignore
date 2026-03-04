@@ -6,7 +6,6 @@ __pycache__/
 .Python
 build/
 develop-eggs/
-dist/
 downloads/
 eggs/
 .eggs/
@@ -71,9 +70,24 @@ yarn-error.log*
 # Uploads
 uploads/
 
-# Build
-frontend/dist/
-
 # Backups
 backup_migracao.sql
 *.sql.bak
+
+# Temporários
+sed*
+*.tmp
+cookies.txt
+skills-lock.json
+
+# Testes
+tests/**/reports/
+coverage/
+.pytest_cache/
+.coverage
+
+# Legados (nunca criar esses tipos)
+*.legacy
+*.old
+*.backup
+*.bak
