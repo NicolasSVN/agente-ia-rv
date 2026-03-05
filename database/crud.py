@@ -348,6 +348,11 @@ def init_default_integrations(db: Session):
     Inicializa as integrações padrão no banco de dados.
     Chamado na inicialização da aplicação.
     """
+    openai_legacy = db.query(Integration).filter(Integration.type == "openai").first()
+    if openai_legacy:
+        db.delete(openai_legacy)
+        db.commit()
+
     default_integrations = [
         {
             "name": "WhatsApp (Z-API)",
