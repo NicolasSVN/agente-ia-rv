@@ -18,20 +18,33 @@ class ZAPIClient:
         self.instance_id = os.getenv("ZAPI_INSTANCE_ID", "") or settings.ZAPI_INSTANCE_ID
         self.token = os.getenv("ZAPI_TOKEN", "") or settings.ZAPI_TOKEN
         self.client_token = os.getenv("ZAPI_CLIENT_TOKEN", "") or settings.ZAPI_CLIENT_TOKEN
-        self.base_url = f"https://api.z-api.io/instances/{self.instance_id}/token/{self.token}"
         
-        print(f"[Z-API] Inicializado - Instance: {self.instance_id[:8]}..., Token configurado: {bool(self.token)}, Client-Token configurado: {bool(self.client_token)}")
-    
+        print(f"[Z-API] Inicializado - Instance: {self.instance_id[:8] if self.instance_id else '?'}..., Token configurado: {bool(self.token)}, Client-Token configurado: {bool(self.client_token)}")
+
+    def _get_credentials(self) -> dict:
+        """Lê credenciais no momento da chamada para refletir atualizações via save-secrets."""
+        return {
+            "instance_id": os.getenv("ZAPI_INSTANCE_ID", "") or settings.ZAPI_INSTANCE_ID,
+            "token": os.getenv("ZAPI_TOKEN", "") or settings.ZAPI_TOKEN,
+            "client_token": os.getenv("ZAPI_CLIENT_TOKEN", "") or settings.ZAPI_CLIENT_TOKEN,
+        }
+
+    def _get_base_url(self) -> str:
+        """Constrói a URL base com credenciais atuais."""
+        creds = self._get_credentials()
+        return f"https://api.z-api.io/instances/{creds['instance_id']}/token/{creds['token']}"
+
     def _get_headers(self) -> dict:
-        """Retorna headers de autenticação para a Z-API."""
+        """Retorna headers de autenticação com credenciais atuais."""
         return {
             "Content-Type": "application/json",
-            "Client-Token": self.client_token
+            "Client-Token": self._get_credentials()["client_token"],
         }
-    
+
     def is_configured(self) -> bool:
         """Verifica se a Z-API está configurada corretamente."""
-        return bool(self.instance_id and self.token and self.client_token)
+        creds = self._get_credentials()
+        return bool(creds["instance_id"] and creds["token"] and creds["client_token"])
     
     def _normalize_phone(self, phone: str) -> str:
         """
@@ -94,7 +107,7 @@ class ZAPIClient:
             - message_id: str (ID no WhatsApp)
             - error: str (se houver erro)
         """
-        url = f"{self.base_url}/send-text"
+        url = f"{self._get_base_url()}/send-text"
         
         payload = {
             "phone": self._normalize_phone(to),
@@ -142,7 +155,7 @@ class ZAPIClient:
             caption: Legenda da imagem (opcional)
             view_once: Se é visualização única
         """
-        url = f"{self.base_url}/send-image"
+        url = f"{self._get_base_url()}/send-image"
         
         payload = {
             "phone": self._normalize_phone(to),
@@ -171,7 +184,7 @@ class ZAPIClient:
             caption: Legenda do vídeo (opcional)
             view_once: Se é visualização única
         """
-        url = f"{self.base_url}/send-video"
+        url = f"{self._get_base_url()}/send-video"
         
         payload = {
             "phone": self._normalize_phone(to),
@@ -200,7 +213,7 @@ class ZAPIClient:
             view_once: Se é visualização única
             waveform: Se deve mostrar ondas sonoras
         """
-        url = f"{self.base_url}/send-audio"
+        url = f"{self._get_base_url()}/send-audio"
         
         payload = {
             "phone": self._normalize_phone(to),
@@ -235,7 +248,7 @@ class ZAPIClient:
         elif document_url and '.' in document_url:
             extension = document_url.rsplit('.', 1)[-1].lower().split('?')[0]
         
-        url = f"{self.base_url}/send-document/{extension}"
+        url = f"{self._get_base_url()}/send-document/{extension}"
         
         payload = {
             "phone": self._normalize_phone(to),
@@ -281,7 +294,7 @@ class ZAPIClient:
     
     async def check_connection(self) -> dict:
         """Verifica a conexão com a Z-API."""
-        url = f"{self.base_url}/status"
+        url = f"{self._get_base_url()}/status"
         
         async with httpx.AsyncClient() as client:
             try:
@@ -307,7 +320,7 @@ class ZAPIClient:
     
     async def get_qr_code(self) -> dict:
         """Obtém o QR code para conexão."""
-        url = f"{self.base_url}/qr-code/image"
+        url = f"{self._get_base_url()}/qr-code/image"
         
         async with httpx.AsyncClient() as client:
             try:
@@ -328,7 +341,7 @@ class ZAPIClient:
     
     async def disconnect(self) -> dict:
         """Desconecta a instância do WhatsApp."""
-        url = f"{self.base_url}/disconnect"
+        url = f"{self._get_base_url()}/disconnect"
         
         async with httpx.AsyncClient() as client:
             try:
@@ -340,7 +353,7 @@ class ZAPIClient:
     
     async def restart(self) -> dict:
         """Reinicia a instância do WhatsApp."""
-        url = f"{self.base_url}/restart"
+        url = f"{self._get_base_url()}/restart"
         
         async with httpx.AsyncClient() as client:
             try:
@@ -352,7 +365,7 @@ class ZAPIClient:
     
     async def update_webhook(self, webhook_url: str) -> dict:
         """Atualiza a URL do webhook para receber mensagens."""
-        url = f"{self.base_url}/update-webhook-received"
+        url = f"{self._get_base_url()}/update-webhook-received"
         
         payload = {"value": webhook_url}
         
@@ -374,7 +387,7 @@ class ZAPIClient:
         Returns:
             Dict com exists, phone e lid
         """
-        url = f"{self.base_url}/phone-exists/{self._normalize_phone(phone)}"
+        url = f"{self._get_base_url()}/phone-exists/{self._normalize_phone(phone)}"
         
         async with httpx.AsyncClient() as client:
             try:
@@ -410,7 +423,7 @@ class ZAPIClient:
         Returns:
             Lista de chats com informações de contato
         """
-        url = f"{self.base_url}/chats"
+        url = f"{self._get_base_url()}/chats"
         params = {"page": page, "pageSize": page_size}
         
         async with httpx.AsyncClient() as client:
@@ -495,7 +508,7 @@ class ZAPIClient:
         if "@lid" not in phone_or_lid:
             identifier = self._normalize_phone(phone_or_lid)
         
-        url = f"{self.base_url}/chat-messages/{identifier}"
+        url = f"{self._get_base_url()}/chat-messages/{identifier}"
         params = {"amount": amount}
         if last_message_id:
             params["lastMessageId"] = last_message_id
@@ -539,7 +552,7 @@ class ZAPIClient:
         Returns:
             Resultado da operação
         """
-        url = f"{self.base_url}/update-notify-sent-by-me"
+        url = f"{self._get_base_url()}/update-notify-sent-by-me"
         payload = {"value": enable}
         
         async with httpx.AsyncClient() as client:
@@ -565,7 +578,7 @@ class ZAPIClient:
         """
         Busca configurações atuais dos webhooks da instância.
         """
-        url = f"{self.base_url}/webhooks"
+        url = f"{self._get_base_url()}/webhooks"
         
         async with httpx.AsyncClient() as client:
             try:
