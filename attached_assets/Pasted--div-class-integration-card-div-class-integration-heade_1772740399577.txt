@@ -1,0 +1,36 @@
+<div class="integration-card">
+                        <div class="integration-header openai">
+                            <div class="integration-title">
+                                <div class="integration-icon">🔌</div>
+                                <div>
+                                    <h2>OpenAI</h2>
+                                    <small style="opacity: 0.8;">Tipo: openai</small>
+                                </div>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 16px;">
+                                <label class="toggle-switch">
+                                    <input type="checkbox" data-action="toggle-integration" data-id="1">
+                                    <span class="toggle-slider"></span>
+                                </label>
+                                <span class="status-badge disconnected">
+                                    Inativo
+                                </span>
+                            </div>
+                        </div>
+                        <div class="integration-body">
+                            <div class="env-vars-section">
+                                <h3>Configurações</h3>
+                                <p style="color: var(--text-secondary); margin-bottom: 16px; font-size: 0.9rem;">Preencha os campos abaixo para configurar a integração.</p>
+                                
+                            </div>
+                            <div class="action-buttons">
+                                <button class="btn btn-primary" data-action="save-secrets" data-type="openai">
+                                    Salvar Configurações
+                                </button>
+                                <button class="btn btn-success" data-action="test-connection" data-id="1">
+                                    Testar Conexão
+                                </button>
+                            </div>
+                            <div class="test-result" id="test-result-1"></div>
+                        </div>
+                    </div>
