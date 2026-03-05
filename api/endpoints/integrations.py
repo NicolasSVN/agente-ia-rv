@@ -139,7 +139,7 @@ async def list_integrations(
     current_user: dict = Depends(get_current_admin)
 ):
     """Lista todas as integrações disponíveis."""
-    integrations = [i for i in crud.get_integrations(db) if i.type != "openai"]
+    integrations = crud.get_integrations(db)
     
     result = []
     for integration in integrations:

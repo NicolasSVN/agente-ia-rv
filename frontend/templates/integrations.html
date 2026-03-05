@@ -384,7 +384,7 @@
                 return;
             }
 
-            container.innerHTML = integrations.filter(i => i.type !== 'openai').map(integration => {
+            container.innerHTML = integrations.map(integration => {
                 const mapping = envMapping[integration.type] || { settings: {} };
                 const settings = mapping.settings || {};
 
