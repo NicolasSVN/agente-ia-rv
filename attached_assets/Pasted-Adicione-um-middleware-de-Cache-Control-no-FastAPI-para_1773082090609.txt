@@ -1,0 +1,47 @@
+Adicione um middleware de Cache-Control no FastAPI para resolver
+o problema de cache do frontend. O diagnóstico identificou três
+categorias de arquivo que precisam de tratamento diferente.
+
+Adicione esse middleware em main.py, logo após criar o app
+FastAPI e ANTES de montar os StaticFiles:
+
+@app.middleware("http")
+async def cache_control_middleware(request: Request, call_next):
+    response = await call_next(request)
+    path = request.url.path
+
+    # 1. Bundles React com hash no nome (Vite: index-u2L8KB-7.js)
+    #    Hash muda a cada build → pode cachear para sempre
+    if "/assets/" in path and (path.endswith(".js") or path.endswith(".css")):
+        response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+
+    # 2. Arquivos legado sem hash (/static/*.js, /static/*.css)
+    #    Nome fixo → revalida sempre, mas usa cache se não mudou (ETag)
+    elif path.startswith("/static/") and (
+        path.endswith(".js") or path.endswith(".css") or
+        path.endswith(".png") or path.endswith(".ico") or
+        path.endswith(".woff2") or path.endswith(".woff")
+    ):
+        response.headers["Cache-Control"] = "public, max-age=0, must-revalidate"
+
+    # 3. HTML (páginas Jinja2 e containers dos SPAs)
+    #    NUNCA cachear — é aqui que o nome do bundle novo é injetado
+    elif (
+        path.endswith(".html") or
+        "content-type" in response.headers and
+        "text/html" in response.headers.get("content-type", "")
+    ):
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        response.headers["Pragma"] = "no-cache"
+
+    return response
+
+Após implementar, valide com curl nas três categorias:
+
+curl -I https://agente-ia-rv-svn.replit.app/static/notifications.js
+# Esperado: Cache-Control: public, max-age=0, must-revalidate
+
+curl -I https://[url]/base-conhecimento/assets/index-u2L8KB-7.js  
+# Esperado: Cache-Control: public, max-age=31536000, immutable
+
+# Para o HTML, teste após login — deve retornar no-cache
