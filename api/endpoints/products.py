@@ -34,88 +34,6 @@ router = APIRouter(prefix="/api/products", tags=["products"])
 # Queue para rastrear progresso de uploads
 upload_progress_queues = {}
 
-def reindex_block(block: ContentBlock, db: Session):
-    """
-    Reindexa um bloco de conteúdo no vetor de busca.
-    
-    MELHORIA: Agora inclui contexto global completo em cada chunk para melhor RAG.
-    """
-    try:
-        vector_store = VectorStore()
-        chunk_id = f"product_block_{block.id}"
-        
-        vector_store.delete_document(chunk_id)
-        
-        material = block.material
-        product = material.product if material else None
-        
-        content_for_indexing = block.content
-        if block.block_type == ContentBlockType.TABLE.value:
-            try:
-                table_data = json.loads(block.content)
-                semantic_model = parse_table_to_semantic(table_data)
-                content_for_indexing = transform_semantic_to_indexable(
-                    semantic_model, 
-                    block.title or ""
-                )
-            except Exception:
-                pass
-        
-        global_context = _build_global_context_for_block(material, product)
-        content_with_context = f"{global_context}\n\n{content_for_indexing}"
-        
-        material_tags = []
-        material_categories = []
-        if material:
-            try:
-                material_tags = json.loads(material.tags or "[]")
-            except:
-                pass
-            try:
-                material_categories = json.loads(material.material_categories or "[]")
-            except:
-                pass
-        
-        valid_until_str = ""
-        created_at_str = ""
-        if material:
-            if material.valid_until:
-                valid_until_str = material.valid_until.isoformat()
-            if material.created_at:
-                created_at_str = material.created_at.isoformat()
-        
-        metadata = {
-            "block_id": str(block.id),
-            "material_id": str(material.id) if material else "",
-            "material_name": material.name if material else "",
-            "material_type": material.material_type if material else "",
-            "product_id": str(product.id) if product else "",
-            "product_name": product.name if product else "",
-            "product_ticker": product.ticker if product else "",
-            "gestora": product.manager if product else "",
-            "category": product.category if product else "",
-            "products": (product.ticker.upper() if product and product.ticker else (product.name.upper() if product else "")),
-            "block_type": block.block_type,
-            "title": block.title or "",
-            "page": str(block.source_page or 0),
-            "publish_status": material.publish_status if material else "rascunho",
-            "valid_until": valid_until_str,
-            "created_at": created_at_str,
-            "tags": ",".join(material_tags),
-            "categories": ",".join(material_categories),
-            "source": "product_cms"
-        }
-        
-        vector_store.add_document(
-            doc_id=chunk_id,
-            text=content_with_context,
-            metadata=metadata
-        )
-        print(f"[REINDEX] Bloco {block.id} reindexado com sucesso")
-        return True
-    except Exception as e:
-        print(f"[REINDEX] Erro ao reindexar bloco {block.id}: {e}")
-        return False
 
 
 def find_or_create_product_from_name(db: Session, material_name: str, gestora: str = None, document_type: str = None):
@@ -251,18 +169,20 @@ def auto_publish_if_ready(material, db: Session):
     if pending_count == 0 and material.publish_status in (None, "rascunho"):
         material.publish_status = "publicado"
         db.commit()
-        total_blocks = db.query(ContentBlock).filter(
-            ContentBlock.material_id == material.id,
-            ContentBlock.status.in_([
-                ContentBlockStatus.AUTO_APPROVED.value,
-                ContentBlockStatus.APPROVED.value
-            ])
-        ).all()
         product = db.query(Product).filter(Product.id == material.product_id).first()
-        if product and total_blocks:
-            for block in total_blocks:
-                reindex_block(block, db)
-        print(f"[AUTO_PUBLISH] Material {material.id} '{material.name}' auto-publicado ({len(total_blocks)} blocos reindexados)")
+        if product:
+            from services.product_ingestor import get_product_ingestor
+            ingestor = get_product_ingestor()
+            result = ingestor.index_approved_blocks(
+                material_id=material.id,
+                product_name=product.name,
+                product_ticker=product.ticker,
+                db=db
+            )
+            indexed = result.get("indexed_count", 0)
+        else:
+            indexed = 0
+        print(f"[AUTO_PUBLISH] Material {material.id} '{material.name}' auto-publicado ({indexed} blocos indexados)")
         return True
     return False
 
@@ -607,10 +527,18 @@ async def delete_product(
     if current_user.role not in ["admin", "gestao_rv"]:
         raise HTTPException(status_code=403, detail="Acesso negado")
     
-    product = db.query(Product).filter(Product.id == product_id).first()
+    product = db.query(Product).filter(Product.id == product_id).options(
+        joinedload(Product.materials).joinedload(Material.content_blocks)
+    ).first()
     if not product:
         raise HTTPException(status_code=404, detail="Produto não encontrado")
-    
+
+    vector_store = VectorStore()
+    block_ids = [block.id for mat in product.materials for block in mat.content_blocks]
+    for bid in block_ids:
+        vector_store.delete_document(f"product_block_{bid}")
+    print(f"[DELETE] Produto '{product.name}': {len(block_ids)} embeddings removidos do vector store")
+
     db.delete(product)
     db.commit()
     return {"success": True}
@@ -708,21 +636,28 @@ async def delete_material(
     if current_user.role not in ["admin", "gestao_rv", "broker"]:
         raise HTTPException(status_code=403, detail="Acesso negado")
     
-    material = db.query(Material).filter(
+    material = db.query(Material).options(
+        joinedload(Material.content_blocks)
+    ).filter(
         Material.id == material_id,
         Material.product_id == product_id
     ).first()
-    
+
     if not material:
         raise HTTPException(status_code=404, detail="Material não encontrado")
-    
+
+    vector_store = VectorStore()
+    for block in material.content_blocks:
+        vector_store.delete_document(f"product_block_{block.id}")
+    print(f"[DELETE] Material '{material.name}': {len(material.content_blocks)} embeddings removidos do vector store")
+
     db.query(PersistentQueueItem).filter(
         PersistentQueueItem.material_id == material_id
     ).delete()
     db.query(DocumentProcessingJob).filter(
         DocumentProcessingJob.material_id == material_id
     ).delete()
-    
+
     db.delete(material)
     db.commit()
     return {"success": True}
@@ -1465,7 +1400,7 @@ async def approve_review_item(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Aprova um item pendente de revisão e reindexa no vetor de busca."""
+    """Aprova um item pendente de revisão e republica no vetor de busca (se material já publicado)."""
     if current_user.role not in ["admin", "gestao_rv"]:
         raise HTTPException(status_code=403, detail="Acesso negado")
     
@@ -1483,7 +1418,16 @@ async def approve_review_item(
     if block:
         block.status = ContentBlockStatus.APPROVED.value
         db.commit()
-        reindex_block(block, db)
+        if block.material and block.material.publish_status == "publicado":
+            from services.product_ingestor import get_product_ingestor
+            _product = block.material.product
+            ingestor = get_product_ingestor()
+            ingestor.index_approved_blocks(
+                material_id=block.material_id,
+                product_name=_product.name if _product else "",
+                product_ticker=_product.ticker if _product else None,
+                db=db
+            )
     else:
         db.commit()
     
@@ -1670,10 +1614,19 @@ async def reprocess_single_page(
             db.commit()
             
             try:
-                reindex_block(block, db)
-                print(f"[REPROCESS] Bloco reindexado no vetor de busca")
+                if block.material and block.material.publish_status == "publicado":
+                    from services.product_ingestor import get_product_ingestor
+                    _material = db.query(Material).filter(Material.id == block.material_id).first()
+                    _product = db.query(Product).filter(Product.id == _material.product_id).first() if _material else None
+                    get_product_ingestor().index_approved_blocks(
+                        material_id=block.material_id,
+                        product_name=_product.name if _product else "",
+                        product_ticker=_product.ticker if _product else None,
+                        db=db
+                    )
+                    print(f"[REPROCESS] Bloco republicado no vetor de busca")
             except Exception as idx_err:
-                print(f"[REPROCESS] Erro ao reindexar: {idx_err}")
+                print(f"[REPROCESS] Erro ao republicar bloco: {idx_err}")
             
             print(f"[REPROCESS] Página {page_num} reprocessada: {old_rows} → {new_rows} linhas")
         
@@ -2778,48 +2731,9 @@ async def publish_material(
     
     return {
         "success": True,
-        "message": "Material publicado e indexado",
+        "message": "Material republicado e indexado",
         "indexed_count": result.get("indexed_count", 0)
     }
-
-
-@router.post("/{product_id}/materials/{material_id}/reindex")
-async def reindex_material(
-    product_id: int,
-    material_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    """Reindexa todos os blocos aprovados de um material no vector store."""
-    if current_user.role not in ["admin", "gestao_rv"]:
-        raise HTTPException(status_code=403, detail="Acesso negado")
-    
-    material = db.query(Material).filter(
-        Material.id == material_id,
-        Material.product_id == product_id
-    ).first()
-    
-    if not material:
-        raise HTTPException(status_code=404, detail="Material não encontrado")
-    
-    product = db.query(Product).filter(Product.id == product_id).first()
-    if not product:
-        raise HTTPException(status_code=404, detail="Produto não encontrado")
-    
-    from services.product_ingestor import get_product_ingestor
-    ingestor = get_product_ingestor()
-    
-    result = ingestor.reindex_material(
-        material_id=material_id,
-        product_name=product.name,
-        product_ticker=product.ticker,
-        db=db
-    )
-    
-    if result.get("success"):
-        return {"success": True, "indexed_count": result.get("indexed_count", 0)}
-    else:
-        raise HTTPException(status_code=500, detail=result.get("error", "Erro ao reindexar"))
 
 
 @router.post("/admin/migrate-embeddings")
@@ -2860,8 +2774,11 @@ async def migrate_embeddings_model(
     
     for material in materials:
         try:
-            result = ingestor.reindex_material(
+            product = db.query(Product).filter(Product.id == material.product_id).first()
+            result = ingestor.index_approved_blocks(
                 material_id=material.id,
+                product_name=product.name if product else "",
+                product_ticker=product.ticker if product else None,
                 db=db
             )
             if result.get("success"):
@@ -2877,6 +2794,94 @@ async def migrate_embeddings_model(
         "materials_processed": len(materials),
         "chunks_indexed": indexed_count,
         "errors": errors[:10] if errors else []
+    }
+
+
+@router.get("/admin/vector-stats")
+async def vector_stats(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Retorna estatísticas do vector store: totais, agrupamentos e embeddings órfãos."""
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Apenas administradores podem acessar")
+
+    from sqlalchemy import text
+
+    total = db.execute(text("SELECT COUNT(*) FROM document_embeddings")).scalar()
+
+    breakdown_rows = db.execute(text(
+        "SELECT product_ticker, product_name, publish_status, COUNT(*) as total "
+        "FROM document_embeddings "
+        "GROUP BY product_ticker, product_name, publish_status "
+        "ORDER BY total DESC"
+    )).fetchall()
+    breakdown = [
+        {
+            "product_ticker": r[0],
+            "product_name": r[1],
+            "publish_status": r[2],
+            "total": r[3]
+        }
+        for r in breakdown_rows
+    ]
+
+    orphan_rows = db.execute(text(
+        "SELECT doc_id, product_ticker, product_name, publish_status "
+        "FROM document_embeddings "
+        "WHERE doc_id LIKE 'product_block_%' "
+        "AND NOT EXISTS ("
+        "  SELECT 1 FROM content_blocks cb "
+        "  WHERE cb.id = CAST(REPLACE(doc_id, 'product_block_', '') AS INTEGER)"
+        ") "
+        "ORDER BY product_name, doc_id"
+    )).fetchall()
+    orphans = [
+        {"doc_id": r[0], "product_ticker": r[1], "product_name": r[2], "publish_status": r[3]}
+        for r in orphan_rows
+    ]
+
+    return {
+        "total_embeddings": total,
+        "by_product": breakdown,
+        "orphan_embeddings": orphans,
+        "orphan_count": len(orphans)
+    }
+
+
+@router.post("/admin/cleanup-orphan-embeddings")
+async def cleanup_orphan_embeddings(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Remove embeddings órfãos — cujo content_block correspondente não existe mais no banco."""
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Apenas administradores podem executar")
+
+    from sqlalchemy import text
+
+    orphan_rows = db.execute(text(
+        "SELECT doc_id FROM document_embeddings "
+        "WHERE doc_id LIKE 'product_block_%' "
+        "AND NOT EXISTS ("
+        "  SELECT 1 FROM content_blocks cb "
+        "  WHERE cb.id = CAST(REPLACE(doc_id, 'product_block_', '') AS INTEGER)"
+        ")"
+    )).fetchall()
+
+    orphan_ids = [r[0] for r in orphan_rows]
+
+    if orphan_ids:
+        vector_store = VectorStore()
+        for doc_id in orphan_ids:
+            vector_store.delete_document(doc_id)
+
+    print(f"[CLEANUP] {len(orphan_ids)} embeddings órfãos removidos: {orphan_ids[:10]}")
+
+    return {
+        "success": True,
+        "removed_count": len(orphan_ids),
+        "removed_ids": orphan_ids
     }
 
 
@@ -3095,7 +3100,6 @@ async def stream_upload_queue(
 async def reassign_material_product(
     material_id: int,
     target_product_id: int = Form(...),
-    reindex: bool = Form(True),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -3114,22 +3118,20 @@ async def reassign_material_product(
     material.product_id = target_product_id
     db.commit()
 
-    reindexed = 0
-    if reindex:
-        blocks = db.query(ContentBlock).filter(
-            ContentBlock.material_id == material_id,
-            ContentBlock.status == "approved"
-        ).all()
-        for block in blocks:
-            db.refresh(block)
-            success = reindex_block(block, db)
-            if success:
-                reindexed += 1
+    from services.product_ingestor import get_product_ingestor
+    ingestor = get_product_ingestor()
+    result = ingestor.index_approved_blocks(
+        material_id=material_id,
+        product_name=target_product.name,
+        product_ticker=target_product.ticker,
+        db=db
+    )
+    republished_blocks = result.get("indexed_count", 0)
 
     return {
         "success": True,
         "message": f"Material '{material.name}' reassociado de '{old_product_name}' para '{target_product.name}'",
-        "reindexed_blocks": reindexed
+        "republished_blocks": republished_blocks
     }
 
 

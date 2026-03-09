@@ -22,7 +22,7 @@ The application is built using FastAPI with a modular architecture.
 
 **Technical Implementations:**
 - **AI Agent (Stevan):** Integrates OpenAI for chat and embeddings, configurable for personality, rules, and model parameters. It acts as an internal support broker, explaining strategies and products, and escalating to human experts.
-- **Semantic Search (RAG V3.1 Enhanced):** Utilizes `pgvector (PostgreSQL)` and OpenAI `text-embedding-3-large` with hybrid ranking. It includes intelligent ticker detection, a financial glossary for query expansion, and semantic enrichment of content chunks.
+- **Semantic Search (RAG V3.1 Enhanced):** Utilizes `pgvector (PostgreSQL)` and OpenAI `text-embedding-3-large` with hybrid ranking. It includes intelligent ticker detection, a financial glossary for query expansion, and semantic enrichment of content chunks. **Publicação via "Republicar":** único fluxo de indexação usando `index_approved_blocks` (sem `reindex_block`/`reindex_material` — removidos). Deleção de produto/material agora limpa embeddings do vector store automaticamente. Novos endpoints admin: `GET /api/products/admin/vector-stats` (diagnóstico) e `POST /api/products/admin/cleanup-orphan-embeddings` (limpeza).
 - **Manager Disambiguation:** Automatically detects and clarifies financial manager mentions (e.g., "Manatí", "TG Core"), listing available products and allowing selection by ordinal or name.
 - **AI Document Summaries:** Automatic conceptual summaries and theme generation for documents using GPT-4o-mini.
 - **Semantic Transformer (3-Layer Architecture):** Processes content through technical extraction (GPT-4 Vision), semantic modeling, and narrative chunk generation for RAG indexing.

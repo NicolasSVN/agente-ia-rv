@@ -86,10 +86,6 @@ export const materialsAPI = {
       method: 'POST',
     }),
 
-  reindex: (productId, materialId) =>
-    fetchAPI(`/products/${productId}/materials/${materialId}/reindex`, {
-      method: 'POST',
-    }),
 
   uploadWithoutProduct: (file, materialData) => {
     const formData = new FormData();

@@ -210,25 +210,11 @@ function MaterialSection({ material, productId, onRefresh }) {
   const handlePublish = async () => {
     try {
       await materialsAPI.publish(material.id);
-      addToast('Material publicado!', 'success');
+      addToast('Material republicado com sucesso!', 'success');
       onRefresh();
     } catch (err) {
       addToast(`Erro: ${err.message}`, 'error');
     }
-  };
-
-  const [reindexing, setReindexing] = useState(false);
-
-  const handleReindex = async () => {
-    setReindexing(true);
-    try {
-      await materialsAPI.reindex(productId, material.id);
-      addToast('Material reindexado com sucesso!', 'success');
-      onRefresh();
-    } catch (err) {
-      addToast(`Erro ao reindexar: ${err.message}`, 'error');
-    }
-    setReindexing(false);
   };
 
   return (
@@ -272,18 +258,10 @@ function MaterialSection({ material, productId, onRefresh }) {
           >
             <div className="p-4 space-y-4">
               <div className="flex justify-end gap-2">
-                {material.publication_status === 'published' && (
-                  <Button size="sm" variant="secondary" onClick={handleReindex} disabled={reindexing}>
-                    <RefreshCw className={`w-4 h-4 ${reindexing ? 'animate-spin' : ''}`} />
-                    Reindexar
-                  </Button>
-                )}
-                {material.publication_status !== 'published' && (
-                  <Button size="sm" onClick={handlePublish}>
-                    <Send className="w-4 h-4" />
-                    Publicar Material
-                  </Button>
-                )}
+                <Button size="sm" onClick={handlePublish}>
+                  <Send className="w-4 h-4" />
+                  Republicar
+                </Button>
               </div>
 
               {sortedBlocks.length === 0 ? (
