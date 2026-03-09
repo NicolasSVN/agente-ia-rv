@@ -538,21 +538,30 @@ async def reindex_product(
     from services.product_ingestor import get_product_ingestor
     ingestor = get_product_ingestor()
 
-    total_blocks = 0
-    for material in materials:
-        result = ingestor.index_approved_blocks(
-            material_id=material.id,
-            product_name=product.name,
-            product_ticker=product.ticker,
-            db=db
-        )
-        total_blocks += result.get("indexed_count", 0)
+    product_name = product.name
+    product_ticker = product.ticker
+    material_ids = [m.id for m in materials]
+    n_materials = len(materials)
+
+    def _do_reindex():
+        total = 0
+        for mid in material_ids:
+            result = ingestor.index_approved_blocks(
+                material_id=mid,
+                product_name=product_name,
+                product_ticker=product_ticker,
+                db=db
+            )
+            total += result.get("indexed_count", 0)
+        return total
+
+    total_blocks = await asyncio.to_thread(_do_reindex)
 
     return {
         "success": True,
         "reindexed_blocks": total_blocks,
-        "materials": len(materials),
-        "message": f"Produto reindexado: {total_blocks} blocos em {len(materials)} material(is)"
+        "materials": n_materials,
+        "message": f"Produto reindexado: {total_blocks} blocos em {n_materials} material(is)"
     }
 
 

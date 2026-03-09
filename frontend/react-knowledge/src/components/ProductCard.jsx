@@ -31,7 +31,7 @@ function getProductStatus(product) {
   return 'ativo';
 }
 
-export function ProductCard({ product, onClick, onReindex, onDelete }) {
+export function ProductCard({ product, onClick, onReindex, onDelete, isReindexing = false }) {
   const status = getProductStatus(product);
   const materialsCount = product.materials_count ?? product.materials?.length ?? 0;
   const blocksCount = product.blocks_count ?? product.materials?.reduce((acc, m) => acc + (m.blocks?.length || 0), 0) ?? 0;
@@ -51,6 +51,7 @@ export function ProductCard({ product, onClick, onReindex, onDelete }) {
 
   const handleMenuClick = (e) => {
     e.stopPropagation();
+    if (isReindexing) return;
     setMenuOpen((prev) => !prev);
   };
 
@@ -69,10 +70,10 @@ export function ProductCard({ product, onClick, onReindex, onDelete }) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      whileHover={{ y: -2, boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)' }}
-      onClick={() => onClick(product)}
-      className="bg-card rounded-card border border-border p-5 shadow-card cursor-pointer"
+      animate={{ opacity: isReindexing ? 0.6 : 1, y: 0 }}
+      whileHover={{ y: isReindexing ? 0 : -2, boxShadow: isReindexing ? undefined : '0 4px 12px rgba(0, 0, 0, 0.1)' }}
+      onClick={() => !isReindexing && onClick(product)}
+      className={`bg-card rounded-card border border-border p-5 shadow-card transition-opacity duration-200 ${isReindexing ? 'cursor-default' : 'cursor-pointer'}`}
     >
       <div className="flex justify-between items-start mb-3">
         <h3 className="font-semibold text-foreground text-lg flex-1 mr-2">{product.name}</h3>
@@ -80,14 +81,25 @@ export function ProductCard({ product, onClick, onReindex, onDelete }) {
           <StatusBadge status={status} />
           {(onReindex || onDelete) && (
             <div className="relative" ref={menuRef}>
-              <button
-                onClick={handleMenuClick}
-                className="p-1 rounded-md text-muted hover:text-foreground hover:bg-gray-100 transition-colors"
-                title="Opções"
-              >
-                <MoreVertical className="w-4 h-4" />
-              </button>
-              {menuOpen && (
+              {isReindexing ? (
+                <span title="Reindexando..." className="p-1 flex items-center justify-center">
+                  <svg className="w-4 h-4 animate-spin text-primary" viewBox="0 0 24 24" fill="none">
+                    <circle className="opacity-25" cx="12" cy="12" r="10"
+                            stroke="currentColor" strokeWidth="4"/>
+                    <path className="opacity-75" fill="currentColor"
+                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                  </svg>
+                </span>
+              ) : (
+                <button
+                  onClick={handleMenuClick}
+                  className="p-1 rounded-md text-muted hover:text-foreground hover:bg-gray-100 transition-colors"
+                  title="Opções"
+                >
+                  <MoreVertical className="w-4 h-4" />
+                </button>
+              )}
+              {menuOpen && !isReindexing && (
                 <div
                   onClick={(e) => e.stopPropagation()}
                   className="absolute right-0 top-full mt-1 w-40 bg-white border border-border rounded-lg shadow-md z-50 py-1"
@@ -138,7 +150,11 @@ export function ProductCard({ product, onClick, onReindex, onDelete }) {
         </div>
       </div>
       
-      {product.description && (
+      {isReindexing && (
+        <p className="text-xs text-primary mt-3 font-medium">Reindexando...</p>
+      )}
+      
+      {!isReindexing && product.description && (
         <p className="text-sm text-muted mt-3 line-clamp-2">{product.description}</p>
       )}
     </motion.div>

@@ -24,6 +24,8 @@ export function Dashboard() {
   const [creating, setCreating] = useState(false);
   const [productToDelete, setProductToDelete] = useState(null);
   const [deleting, setDeleting] = useState(false);
+  const [reindexingIds, setReindexingIds] = useState(new Set());
+  const MAX_CONCURRENT_REINDEX = 2;
   
   const [globalSearchResults, setGlobalSearchResults] = useState(null);
   const [isSearching, setIsSearching] = useState(false);
@@ -114,11 +116,22 @@ export function Dashboard() {
   }, [products, selectedCategory]);
 
   const handleReindex = async (product) => {
+    if (reindexingIds.size >= MAX_CONCURRENT_REINDEX) {
+      addToast('Aguarde: já há 2 reindexamentos em andamento.', 'warning');
+      return;
+    }
+    setReindexingIds((prev) => new Set(prev).add(product.id));
     try {
       const result = await productsAPI.reindex(product.id);
       addToast(`Reindexado: ${result.reindexed_blocks} bloco(s) de "${product.name}"`, 'success');
     } catch (err) {
-      addToast(`Erro ao reindexar: ${err.message}`, 'error');
+      addToast(`Erro ao reindexar "${product.name}": ${err.message}`, 'error');
+    } finally {
+      setReindexingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(product.id);
+        return next;
+      });
     }
   };
 
@@ -265,6 +278,7 @@ export function Dashboard() {
                   onClick={(p) => navigate(`/product/${p.id}`)}
                   onReindex={handleReindex}
                   onDelete={handleDelete}
+                  isReindexing={reindexingIds.has(product.id)}
                 />
               ))}
             </AnimatePresence>
