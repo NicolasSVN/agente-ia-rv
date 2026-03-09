@@ -476,6 +476,26 @@ from core.security_middleware import setup_security
 setup_security(app)
 
 @app.middleware("http")
+async def cache_control_middleware(request: Request, call_next):
+    response = await call_next(request)
+    path = request.url.path
+
+    if "/assets/" in path and (path.endswith(".js") or path.endswith(".css")):
+        response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+    elif path.startswith("/static/") and (
+        path.endswith(".js") or path.endswith(".css") or
+        path.endswith(".png") or path.endswith(".ico") or
+        path.endswith(".woff2") or path.endswith(".woff")
+    ):
+        response.headers["Cache-Control"] = "public, max-age=0, must-revalidate"
+    elif "text/html" in response.headers.get("content-type", ""):
+        response.headers["Cache-Control"] = "no-store, must-revalidate"
+        response.headers["Pragma"] = "no-cache"
+
+    return response
+
+
+@app.middleware("http")
 async def log_all_requests(request: Request, call_next):
     import time, sys
     start = time.time()

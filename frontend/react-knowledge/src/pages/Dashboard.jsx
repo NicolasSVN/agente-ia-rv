@@ -111,6 +111,26 @@ export function Dashboard() {
     });
   }, [products, selectedCategory]);
 
+  const handleReindex = async (product) => {
+    try {
+      const result = await productsAPI.reindex(product.id);
+      addToast(`Reindexado: ${result.reindexed_blocks} bloco(s) de "${product.name}"`, 'success');
+    } catch (err) {
+      addToast(`Erro ao reindexar: ${err.message}`, 'error');
+    }
+  };
+
+  const handleDelete = async (product) => {
+    if (!window.confirm(`Tem certeza que deseja excluir "${product.name}"? Esta ação não pode ser desfeita.`)) return;
+    try {
+      await productsAPI.delete(product.id);
+      setProducts((prev) => prev.filter((p) => p.id !== product.id));
+      addToast(`"${product.name}" excluído com sucesso`, 'success');
+    } catch (err) {
+      addToast(`Erro ao excluir: ${err.message}`, 'error');
+    }
+  };
+
   const handleCreateProduct = async (e) => {
     e.preventDefault();
     if (!newProduct.name.trim()) {
@@ -233,6 +253,8 @@ export function Dashboard() {
                   key={product.id}
                   product={product}
                   onClick={(p) => navigate(`/product/${p.id}`)}
+                  onReindex={handleReindex}
+                  onDelete={handleDelete}
                 />
               ))}
             </AnimatePresence>

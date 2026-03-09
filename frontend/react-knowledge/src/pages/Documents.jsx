@@ -68,16 +68,6 @@ export function Documents() {
     setUploading(false);
   };
 
-  const handleReindex = async (docId) => {
-    try {
-      await knowledgeAPI.reindex(docId);
-      addToast('Documento reindexado!', 'success');
-      loadDocuments();
-    } catch (err) {
-      addToast(`Erro: ${err.message}`, 'error');
-    }
-  };
-
   const handleDelete = async (docId) => {
     if (!confirm('Tem certeza que deseja excluir este documento?')) return;
     try {
@@ -248,16 +238,6 @@ export function Documents() {
                       </Button>
                     )}
                     
-                    {doc.is_indexed && (
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        onClick={() => handleReindex(doc.id)}
-                        title="Reindexar"
-                      >
-                        <RefreshCw className="w-4 h-4" />
-                      </Button>
-                    )}
                     <Button
                       size="icon"
                       variant="ghost"

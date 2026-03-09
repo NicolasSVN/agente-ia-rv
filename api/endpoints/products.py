@@ -517,6 +517,45 @@ async def update_product(
     return {"success": True}
 
 
+@router.post("/{product_id}/reindex")
+async def reindex_product(
+    product_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Reindexar todos os materiais de um produto no vector store."""
+    if current_user.role not in ["admin", "gestao_rv", "broker"]:
+        raise HTTPException(status_code=403, detail="Acesso negado")
+
+    product = db.query(Product).filter(Product.id == product_id).first()
+    if not product:
+        raise HTTPException(status_code=404, detail="Produto não encontrado")
+
+    materials = db.query(Material).filter(Material.product_id == product_id).all()
+    if not materials:
+        return {"success": True, "reindexed_blocks": 0, "materials": 0, "message": "Nenhum material encontrado"}
+
+    from services.product_ingestor import get_product_ingestor
+    ingestor = get_product_ingestor()
+
+    total_blocks = 0
+    for material in materials:
+        result = ingestor.index_approved_blocks(
+            material_id=material.id,
+            product_name=product.name,
+            product_ticker=product.ticker,
+            db=db
+        )
+        total_blocks += result.get("indexed_count", 0)
+
+    return {
+        "success": True,
+        "reindexed_blocks": total_blocks,
+        "materials": len(materials),
+        "message": f"Produto reindexado: {total_blocks} blocos em {len(materials)} material(is)"
+    }
+
+
 @router.delete("/{product_id}")
 async def delete_product(
     product_id: int,

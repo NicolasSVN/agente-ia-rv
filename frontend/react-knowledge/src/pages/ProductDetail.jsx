@@ -260,7 +260,7 @@ function MaterialSection({ material, productId, onRefresh }) {
               <div className="flex justify-end gap-2">
                 <Button size="sm" onClick={handlePublish}>
                   <Send className="w-4 h-4" />
-                  Republicar
+                  Reindexar
                 </Button>
               </div>
 

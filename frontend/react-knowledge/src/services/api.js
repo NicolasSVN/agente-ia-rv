@@ -53,7 +53,9 @@ export const productsAPI = {
   getCategories: () => fetchAPI('/products/categories'),
 
   getExpiring: (days = 30) => fetchAPI(`/products/expiring?days=${days}`),
-  
+
+  reindex: (productId) => fetchAPI(`/products/${productId}/reindex`, { method: 'POST' }),
+
   search: (query, limit = 5) => fetchAPI(`/search/quick?q=${encodeURIComponent(query)}&limit=${limit}`),
 };
 
@@ -222,11 +224,6 @@ export const knowledgeAPI = {
       body: formData,
     });
   },
-
-  reindex: (docId) =>
-    fetchAPI(`/knowledge/${docId}/reindex`, {
-      method: 'POST',
-    }),
 
   delete: (docId) =>
     fetchAPI(`/knowledge/${docId}`, {
