@@ -3011,8 +3011,7 @@ async def fix_stuck_blocks(
     result = db.execute(text(
         "UPDATE content_blocks "
         "SET status = 'auto_approved', "
-        "    reviewed_at = NOW(), "
-        "    reviewer_notes = 'Aprovado via correção de dados — sem entrada na fila de revisão' "
+        "    updated_at = NOW() "
         "WHERE status = 'pending_review' "
         "AND material_id IN ("
         "  SELECT m.id FROM materials m "
