@@ -23,7 +23,8 @@ from database.models import (
     User, Product, Material, ContentBlock, BlockVersion, 
     WhatsAppScript, PendingReviewItem, DocumentProcessingJob,
     ProductStatus, MaterialType, ContentBlockType, 
-    ContentBlockStatus, ContentSourceType, PersistentQueueItem
+    ContentBlockStatus, ContentSourceType, PersistentQueueItem,
+    IngestionLog
 )
 from api.endpoints.auth import get_current_user
 from services.vector_store import VectorStore
@@ -586,6 +587,18 @@ async def delete_product(
     for bid in block_ids:
         vector_store.delete_document(f"product_block_{bid}")
     print(f"[DELETE] Produto '{product.name}': {len(block_ids)} embeddings removidos do vector store")
+
+    material_ids = [mat.id for mat in product.materials]
+    if material_ids:
+        db.query(PersistentQueueItem).filter(
+            PersistentQueueItem.material_id.in_(material_ids)
+        ).delete(synchronize_session=False)
+        db.query(IngestionLog).filter(
+            IngestionLog.material_id.in_(material_ids)
+        ).delete(synchronize_session=False)
+        db.query(DocumentProcessingJob).filter(
+            DocumentProcessingJob.material_id.in_(material_ids)
+        ).delete(synchronize_session=False)
 
     db.delete(product)
     db.commit()
