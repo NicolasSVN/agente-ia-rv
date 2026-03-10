@@ -545,8 +545,14 @@ async def reindex_product(
     n_materials = len(materials)
 
     def _do_reindex():
+        from datetime import datetime
         total = 0
         for mid in material_ids:
+            mat = db.query(Material).filter(Material.id == mid).first()
+            if mat:
+                mat.publish_status = "publicado"
+                mat.published_at = datetime.now()
+                db.commit()
             result = ingestor.index_approved_blocks(
                 material_id=mid,
                 product_name=product_name,
@@ -1702,9 +1708,9 @@ async def reprocess_single_page(
                         product_ticker=_product.ticker if _product else None,
                         db=db
                     )
-                    print(f"[REPROCESS] Bloco republicado no vetor de busca")
+                    print(f"[REPROCESS] Bloco indexado no vetor de busca")
             except Exception as idx_err:
-                print(f"[REPROCESS] Erro ao republicar bloco: {idx_err}")
+                print(f"[REPROCESS] Erro ao indexar bloco: {idx_err}")
             
             print(f"[REPROCESS] Página {page_num} reprocessada: {old_rows} → {new_rows} linhas")
         
@@ -2774,42 +2780,42 @@ async def resume_upload(
     )
 
 
-@router.post("/materials/{material_id}/publish")
-async def publish_material(
+@router.post("/materials/{material_id}/reindex")
+async def reindex_material(
     material_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Publica um material e indexa seus blocos aprovados no vector store."""
+    """Reindexar um material: atualiza publish_status para publicado e indexa blocos aprovados."""
     if current_user.role not in ["admin", "gestao_rv"]:
         raise HTTPException(status_code=403, detail="Acesso negado")
-    
+
     material = db.query(Material).filter(Material.id == material_id).first()
     if not material:
         raise HTTPException(status_code=404, detail="Material não encontrado")
-    
+
     product = db.query(Product).filter(Product.id == material.product_id).first()
     if not product:
         raise HTTPException(status_code=404, detail="Produto não encontrado")
-    
+
     from datetime import datetime
     material.publish_status = "publicado"
     material.published_at = datetime.now()
     db.commit()
-    
+
     from services.product_ingestor import get_product_ingestor
     ingestor = get_product_ingestor()
-    
+
     result = ingestor.index_approved_blocks(
         material_id=material_id,
         product_name=product.name,
         product_ticker=product.ticker,
         db=db
     )
-    
+
     return {
         "success": True,
-        "message": "Material republicado e indexado",
+        "message": "Material reindexado",
         "indexed_count": result.get("indexed_count", 0)
     }
 
@@ -3204,12 +3210,12 @@ async def reassign_material_product(
         product_ticker=target_product.ticker,
         db=db
     )
-    republished_blocks = result.get("indexed_count", 0)
+    reindexed_blocks = result.get("indexed_count", 0)
 
     return {
         "success": True,
         "message": f"Material '{material.name}' reassociado de '{old_product_name}' para '{target_product.name}'",
-        "republished_blocks": republished_blocks
+        "reindexed_blocks": reindexed_blocks
     }
 
 

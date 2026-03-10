@@ -207,10 +207,10 @@ function MaterialSection({ material, productId, onRefresh }) {
     }
   };
 
-  const handlePublish = async () => {
+  const handleReindex = async () => {
     try {
-      await materialsAPI.publish(material.id);
-      addToast('Material republicado com sucesso!', 'success');
+      await materialsAPI.reindex(material.id);
+      addToast('Material reindexado com sucesso!', 'success');
       onRefresh();
     } catch (err) {
       addToast(`Erro: ${err.message}`, 'error');
@@ -258,7 +258,7 @@ function MaterialSection({ material, productId, onRefresh }) {
           >
             <div className="p-4 space-y-4">
               <div className="flex justify-end gap-2">
-                <Button size="sm" onClick={handlePublish}>
+                <Button size="sm" onClick={handleReindex}>
                   <Send className="w-4 h-4" />
                   Reindexar
                 </Button>

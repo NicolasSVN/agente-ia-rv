@@ -83,8 +83,8 @@ export const materialsAPI = {
     });
   },
 
-  publish: (materialId) =>
-    fetchAPI(`/products/materials/${materialId}/publish`, {
+  reindex: (materialId) =>
+    fetchAPI(`/products/materials/${materialId}/reindex`, {
       method: 'POST',
     }),
 
