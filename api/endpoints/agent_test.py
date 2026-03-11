@@ -34,6 +34,10 @@ class TestMessageResponse(BaseModel):
     knowledge_documents: List[dict]
     conversation_length: int
     identified_assessor: Optional[Dict[str, Any]] = None
+    rewritten_query: Optional[str] = None
+    topic_switch: Optional[bool] = None
+    is_comparative: Optional[bool] = None
+    clarification_needed: Optional[bool] = None
 
 
 class ConversationMessage(BaseModel):
@@ -95,18 +99,22 @@ async def test_agent_message(
         for msg in history[-10:]
     ]
 
-    # BUSCA VIA EnhancedSearch — mesmo pipeline do WhatsApp
+    from services.query_rewriter import rewrite_query
+    rewrite_result = await rewrite_query(message, history_for_ai, openai_agent.client)
+
+    search_query = rewrite_result.rewritten_query
+
     knowledge_context = ""
     search_results = []
     query_intent = None
-    entities_detected = []
+    entities_detected = rewrite_result.entities.copy()
 
     try:
         enhanced = _get_enhanced_search()
-        if enhanced:
+        if enhanced and not rewrite_result.clarification_needed:
             from services.vector_store import filter_expired_results
             raw_results = enhanced.search(
-                query=message,
+                query=search_query,
                 n_results=6,
                 conversation_id=f"test_{user_id}",
                 similarity_threshold=0.8
@@ -146,20 +154,49 @@ async def test_agent_message(
                     entities_detected.append(ticker)
 
             if search_results:
-                knowledge_context = "\n\n--- Informações da Base de Conhecimento ---\n"
-                for i, r in enumerate(search_results, 1):
-                    title = r.metadata.get("document_title", r.metadata.get("source", "Documento"))
-                    product_name = r.metadata.get("product_name", "")
-                    block_type = r.metadata.get("block_type", "")
-                    score = r.composite_score
-                    content = r.content[:500]
-                    knowledge_context += f"\n[{i}] {title}"
-                    if product_name:
-                        knowledge_context += f" (Produto: {product_name})"
-                    if block_type:
-                        knowledge_context += f" [{block_type}]"
-                    knowledge_context += f" [score:{score:.2f}]"
-                    knowledge_context += f":\n{content}\n"
+                if is_comparative and len(entities_detected) >= 2:
+                    tickers_str = " e ".join(entities_detected[:3])
+                    knowledge_context = (
+                        f"\n\nINSTRUÇÃO DE RESPOSTA: Esta é uma consulta COMPARATIVA entre {tickers_str}. "
+                        f"Você DEVE comparar os fundos diretamente. NÃO continue o tópico anterior da conversa. "
+                        f"Organize a resposta em seções separadas por fundo.\n"
+                    )
+                    results_by_product = {}
+                    for r in search_results:
+                        pname = r.metadata.get("product_name", "Outros")
+                        if pname not in results_by_product:
+                            results_by_product[pname] = []
+                        results_by_product[pname].append(r)
+
+                    idx = 1
+                    for pname, prod_results in results_by_product.items():
+                        knowledge_context += f"\n--- {pname} ---\n"
+                        for r in prod_results:
+                            title = r.metadata.get("document_title", r.metadata.get("source", "Documento"))
+                            block_type = r.metadata.get("block_type", "")
+                            score = r.composite_score
+                            content = r.content[:500]
+                            knowledge_context += f"\n[{idx}] {title}"
+                            if block_type:
+                                knowledge_context += f" [{block_type}]"
+                            knowledge_context += f" [score:{score:.2f}]"
+                            knowledge_context += f":\n{content}\n"
+                            idx += 1
+                else:
+                    knowledge_context = "\n\n--- Informações da Base de Conhecimento ---\n"
+                    for i, r in enumerate(search_results, 1):
+                        title = r.metadata.get("document_title", r.metadata.get("source", "Documento"))
+                        product_name = r.metadata.get("product_name", "")
+                        block_type = r.metadata.get("block_type", "")
+                        score = r.composite_score
+                        content = r.content[:500]
+                        knowledge_context += f"\n[{i}] {title}"
+                        if product_name:
+                            knowledge_context += f" (Produto: {product_name})"
+                        if block_type:
+                            knowledge_context += f" [{block_type}]"
+                        knowledge_context += f" [score:{score:.2f}]"
+                        knowledge_context += f":\n{content}\n"
                 print(f"[AGENT_TEST] EnhancedSearch: {len(search_results)} docs | intent={query_intent} | entities={entities_detected}")
             else:
                 print(f"[AGENT_TEST] EnhancedSearch: nenhum resultado para '{message[:50]}'")
@@ -176,7 +213,8 @@ async def test_agent_message(
             history_for_ai,
             extra_context=knowledge_context if knowledge_context else None,
             sender_phone=None,
-            identified_assessor=session.get("identified_assessor")
+            identified_assessor=session.get("identified_assessor"),
+            rewrite_result=rewrite_result
         )
 
         if context and context.get("identified_assessor"):
@@ -263,7 +301,11 @@ async def test_agent_message(
             "broker": identified.get("broker"),
             "equipe": identified.get("equipe"),
             "unidade": identified.get("unidade")
-        } if identified else None
+        } if identified else None,
+        rewritten_query=rewrite_result.rewritten_query if rewrite_result.rewritten_query != message else None,
+        topic_switch=rewrite_result.topic_switch if rewrite_result.topic_switch else None,
+        is_comparative=rewrite_result.is_comparative if rewrite_result.is_comparative else None,
+        clarification_needed=rewrite_result.clarification_needed if rewrite_result.clarification_needed else None
     )
 
 

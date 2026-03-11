@@ -1026,6 +1026,11 @@ Agente: "E aí {PrimeiroNome}! O que você tá buscando agora?"
 Usuário: "Oi"
 Agente: "Oi {PrimeiroNome}! O que precisa?"
 
+TROCA DE TÓPICO (REGRA CRÍTICA):
+- Se a mensagem atual mencionar um ativo/fundo diferente dos citados recentemente, foque NO ATIVO MENCIONADO NA MENSAGEM ATUAL, ignorando o histórico anterior.
+- Se a mensagem atual pedir comparação entre dois ativos (palavras como "entre", "versus", "vs", "qual o melhor entre", "os dois", "ambos"), SEMPRE compare os dois ativos explicitamente. NÃO continue respondendo sobre um único ativo como se fosse continuação do tópico anterior.
+- O ativo mencionado NA MENSAGEM ATUAL tem prioridade absoluta sobre o contexto anterior.
+
 === FIM DO BLOCO DE PERSONALIDADE ==="""
     
     def _get_temperature(self, categoria: str, config: dict = None) -> float:
@@ -1641,14 +1646,50 @@ REGRAS PARA INFORMAÇÕES DA INTERNET:
             context_parts.append(listing)
         
         return "\n\n---\n\n".join(context_parts)
-    
+
+    def _build_comparative_context(self, documents: List[dict], entities: List[str]) -> str:
+        if not documents:
+            return "Nenhum contexto relevante encontrado na base de conhecimento."
+
+        tickers_str = " e ".join(entities[:3])
+        header = (
+            f"INSTRUÇÃO DE RESPOSTA: Esta é uma consulta COMPARATIVA entre {tickers_str}. "
+            f"Você DEVE comparar os fundos diretamente. NÃO continue o tópico anterior da conversa. "
+            f"Organize a resposta em seções separadas por fundo.\n"
+        )
+
+        by_product = {}
+        for doc in documents:
+            metadata = doc.get('metadata', {})
+            pname = metadata.get('product_name', 'Outros')
+            if pname not in by_product:
+                by_product[pname] = []
+            by_product[pname].append(doc)
+
+        sections = [header]
+        for pname, docs in by_product.items():
+            section = f"\n--- {pname} ---\n"
+            for doc in docs:
+                metadata = doc.get('metadata', {})
+                title = metadata.get('title', metadata.get('document_title', 'Documento'))
+                content = doc.get('content', '')[:500]
+                material_type = metadata.get('material_type', '')
+                section += f"[{title}]"
+                if material_type:
+                    section += f" [{material_type}]"
+                section += f"\n{content}\n\n"
+            sections.append(section)
+
+        return "\n".join(sections)
+
     async def generate_response(
         self,
         user_message: str,
         conversation_history: Optional[List[dict]] = None,
         extra_context: Optional[str] = None,
         sender_phone: Optional[str] = None,
-        identified_assessor: Optional[Dict[str, Any]] = None
+        identified_assessor: Optional[Dict[str, Any]] = None,
+        rewrite_result=None
     ) -> Tuple[str, bool, dict]:
         """
         Gera uma resposta para a mensagem do usuário.
@@ -1674,6 +1715,10 @@ REGRAS PARA INFORMAÇÕES DA INTERNET:
                 {"intent": "error"}
             )
         
+        if rewrite_result is None:
+            from services.query_rewriter import rewrite_query
+            rewrite_result = await rewrite_query(user_message, conversation_history, self.client)
+
         affirmative_responses = ['sim', 'yes', 's', 'quero', 'pode ser', 'pode', 'busca', 'busque', 'ok', 'beleza', 'por favor', 'claro']
         msg_lower = user_message.lower().strip()
         is_affirmative = msg_lower in affirmative_responses or any(word in msg_lower.split() for word in ['sim', 'quero', 'pode', 'busca', 'busque', 'ok', 'claro', 'yes'])
@@ -1697,7 +1742,7 @@ REGRAS PARA INFORMAÇÕES DA INTERNET:
                     last_intent = intent
                     break
         
-        if recent_external_search_ticker:
+        if recent_external_search_ticker and not rewrite_result.is_comparative:
             ticker_match = re.search(r'\b([A-Z]{4,5}11)\b', user_message.upper())
             if ticker_match:
                 new_ticker = ticker_match.group(1)
@@ -1723,7 +1768,7 @@ REGRAS PARA INFORMAÇÕES DA INTERNET:
                             {"intent": "fii_not_found", "ticker": new_ticker}
                         )
         
-        if is_affirmative and last_intent == 'fii_external_search_offer' and pending_fii_ticker:
+        if is_affirmative and last_intent == 'fii_external_search_offer' and pending_fii_ticker and not rewrite_result.is_comparative:
             print(f"[OpenAI] Usuário confirmou busca externa para FII {pending_fii_ticker} (via intent)")
             fii_service = get_fii_lookup_service()
             fii_result = fii_service.lookup(pending_fii_ticker)
@@ -1824,12 +1869,30 @@ REGRAS PARA INFORMAÇÕES DA INTERNET:
         config = self._get_config_from_db()
         system_prompt = self._build_system_prompt(config)
         model = config.get("model", "gpt-4o") if config else "gpt-4o"
-        
-        categoria, extracted_products = self._classify_message(user_message)
-        
+
+        if rewrite_result.clarification_needed:
+            return (
+                rewrite_result.clarification_text,
+                False,
+                {
+                    "intent": "clarification",
+                    "entities": rewrite_result.entities,
+                    "query_rewrite": {
+                        "rewritten_query": rewrite_result.rewritten_query,
+                        "categoria": rewrite_result.categoria,
+                        "topic_switch": rewrite_result.topic_switch,
+                        "clarification_needed": True,
+                        "clarification_text": rewrite_result.clarification_text,
+                    }
+                }
+            )
+
+        categoria = rewrite_result.categoria
+        extracted_products = rewrite_result.entities
+
         temperature = self._get_temperature(categoria, config)
         max_tokens = self._get_max_tokens(categoria, config)
-        print(f"[OpenAI] Parâmetros adaptativos - Categoria: {categoria}, Temp: {temperature}, MaxTokens: {max_tokens}")
+        print(f"[OpenAI] Parâmetros adaptativos - Categoria: {categoria}, Temp: {temperature}, MaxTokens: {max_tokens} | QueryRewriter: query='{rewrite_result.rewritten_query[:80]}', topic_switch={rewrite_result.topic_switch}, comparative={rewrite_result.is_comparative}")
         
         pending_derivatives = self._check_pending_derivatives_selection(user_message, conversation_history)
         if pending_derivatives:
@@ -1868,17 +1931,7 @@ REGRAS PARA INFORMAÇÕES DA INTERNET:
         if derivatives_disambiguation:
             return derivatives_disambiguation
         
-        is_followup = self._is_followup_question(user_message)
-        
-        history_entities = []
-        enriched_query = user_message
-        
-        if is_followup and not extracted_products and conversation_history:
-            history_entities = self._extract_entities_from_history(conversation_history)
-            if history_entities:
-                recent_entities = history_entities[:3]
-                enriched_query = f"{' '.join(recent_entities)} {user_message}"
-                print(f"[OpenAI] Follow-up detectado - Query enriquecida: '{enriched_query}'")
+        enriched_query = rewrite_result.rewritten_query
         
         vs = get_vector_store()
         context_documents = []
@@ -1893,7 +1946,7 @@ REGRAS PARA INFORMAÇÕES DA INTERNET:
         except Exception as e:
             print(f"[OpenAI] Erro na expansão de conceitos: {e}")
         
-        conversation_id_for_context = None
+        conversation_id_for_context = f"wa_{sender_phone}" if sender_phone else None
         
         if categoria == "SAUDACAO":
             print(f"[OpenAI] Saudação detectada - NÃO consultando documentos")
@@ -2025,9 +2078,9 @@ REGRAS PARA INFORMAÇÕES DA INTERNET:
                 print(f"[OpenAI] Busca aprimorada falhou (usando fallback): {e}")
             
             if not context_documents:
-                if is_followup and history_entities:
-                    print(f"[OpenAI] Follow-up - buscando por entidades: {history_entities[:3]}")
-                    for entity in history_entities[:3]:
+                if rewrite_result.entities:
+                    print(f"[QueryRewriter] Fallback - buscando por entidades resolvidas: {rewrite_result.entities[:3]}")
+                    for entity in rewrite_result.entities[:3]:
                         entity_docs = vs.search_by_product(entity, n_results=10)
                         for doc in entity_docs:
                             if doc not in context_documents:
@@ -2058,7 +2111,7 @@ REGRAS PARA INFORMAÇÕES DA INTERNET:
             if database_fallback_product:
                 print(f"[OpenAI] Fallback encontrou produto: {database_fallback_product.get('name')} ({database_fallback_product.get('ticker')})")
         
-        if detected_ticker:
+        if detected_ticker and not (rewrite_result and rewrite_result.is_comparative):
             ticker_exists_exactly = vs.find_exact_ticker(detected_ticker) if vs else False
             
             ticker_in_docs = any(
@@ -2100,7 +2153,10 @@ REGRAS PARA INFORMAÇÕES DA INTERNET:
                     else:
                         print(f"[OpenAI] Nenhum similar para {detected_ticker} - produto não encontrado")
         
-        context = self._build_context(context_documents)
+        if rewrite_result and rewrite_result.is_comparative and len(rewrite_result.entities) >= 2:
+            context = self._build_comparative_context(context_documents, rewrite_result.entities)
+        else:
+            context = self._build_context(context_documents)
         
         web_search_results = None
         web_context = ""

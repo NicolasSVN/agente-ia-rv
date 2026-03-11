@@ -1,7 +1,7 @@
 # Agente IA - RV - Agente de IA para Assessores Financeiros
 
 ## Overview
-This project, named Stevan, is a FastAPI-based AI agent designed to enhance efficiency for financial advisors. It centralizes information, automates routine tasks, and improves client interactions. Key capabilities include WhatsApp integration, semantic search within a product knowledge base (CMS), and an administrative panel featuring analytics, user management, and campaign tools. The core vision is to leverage AI for natural language understanding to empower financial advisors, providing them with intelligent support and streamlining their workflows.
+Stevan is a FastAPI-based AI agent designed to enhance efficiency for financial advisors by centralizing information, automating routine tasks, and improving client interactions. Its core purpose is to leverage AI for natural language understanding to provide intelligent support and streamline workflows for financial advisors. Key capabilities include WhatsApp integration, semantic search within a product knowledge base, and an administrative panel for analytics, user management, and campaign tools.
 
 ## User Preferences
 Prefiro explicações detalhadas.
@@ -13,118 +13,36 @@ Prefiro um design de UI limpo e minimalista.
 Garanta que todos os textos voltados ao usuário estejam em português gramaticalmente correto com acentuação adequada.
 **CRÍTICO: NUNCA perca funcionalidades existentes ao fazer mudanças.** Sempre verifique se as funcionalidades implementadas anteriormente permanecem intactas. Antes de modificar qualquer componente, revise quais funcionalidades existem e garanta que sejam preservadas. Chame o architect para validar mudanças de UX.
 
-**GUIDELINES: Para mudanças em deploy, segurança, banco de dados, RAG, WhatsApp, upload, visual ou integrações externas, consulte a seção relevante do `GUIDELINES.md` antes de implementar.** Ele contém todas as regras, padrões, identidade visual, sistema de notificações, tech stack, workflows e lições aprendidas do projeto. Após concluir qualquer tarefa significativa, verifique se o `GUIDELINES.md` precisa ser atualizado.
-
 ## System Architecture
 The application is built using FastAPI with a modular architecture.
 
 **UI/UX Decisions:** The design system features a minimizable vertical sidebar, light theme, and Inter font. Global CSS centralizes styling, navigation is dynamic based on user roles, and a custom toast notification system provides consistent feedback. Modern React + Tailwind screens exclusively use Tailwind Preflight and utilities for spacing and styling, ensuring a modern SaaS-style user experience.
 
 **Technical Implementations:**
-- **AI Agent (Stevan):** Integrates OpenAI for chat and embeddings, configurable for personality, rules, and model parameters. It acts as an internal support broker, explaining strategies and products, and escalating to human experts.
-- **Semantic Search (RAG V3.1 Enhanced):** Utilizes `pgvector (PostgreSQL)` and OpenAI `text-embedding-3-large` with hybrid ranking. It includes intelligent ticker detection, a financial glossary for query expansion, and semantic enrichment of content chunks. **Publicação via "Republicar":** único fluxo de indexação usando `index_approved_blocks` (sem `reindex_block`/`reindex_material` — removidos). Deleção de produto/material agora limpa embeddings do vector store automaticamente. Novos endpoints admin: `GET /api/products/admin/vector-stats` (diagnóstico) e `POST /api/products/admin/cleanup-orphan-embeddings` (limpeza).
-- **Manager Disambiguation:** Automatically detects and clarifies financial manager mentions (e.g., "Manatí", "TG Core"), listing available products and allowing selection by ordinal or name.
+- **AI Agent (Stevan):** Integrates OpenAI for chat and embeddings, configurable for personality, rules, and model parameters. It includes a Query Rewriter (`services/query_rewriter.py`) with GPT-4o-mini for context-aware query rewriting, topic switch detection, comparative query handling, and pronoun resolution from conversation history.
+- **Semantic Search (RAG V3.1 Enhanced):** Utilizes `pgvector (PostgreSQL)` and OpenAI `text-embedding-3-large` with hybrid ranking, intelligent ticker detection, a financial glossary for query expansion, and semantic enrichment. Indexing uses `index_approved_blocks` only, and product/material deletion automatically cleans vector store embeddings.
+- **Manager Disambiguation:** Automatically detects and clarifies financial manager mentions, listing available products and allowing selection.
 - **AI Document Summaries:** Automatic conceptual summaries and theme generation for documents using GPT-4o-mini.
-- **Semantic Transformer (3-Layer Architecture):** Processes content through technical extraction (GPT-4 Vision), semantic modeling, and narrative chunk generation for RAG indexing.
-- **XPI Derivatives System (27 Structures):** A comprehensive knowledge base for structured products with a 4-step conversational disambiguation flow. It includes content extracted via GPT-4 Vision and payoff diagrams.
+- **Semantic Transformer:** A 3-layer architecture processes content through technical extraction (GPT-4 Vision), semantic modeling, and narrative chunk generation for RAG indexing.
+- **XPI Derivatives System:** A comprehensive knowledge base for structured products with a 4-step conversational disambiguation flow, including content extracted via GPT-4 Vision and payoff diagrams.
 - **External FIIs Query:** Automatically fetches public FII data from FundsExplorer.com.br.
-- **WhatsApp Integration:** Uses Z-API for various message types, logs interactions, and provides a "Message Center" interface with real-time updates. It supports full media processing, including optimized audio transcription (Whisper) and image/document analysis.
+- **WhatsApp Integration:** Uses Z-API for various message types, logs interactions, and provides a "Message Center" interface with real-time updates. Supports full media processing, including optimized audio transcription (Whisper) and image/document analysis.
 - **Authentication and Authorization:** JWT-based with role-based access control, JWT hardening, rate limiting, account lockout, and comprehensive security headers. Global auth middleware is implemented, and structured security event logging is used.
 - **Database:** PostgreSQL (or SQLite for development) with SQLAlchemy ORM.
 - **Admin Panel:** Provides tools for user, integration, advisor, and campaign management, a "Message Center," and knowledge base management.
 - **Product CMS:** Manages products, materials, and content blocks, featuring PDF upload with GPT-4 Vision extraction, approval system, semantic indexing, WhatsApp scripts, versioning, and validity control.
-- **Intelligent Upload with Metadata Extraction:** The `DocumentMetadataExtractor` service uses GPT-4 Vision to analyze PDFs and extract metadata like fund name, ticker, manager, and document type, enabling automated product matching or creation.
-- **Adaptive DPI (Melhoria 3):** PDF pages are pre-classified via PyMuPDF native text analysis (text/table/infographic/mixed/image_only) and rendered at optimal DPI (150-250) before Vision extraction. Zero overhead — uses document already open in memory.
-- **Dependency Health Check:** `services/dependency_check.py` validates critical dependencies (PyMuPDF, OpenAI, pgvector, python-magic, Pillow) on startup. `GET /api/health/detailed` returns real-time status of database, vector store, PDF processing, OpenAI, and Z-API with HTTP 503 on critical failures.
-- **Observability and Auditing:** Includes `RetrievalLog` for RAG searches, `IngestionLog` for document ingestion, RAG analytics, intelligent re-ranking, and content block tracking.
+- **Intelligent Upload with Metadata Extraction:** `DocumentMetadataExtractor` service uses GPT-4 Vision to analyze PDFs and extract metadata for automated product matching or creation. Adaptive DPI is used for PDF rendering.
+- **Dependency Health Check:** `services/dependency_check.py` validates critical dependencies on startup, and `/api/health/detailed` provides real-time status.
+- **Observability and Auditing:** Includes `RetrievalLog` for RAG searches, `IngestionLog` for document ingestion, RAG analytics, and content block tracking.
 - **AI Agent Response Framework:** Utilizes a `ConversationState` machine, message normalization, contact identification, and AI-based intent classification for human transfer.
-- **Escalation Intelligence V2.1:** GPT analysis on each escalation with 11 categories, auto-generating ticket summaries and conversation topics, and tracking important timestamps.
-- **Bot Resolution Tracking V2.2:** Tracks bot-resolved conversations, including `bot_resolved_at`, `awaiting_confirmation`, a background scheduler for confirmation messages, and bot resolution metrics.
-- **Separate Ticket Architecture V2.3:** `Conversation` and `ConversationTicket` are separate models, allowing continuous chat sessions with distinct historical data for each human intervention, tracking resolution metrics per ticket.
-- **Insights Dashboard:** A management dashboard for Variable Income with a `ConversationInsight` model, post-conversation GPT analysis, 12 classification categories, dynamic filters, KPI cards, Chart.js graphs, rankings, and campaign summaries.
+- **Escalation Intelligence V2.1:** GPT analysis on each escalation with 11 categories, auto-generating ticket summaries.
+- **Bot Resolution Tracking V2.2:** Tracks bot-resolved conversations, including resolution metrics.
+- **Separate Ticket Architecture V2.3:** `Conversation` and `ConversationTicket` are separate models, allowing continuous chat sessions with distinct historical data.
+- **Insights Dashboard:** A management dashboard for Variable Income with `ConversationInsight` model, post-conversation GPT analysis, classification categories, dynamic filters, KPI cards, Chart.js graphs, rankings, and campaign summaries.
 - **Web Search (Tavily AI):** Fallback for real-time market data when internal knowledge is insufficient, including a whitelist of trusted sources and an audit log.
-- **Classification Categories:** SAUDACAO, DOCUMENTAL, ESCOPO, MERCADO (real-time market queries), PITCH (sales argument generation), ATENDIMENTO_HUMANO, FORA_ESCOPO.
+- **Deployment Strategy:** Migrated from Replit to Railway via GitHub. The Dockerfile uses `python:3.12-slim` with necessary system dependencies. React frontend builds are pre-compiled in Replit and committed to the repository, as the Dockerfile is Python-only.
 
 **Feature Specifications:** Dynamic control over AI behavior parameters, real-time campaign sending with SSE, background document processing, customizable fields, and automatic admin user creation.
-
-## Database Environment (CRÍTICO)
-**Desenvolvimento e produção usam bancos PostgreSQL SEPARADOS.** A ferramenta de SQL do agente executa contra o banco de desenvolvimento por padrão. O banco de produção aceita apenas consultas de leitura (SELECT) via ferramenta.
-
-**Banco de produção Railway (única fonte de verdade para verificações):**
-```
-postgresql://postgres:3a3npoippvnwb30cfwf18dxh5xkwghex@tramway.proxy.rlwy.net:45306/railway
-```
-Acesso via psql: `PGPASSWORD=3a3npoippvnwb30cfwf18dxh5xkwghex psql -h tramway.proxy.rlwy.net -p 45306 -U postgres -d railway`
-**Regra:** Ao discutir dados em produção, SEMPRE consultar este banco. Ignorar o banco de desenvolvimento do Replit para essas verificações.
-
-**Consequências práticas:**
-- Alterações de dados (INSERT, UPDATE, DELETE) feitas pelo agente **NÃO refletem em produção**.
-- Para alterar dados em produção, usar a interface do app em produção ou criar endpoints admin específicos.
-- Migrações de schema (ALTER TABLE, CREATE INDEX) também precisam rodar em produção — isso acontece automaticamente no startup via `init_database()`, mas dados não são migrados.
-- Ao republicar, apenas o **código** é atualizado. Os dados do banco de produção permanecem como estavam.
-
-## Deployment (CRÍTICO)
-**Migração ativa: Replit → Railway via GitHub.**
-
-O deploy no Replit foi abandonado porque o health check da VM (timeout 5s) falhava persistentemente mesmo com pre-startup responder cobrindo t=0 até t=11.6s. O mecanismo interno do Replit não conseguia alcançar a aplicação — problema confirmado após múltiplas tentativas com socket compartilhado, `SO_REUSEADDR`, etc.
-
-**Railway setup:**
-- **Dockerfile:** `python:3.12-slim` com deps de sistema (ffmpeg, libmagic1, poppler-utils, ghostscript, mupdf-tools, libpq-dev, gcc).
-- **CMD:** `uvicorn main:app --host 0.0.0.0 --port $PORT` (Railway injeta `PORT`).
-- **Health check:** `/health` com `start-period=40s`, timeout 10s, interval 30s.
-- **Banco:** PostgreSQL com pgvector (template `pgvector-pg17` no Railway — NÃO o PostgreSQL padrão).
-- **Dump de migração:** `backup_migracao.sql` (não commitado no repo — `.gitignore`).
-
-**Variáveis de ambiente portáveis:**
-- `ENV=production` substitui `REPL_DEPLOYMENT`/`REPLIT_DEPLOYMENT` para detectar produção.
-- `APP_BASE_URL=https://SEU-DOMINIO.up.railway.app` substitui `REPLIT_DOMAINS`/`REPLIT_DEV_DOMAIN`.
-- Funções centralizadas em `core/config.py`: `is_production()`, `get_public_domain()`, `get_public_base_url()`.
-- Compatibilidade dual: se variáveis Replit existirem, são usadas como fallback.
-
-**Startup simplificado (sem hack de cold start):**
-- `main.py` usa `uvicorn.run(app, host="0.0.0.0", port=PORT)` diretamente.
-- Lazy router registration mantida: routers importados em background via `asyncio.to_thread()`.
-- Rota `/health` registrada no top-level (instantânea).
-- `SESSION_SECRET` obrigatória em produção.
-
-**Pós-migração obrigatório:**
-- Reconfigurar redirect URI no Azure AD (SSO Microsoft).
-- Reconfigurar webhook URL no Z-API (WhatsApp).
-- Atualizar `ALLOWED_ORIGINS` no Railway.
-- Guia imprimível completo: `docs/GUIA-MIGRACAO-RAILWAY.html`.
-
-**Resiliência de upload:**
-- `_resume_interrupted_uploads()` roda no startup: detecta materiais com `processing_status=processing/pending` e re-enfileira para retomada
-- `_process_item` em `upload_queue.py` inclui logging diagnóstico: tipo do engine (PostgreSQL/SQLite), verificação pós-commit, contagem de blocos
-- Detecção de duplicatas: uploads com `file_hash` idêntico a material com `processing_status=success` são **bloqueados** (não apenas avisados)
-
-## React Frontend Builds (CRÍTICO)
-**O Dockerfile é Python-only (não tem Node.js). Builds React são compilados NO REPLIT e commitados no repo.**
-
-**4 apps React com builds pré-compilados:**
-| App | Pasta | Rota | Template |
-|-----|-------|------|----------|
-| Conversas | `frontend/react-conversations/dist/` | `/conversas` | `conversas_react.html` |
-| Insights | `frontend/react-insights/dist/` | `/insights` | lê `index.html` direto |
-| Custos | `frontend/react-costs/dist/` | `/custos` | `custos_react.html` |
-| Base Conhecimento | `frontend/react-knowledge/dist/` | `/base-conhecimento` | `base_conhecimento_react.html` |
-
-**Ao modificar qualquer frontend React:**
-```bash
-cd frontend/react-NOME
-npm run build
-cd ../..
-# Os dist/ são commitados automaticamente (não estão no .gitignore)
-```
-
-**NUNCA adicionar `dist/` ao `.gitignore`** — os builds DEVEM estar no repo para o Railway funcionar.
-
-## Higiene do Repositório (PERMANENTE)
-Consultar `attached_assets/INSTRUCOES_PARA_IA.md` para regras completas. Resumo:
-- **NUNCA criar:** `.legacy`, `.old`, `.backup`, `.bak`, `sed*`, `cookies.txt`
-- **NUNCA duplicar:** builds React em `static/react-*/` (fonte única: `frontend/react-*/dist/`)
-- **NUNCA versionar:** relatórios de teste (`tests/**/reports/`), `.env`, temporários
-- **SEMPRE:** deletar código antigo (Git guarda histórico), recompilar React após mudanças de frontend, manter `.env.example` atualizado
 
 ## External Dependencies
 - **API OpenAI:** AI agent interactions and text embeddings.

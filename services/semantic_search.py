@@ -171,6 +171,8 @@ class TokenExtractor:
         'comparar', 'compare', 'comparativo', 'diferenca', 'diferença',
         'versus', 'vs', 'ou', 'entre', 'melhor entre', 'qual melhor',
         'qual é melhor', 'diferenca entre', 'diferença entre',
+        'os dois', 'as duas', 'ambos', 'ambas', 'entre eles', 'entre elas',
+        'qual dos dois', 'qual das duas',
     }
 
     RANKING_KEYWORDS = {
@@ -777,7 +779,7 @@ class CompositeScorer:
                     result.gestora_match = True
                     break
             
-            if context:
+            if context and query_intent != 'comparative':
                 for prod in context.last_products:
                     if prod.upper() in products_meta:
                         result.context_match = True
@@ -1044,7 +1046,20 @@ class EnhancedSearch:
         if conversation_id:
             context = ConversationContextManager.get_context(conversation_id)
             
-            if ConversationContextManager.should_use_context(query) and context.last_products:
+            if is_comparative and len(tokens.possible_tickers) >= 2:
+                pass
+            elif is_comparative and len(tokens.possible_tickers) < 2 and context.last_products:
+                needed = 2 - len(tokens.possible_tickers)
+                existing = set(t.upper() for t in tokens.possible_tickers)
+                for prod in context.last_products:
+                    if prod.upper() not in existing:
+                        tokens.possible_tickers.append(prod)
+                        existing.add(prod.upper())
+                        needed -= 1
+                        if needed <= 0:
+                            break
+                print(f"[EnhancedSearch] Comparativa 'os dois/ambos' resolvida para: {tokens.possible_tickers}")
+            elif ConversationContextManager.should_use_context(query) and context.last_products:
                 tokens.possible_tickers.extend(context.last_products[:2])
         
         expanded_queries = SynonymLookup.expand_query(query)
