@@ -2,7 +2,7 @@
 Modelos SQLAlchemy para o banco de dados.
 Define as tabelas User, Ticket, Interaction, TicketCategory e Integration.
 """
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Text, Boolean, Float, Index
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Text, Boolean, Float, Index, LargeBinary
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from pgvector.sqlalchemy import Vector
@@ -831,6 +831,22 @@ class Material(Base):
     product = relationship("Product", back_populates="materials")
     creator = relationship("User", foreign_keys=[created_by])
     blocks = relationship("ContentBlock", back_populates="material", cascade="all, delete-orphan", order_by="ContentBlock.order")
+    file = relationship("MaterialFile", back_populates="material", uselist=False, cascade="all, delete-orphan")
+
+
+class MaterialFile(Base):
+    __tablename__ = "material_files"
+
+    id = Column(Integer, primary_key=True, index=True)
+    material_id = Column(Integer, ForeignKey("materials.id", ondelete="CASCADE"), nullable=False, unique=True, index=True)
+    filename = Column(String(255), nullable=False)
+    content_type = Column(String(100), nullable=False, default="application/pdf")
+    file_data = Column(LargeBinary, nullable=False)
+    file_size = Column(Integer, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    material = relationship("Material", back_populates="file")
 
 
 class ContentBlock(Base):

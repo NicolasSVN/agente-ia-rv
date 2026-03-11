@@ -50,16 +50,16 @@ async def run_init_background():
         from api.endpoints import (
             auth, users, tickets, whatsapp_webhook, integrations, agent_config,
             assessores, campaigns, knowledge, agent_test, conversations, products,
-            insights, search, trusted_sources, costs, health
+            files, insights, search, trusted_sources, costs, health
         )
         return (auth, users, tickets, whatsapp_webhook, integrations, agent_config,
                 assessores, campaigns, knowledge, agent_test, conversations, products,
-                insights, search, trusted_sources, costs, health)
+                files, insights, search, trusted_sources, costs, health)
 
     try:
         (auth, users, tickets, whatsapp_webhook, integrations, agent_config,
          assessores, campaigns, knowledge, agent_test, conversations, products,
-         insights, search, trusted_sources, costs, health) = await asyncio.to_thread(_import_endpoint_modules)
+         files, insights, search, trusted_sources, costs, health) = await asyncio.to_thread(_import_endpoint_modules)
         app.include_router(auth.router)
         app.include_router(users.router)
         app.include_router(tickets.router)
@@ -74,6 +74,7 @@ async def run_init_background():
         app.include_router(agent_test.router)
         app.include_router(conversations.router)
         app.include_router(products.router)
+        app.include_router(files.router)
         app.include_router(insights.router)
         app.include_router(search.router)
         app.include_router(trusted_sources.router)
@@ -121,13 +122,23 @@ def _apply_incremental_migrations():
     from database.database import SessionLocal
     from sqlalchemy import text as sql_text
     migrations = [
-        # RetrievalLog — campos de observabilidade RAG (adicionados na sprint de melhorias RAG)
         "ALTER TABLE retrieval_logs ADD COLUMN IF NOT EXISTS intent_detected VARCHAR(50)",
         "ALTER TABLE retrieval_logs ADD COLUMN IF NOT EXISTS entities_detected TEXT",
         "ALTER TABLE retrieval_logs ADD COLUMN IF NOT EXISTS composite_score_max FLOAT",
         "ALTER TABLE retrieval_logs ADD COLUMN IF NOT EXISTS web_search_used BOOLEAN DEFAULT FALSE",
         "ALTER TABLE retrieval_logs ADD COLUMN IF NOT EXISTS blocks_with_scores TEXT",
         "ALTER TABLE retrieval_logs ADD COLUMN IF NOT EXISTS is_comparative BOOLEAN DEFAULT FALSE",
+        """CREATE TABLE IF NOT EXISTS material_files (
+            id SERIAL PRIMARY KEY,
+            material_id INTEGER NOT NULL UNIQUE REFERENCES materials(id) ON DELETE CASCADE,
+            filename VARCHAR(255) NOT NULL,
+            content_type VARCHAR(100) NOT NULL DEFAULT 'application/pdf',
+            file_data BYTEA NOT NULL,
+            file_size INTEGER NOT NULL,
+            created_at TIMESTAMPTZ DEFAULT NOW(),
+            updated_at TIMESTAMPTZ
+        )""",
+        "CREATE INDEX IF NOT EXISTS ix_material_files_material_id ON material_files(material_id)",
     ]
     db = SessionLocal()
     try:

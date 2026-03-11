@@ -438,35 +438,38 @@ def _extract_material_markers(response: str) -> Tuple[str, List[str]]:
 
 async def _send_material_pdf(phone: str, material_id: str, db: Session) -> bool:
     try:
-        from database.models import Material
+        from database.models import Material, MaterialFile
         material = db.query(Material).filter(Material.id == int(material_id)).first()
         if not material:
             print(f"[MATERIAL] Material não encontrado: {material_id}")
             return False
-        
-        if not material.source_file_path:
-            print(f"[MATERIAL] Material {material_id} não possui arquivo PDF")
+
+        has_db_file = db.query(MaterialFile).filter(MaterialFile.material_id == int(material_id)).first() is not None
+        has_disk_file = material.source_file_path and os.path.exists(material.source_file_path)
+
+        if not has_db_file and not has_disk_file:
+            print(f"[MATERIAL] Material {material_id} não possui arquivo PDF (nem no banco nem em disco)")
             return False
-        
-        file_path = material.source_file_path
-        if not os.path.exists(file_path):
-            print(f"[MATERIAL] Arquivo não encontrado: {file_path}")
+
+        from core.config import get_public_base_url
+        base_url = get_public_base_url()
+
+        if not base_url:
+            print(f"[MATERIAL] Erro: domínio público não configurado (APP_BASE_URL)")
             return False
-        
-        from core.config import get_public_domain
-        domain = get_public_domain()
-        
-        if not domain:
-            print(f"[MATERIAL] Erro: dominio publico nao configurado (APP_BASE_URL)")
-            return False
-        
-        file_url = f"https://{domain}/{file_path}"
-        
+
+        if has_db_file:
+            file_url = f"{base_url}/api/files/{material_id}/download"
+        else:
+            from core.config import get_public_domain
+            domain = get_public_domain()
+            file_url = f"https://{domain}/{material.source_file_path}"
+
         product = material.product
         product_name = product.name if product else material.name
         filename = f"{product_name} - {material.material_type}.pdf"
         filename = re.sub(r'[^\w\s\-\.]', '', filename).strip()
-        
+
         caption = f"📄 {product_name}"
         if material.material_type:
             type_labels = {
@@ -478,14 +481,14 @@ async def _send_material_pdf(phone: str, material_id: str, db: Session) -> bool:
             }
             label = type_labels.get(material.material_type, material.material_type.replace('_', ' ').title())
             caption += f" | {label}"
-        
+
         print(f"[MATERIAL] Enviando PDF: {filename} para {phone}")
         print(f"[MATERIAL] URL: {file_url}")
-        
+
         from services.whatsapp_client import WhatsAppClient
         whatsapp = WhatsAppClient()
         result = await whatsapp.send_document(phone, file_url, filename, caption)
-        
+
         if result.get("success"):
             print(f"[MATERIAL] PDF enviado com sucesso: {filename}")
             return True
@@ -857,10 +860,56 @@ async def process_text_message(phone: str, message: str, db: Session, message_re
             
             if search_results:
                 knowledge_context = "\n\n--- Informações da Base de Conhecimento ---\n"
+                seen_product_ids = set()
                 for i, result in enumerate(search_results, 1):
-                    title = result.get("metadata", {}).get("document_title", "Documento")
+                    metadata = result.get("metadata", {})
+                    title = metadata.get("document_title", "Documento")
                     content = result.get("content", "")[:500]
-                    knowledge_context += f"\n[{i}] {title}:\n{content}\n"
+                    mid = metadata.get("material_id")
+                    mid_info = f" [material_id={mid}]" if mid else ""
+                    knowledge_context += f"\n[{i}] {title}{mid_info}:\n{content}\n"
+                    pid = metadata.get("product_id")
+                    if pid:
+                        seen_product_ids.add(int(pid))
+                    elif mid:
+                        try:
+                            from database.models import Material as Mat
+                            mat_obj = db.query(Mat.product_id).filter(Mat.id == int(mid)).first()
+                            if mat_obj:
+                                seen_product_ids.add(mat_obj.product_id)
+                        except Exception:
+                            pass
+
+                if seen_product_ids:
+                    try:
+                        from database.models import Material, Product, MaterialFile
+                        materials_with_files = (
+                            db.query(Material, Product.name, Product.ticker)
+                            .join(Product, Product.id == Material.product_id)
+                            .join(MaterialFile, MaterialFile.material_id == Material.id)
+                            .filter(Material.product_id.in_(list(seen_product_ids)))
+                            .filter(Material.publish_status != "arquivado")
+                            .all()
+                        )
+                        if materials_with_files:
+                            materials_by_product = {}
+                            for mat, prod_name, prod_ticker in materials_with_files:
+                                key = prod_ticker or prod_name
+                                if key not in materials_by_product:
+                                    materials_by_product[key] = []
+                                type_labels = {
+                                    'one_page': 'One Pager', 'apresentacao': 'Apresentação',
+                                    'comite': 'Material do Comitê', 'relatorio': 'Relatório',
+                                    'lamina': 'Lâmina',
+                                }
+                                label = type_labels.get(mat.material_type, mat.material_type or mat.name or 'Documento')
+                                materials_by_product[key].append(f"[ID:{mat.id}] {mat.name or label}")
+                            knowledge_context += "\n--- Materiais com PDF disponível para envio ---\n"
+                            for prod_key, mat_list in materials_by_product.items():
+                                knowledge_context += f"{prod_key}: {', '.join(mat_list)}\n"
+                            knowledge_context += "Para enviar um material, use o marcador [ENVIAR_MATERIAL:ID] na resposta.\n"
+                    except Exception as e:
+                        print(f"[WEBHOOK] Erro ao listar materiais disponíveis: {e}")
         except Exception as e:
             print(f"[WEBHOOK] Erro ao buscar na base de conhecimento: {e}")
         

@@ -177,7 +177,9 @@ async def test_agent_message(
                             block_type = r.metadata.get("block_type", "")
                             score = r.composite_score
                             content = r.content[:500]
-                            knowledge_context += f"\n[{idx}] {title}"
+                            mid = r.metadata.get("material_id")
+                            mid_info = f" [material_id={mid}]" if mid else ""
+                            knowledge_context += f"\n[{idx}] {title}{mid_info}"
                             if block_type:
                                 knowledge_context += f" [{block_type}]"
                             knowledge_context += f" [score:{score:.2f}]"
@@ -189,9 +191,11 @@ async def test_agent_message(
                         title = r.metadata.get("document_title", r.metadata.get("source", "Documento"))
                         product_name = r.metadata.get("product_name", "")
                         block_type = r.metadata.get("block_type", "")
+                        mid = r.metadata.get("material_id")
                         score = r.composite_score
                         content = r.content[:500]
-                        knowledge_context += f"\n[{i}] {title}"
+                        mid_info = f" [material_id={mid}]" if mid else ""
+                        knowledge_context += f"\n[{i}] {title}{mid_info}"
                         if product_name:
                             knowledge_context += f" (Produto: {product_name})"
                         if block_type:

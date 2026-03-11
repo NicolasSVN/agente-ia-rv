@@ -52,6 +52,7 @@ PUBLIC_PREFIXES = (
     "/api/health/",
     "/api/whatsapp/",
     "/api/webhook/",
+    "/api/files/",
     "/docs",
     "/openapi.json",
     "/base-conhecimento",

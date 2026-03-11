@@ -24,7 +24,7 @@ from database.models import (
     WhatsAppScript, PendingReviewItem, DocumentProcessingJob,
     ProductStatus, MaterialType, ContentBlockType, 
     ContentBlockStatus, ContentSourceType, PersistentQueueItem,
-    IngestionLog
+    IngestionLog, MaterialFile
 )
 from api.endpoints.auth import get_current_user
 from services.vector_store import VectorStore
@@ -32,8 +32,32 @@ from services.semantic_transformer import transform_content_for_display, transfo
 
 router = APIRouter(prefix="/api/products", tags=["products"])
 
-# Queue para rastrear progresso de uploads
 upload_progress_queues = {}
+
+
+def _save_file_to_db(db: Session, material_id: int, filename: str, file_content: bytes, content_type: str = "application/pdf"):
+    existing = db.query(MaterialFile).filter(MaterialFile.material_id == material_id).first()
+    if existing:
+        existing.filename = filename
+        existing.content_type = content_type
+        existing.file_data = file_content
+        existing.file_size = len(file_content)
+    else:
+        new_file = MaterialFile(
+            material_id=material_id,
+            filename=filename,
+            content_type=content_type,
+            file_data=file_content,
+            file_size=len(file_content),
+        )
+        db.add(new_file)
+    try:
+        db.commit()
+        print(f"[FILE_STORAGE] PDF salvo no banco para material_id={material_id} ({len(file_content)} bytes)")
+    except Exception as e:
+        db.rollback()
+        print(f"[FILE_STORAGE] Erro ao salvar PDF no banco para material_id={material_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Erro ao armazenar arquivo no banco: {str(e)}")
 
 
 
@@ -1971,6 +1995,8 @@ async def upload_pdf_to_material(
         product_id=product_id,
         material_id=material_id,
     )
+
+    _save_file_to_db(db, material_id, file.filename or "documento.pdf", content)
     
     document_title = f"{product.name} - {material.name or material.material_type}"
     
@@ -2057,6 +2083,8 @@ async def smart_upload_without_product(
     content = await file.read()
     with open(file_path, "wb") as f:
         f.write(content)
+
+    _save_file_to_db(db, material.id, file.filename or "documento.pdf", content)
     
     document_title = name or file.filename.replace('.pdf', '')
     
@@ -2165,6 +2193,8 @@ async def smart_upload_stream(
     content = await file.read()
     with open(file_path, "wb") as f:
         f.write(content)
+
+    _save_file_to_db(db, material.id, file.filename or "documento.pdf", content)
     
     upload_id = str(uuid.uuid4())
     progress_queue = queue.Queue()
