@@ -601,6 +601,10 @@ class Conversation(Base):
     confirmation_sent_at = Column(DateTime(timezone=True), nullable=True)
     resolution_notes = Column(Text, nullable=True)
     
+    # V3 Conversation memory fields
+    last_session_summary = Column(Text, nullable=True)
+    last_session_ended_at = Column(DateTime(timezone=True), nullable=True)
+    
     active_ticket_id = Column(Integer, ForeignKey("conversation_tickets.id"), nullable=True)
     
     assessor = relationship("Assessor", foreign_keys=[assessor_id])

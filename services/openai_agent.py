@@ -565,7 +565,7 @@ Retorne APENAS o JSON."""
         assistant_message_with_suggestion = None
         user_message_before_suggestion = None
         
-        for i, hist in enumerate(reversed(conversation_history[-6:])):
+        for i, hist in enumerate(reversed(conversation_history[-10:])):
             if hist.get('role') == 'assistant':
                 content = hist.get('content', '')
                 content_lower = content.lower()
@@ -1732,7 +1732,7 @@ REGRAS PARA INFORMAÇÕES DA INTERNET:
         pending_fii_ticker = None
         recent_external_search_ticker = None
         if conversation_history:
-            for hist in reversed(conversation_history[-6:]):
+            for hist in reversed(conversation_history[-10:]):
                 metadata = hist.get('metadata', {})
                 intent = metadata.get('intent')
                 if intent == 'fii_external_search_offer':
@@ -2214,7 +2214,7 @@ NOTA: {material_note}
         messages = [{"role": "system", "content": system_prompt}]
         
         if conversation_history:
-            messages.extend(conversation_history[-6:])
+            messages.extend(conversation_history[-10:])
         
         if categoria == "MERCADO" and web_context:
             user_content = f"""PERGUNTA SOBRE MERCADO - PRIORIZE AS INFORMAÇÕES DA WEB:

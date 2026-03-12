@@ -80,7 +80,7 @@ def _build_rewriter_messages(message: str, history: Optional[List[dict]] = None)
 
     history_text = ""
     if history:
-        recent = history[-6:]
+        recent = history[-10:]
         lines = []
         for msg in recent:
             role = msg.get("role", "user")

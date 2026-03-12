@@ -139,6 +139,8 @@ def _apply_incremental_migrations():
             updated_at TIMESTAMPTZ
         )""",
         "CREATE INDEX IF NOT EXISTS ix_material_files_material_id ON material_files(material_id)",
+        "ALTER TABLE conversations ADD COLUMN IF NOT EXISTS last_session_summary TEXT",
+        "ALTER TABLE conversations ADD COLUMN IF NOT EXISTS last_session_ended_at TIMESTAMPTZ",
     ]
     db = SessionLocal()
     try:

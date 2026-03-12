@@ -26,9 +26,16 @@ from services.vector_store import get_vector_store
 from services.sse_manager import get_sse_manager
 from services.insight_analyzer import save_conversation_insight
 from services.media_processor import media_processor
+from services.conversation_memory import (
+    get_history, update_history, append_to_history,
+    handle_session_transition, build_context_with_summary,
+    debounce_text_message, _history_cache
+)
 import asyncio
 
 router = APIRouter(prefix="/api/webhook", tags=["WhatsApp Webhook"])
+
+conversation_history = _history_cache
 
 
 def is_phone_allowed(phone: str, db: Session) -> bool:
@@ -56,8 +63,6 @@ def is_phone_allowed(phone: str, db: Session) -> bool:
             return True
     
     return False
-
-conversation_history: Dict[str, list] = {}
 
 
 def get_message_type_zapi(payload: Dict[str, Any]) -> str:
@@ -758,10 +763,8 @@ async def process_text_message(phone: str, message: str, db: Session, message_re
                     conversation.last_bot_response_at = datetime.utcnow()
                     db.commit()
                 
-                if phone not in conversation_history:
-                    conversation_history[phone] = []
-                conversation_history[phone].append({"role": "user", "content": normalized_message})
-                conversation_history[phone].append({"role": "assistant", "content": response})
+                append_to_history(phone, "user", normalized_message)
+                append_to_history(phone, "assistant", response)
                 
                 try:
                     await save_conversation_insight(
@@ -840,7 +843,22 @@ async def process_text_message(phone: str, message: str, db: Session, message_re
         if conv_state != ConversationState.IN_PROGRESS.value:
             update_conversation_state(db, conversation, ConversationState.IN_PROGRESS.value)
         
-        history = conversation_history.get(phone, [])
+        await handle_session_transition(phone, db, conversation)
+        
+        history = get_history(phone, db)
+        
+        rewrite_result = None
+        search_query = normalized_message
+        try:
+            from services.query_rewriter import rewrite_query
+            rewrite_result = await rewrite_query(normalized_message, history, openai_agent.client)
+            if rewrite_result and rewrite_result.rewritten_query:
+                search_query = rewrite_result.rewritten_query
+                print(f"[WEBHOOK] Query reescrita para RAG: '{normalized_message[:50]}' -> '{search_query[:50]}'")
+                if rewrite_result.categoria:
+                    print(f"[WEBHOOK] Categoria detectada: {rewrite_result.categoria}")
+        except Exception as e:
+            print(f"[WEBHOOK] Erro no query_rewriter (não-bloqueante): {e}")
         
         knowledge_context = ""
         retrieval_start = datetime.now()
@@ -848,7 +866,7 @@ async def process_text_message(phone: str, message: str, db: Session, message_re
         try:
             vector_store = get_vector_store()
             from services.vector_store import filter_expired_results
-            search_results = vector_store.search(normalized_message, n_results=6, similarity_threshold=0.8)
+            search_results = vector_store.search(search_query, n_results=6, similarity_threshold=0.8)
             
             search_results = filter_expired_results(search_results, db)[:3]
 
@@ -948,13 +966,16 @@ async def process_text_message(phone: str, message: str, db: Session, message_re
                 "broker": assessor.broker_responsavel
             }
         
+        history_with_summary = build_context_with_summary(history, conversation, rewrite_result)
+        
         print(f"[WEBHOOK] Chamando OpenAI para gerar resposta...")
         response, should_create_ticket, context = await openai_agent.generate_response(
             normalized_message,
-            history,
+            history_with_summary,
             extra_context=knowledge_context,
             sender_phone=phone,
-            identified_assessor=assessor_data
+            identified_assessor=assessor_data,
+            rewrite_result=rewrite_result
         )
         print(f"[WEBHOOK] Resposta gerada: {response[:100] if response else 'VAZIA'}...")
         
@@ -971,13 +992,10 @@ async def process_text_message(phone: str, message: str, db: Session, message_re
                 print(f"[WEBHOOK] Marcações de material detectadas na resposta do OpenAI: {material_ids_from_ai}")
                 response = clean_response2
         
-        history.append({"role": "user", "content": normalized_message})
+        append_to_history(phone, "user", normalized_message)
         if response:
-            assistant_entry = {"role": "assistant", "content": response}
-            if context:
-                assistant_entry["metadata"] = context
-            history.append(assistant_entry)
-        conversation_history[phone] = history[-10:]
+            metadata = context if context else None
+            append_to_history(phone, "assistant", response, metadata)
         
         reset_stalled_counter(db, conversation)
         
@@ -1508,7 +1526,14 @@ async def zapi_webhook(
     
     if message_type == MessageType.TEXT.value:
         if body:
-            background_tasks.add_task(process_text_message, phone, body, db, message_record, conversation)
+            asyncio.create_task(debounce_text_message(
+                phone=phone,
+                body=body,
+                db_factory=SessionLocal,
+                message_record_id=message_record.id if message_record else None,
+                conversation_id=conversation.id if conversation else None,
+                process_fn=process_text_message
+            ))
         else:
             return {"status": "ignored", "reason": "empty text message"}
             
