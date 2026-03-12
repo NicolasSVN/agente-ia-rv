@@ -29,7 +29,7 @@ from services.media_processor import media_processor
 from services.conversation_memory import (
     get_history, update_history, append_to_history,
     handle_session_transition, build_context_with_summary,
-    debounce_text_message, _history_cache
+    enqueue_message, schedule_task, _history_cache
 )
 import asyncio
 
@@ -1526,12 +1526,12 @@ async def zapi_webhook(
     
     if message_type == MessageType.TEXT.value:
         if body:
-            asyncio.create_task(debounce_text_message(
+            schedule_task(enqueue_message(
                 phone=phone,
                 body=body,
-                db_factory=SessionLocal,
                 message_record_id=message_record.id if message_record else None,
                 conversation_id=conversation.id if conversation else None,
+                db_factory=SessionLocal,
                 process_fn=process_text_message
             ))
         else:
