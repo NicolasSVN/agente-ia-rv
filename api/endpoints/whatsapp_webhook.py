@@ -860,74 +860,97 @@ async def process_text_message(phone: str, message: str, db: Session, message_re
         except Exception as e:
             print(f"[WEBHOOK] Erro no query_rewriter (não-bloqueante): {e}")
         
+        skip_rag = False
+        if rewrite_result:
+            skip_rag = rewrite_result.clarification_needed or rewrite_result.categoria in ("SAUDACAO", "ATENDIMENTO_HUMANO", "FORA_ESCOPO")
+            if skip_rag:
+                print(f"[WEBHOOK] Busca RAG pulada — categoria={rewrite_result.categoria}")
+        
         knowledge_context = ""
         retrieval_start = datetime.now()
         search_results = []
         try:
-            vector_store = get_vector_store()
-            from services.vector_store import filter_expired_results
-            search_results = vector_store.search(search_query, n_results=6, similarity_threshold=0.8)
+            if not skip_rag:
+                from services.semantic_search import EnhancedSearch
+                from services.vector_store import filter_expired_results
+                vector_store = get_vector_store()
+                enhanced = EnhancedSearch(vector_store)
+                raw_results = enhanced.search(
+                    query=search_query,
+                    n_results=6,
+                    conversation_id=str(conversation.id) if conversation else None,
+                    similarity_threshold=0.8,
+                    db=db
+                )
+                raw_dicts = [
+                    {
+                        "content": r.content,
+                        "metadata": r.metadata,
+                        "distance": r.vector_distance,
+                        "composite_score": r.composite_score,
+                        "confidence_level": r.confidence_level,
+                    }
+                    for r in raw_results
+                ]
+                search_results_filtered = filter_expired_results(raw_dicts, db)[:5]
+                filtered_ids = {d.get("metadata", {}).get("block_id") for d in search_results_filtered}
+                search_results = [
+                    r for r in raw_results
+                    if r.metadata.get("block_id") in filtered_ids
+                ] if filtered_ids else []
             
-            search_results = filter_expired_results(search_results, db)[:3]
+                if search_results:
+                    knowledge_context = "\n\n--- Informações da Base de Conhecimento ---\n"
+                    seen_product_ids = set()
+                    for i, r in enumerate(search_results, 1):
+                        metadata = r.metadata
+                        title = metadata.get("document_title", "Documento")
+                        content = r.content[:500]
+                        mid = metadata.get("material_id")
+                        mid_info = f" [material_id={mid}]" if mid else ""
+                        knowledge_context += f"\n[{i}] {title}{mid_info}:\n{content}\n"
+                        pid = metadata.get("product_id")
+                        if pid:
+                            seen_product_ids.add(int(pid))
+                        elif mid:
+                            try:
+                                from database.models import Material as Mat
+                                mat_obj = db.query(Mat.product_id).filter(Mat.id == int(mid)).first()
+                                if mat_obj:
+                                    seen_product_ids.add(mat_obj.product_id)
+                            except Exception:
+                                pass
 
-            try:
-                from services.temporal_enrichment import enrich_results_with_temporal_refs
-                search_results = enrich_results_with_temporal_refs(search_results, db)
-            except Exception as e:
-                print(f"[WEBHOOK] Erro no enriquecimento temporal (não-bloqueante): {e}")
-            
-            if search_results:
-                knowledge_context = "\n\n--- Informações da Base de Conhecimento ---\n"
-                seen_product_ids = set()
-                for i, result in enumerate(search_results, 1):
-                    metadata = result.get("metadata", {})
-                    title = metadata.get("document_title", "Documento")
-                    content = result.get("content", "")[:500]
-                    mid = metadata.get("material_id")
-                    mid_info = f" [material_id={mid}]" if mid else ""
-                    knowledge_context += f"\n[{i}] {title}{mid_info}:\n{content}\n"
-                    pid = metadata.get("product_id")
-                    if pid:
-                        seen_product_ids.add(int(pid))
-                    elif mid:
+                    if seen_product_ids:
                         try:
-                            from database.models import Material as Mat
-                            mat_obj = db.query(Mat.product_id).filter(Mat.id == int(mid)).first()
-                            if mat_obj:
-                                seen_product_ids.add(mat_obj.product_id)
-                        except Exception:
-                            pass
-
-                if seen_product_ids:
-                    try:
-                        from database.models import Material, Product, MaterialFile
-                        materials_with_files = (
-                            db.query(Material, Product.name, Product.ticker)
-                            .join(Product, Product.id == Material.product_id)
-                            .join(MaterialFile, MaterialFile.material_id == Material.id)
-                            .filter(Material.product_id.in_(list(seen_product_ids)))
-                            .filter(Material.publish_status != "arquivado")
-                            .all()
-                        )
-                        if materials_with_files:
-                            materials_by_product = {}
-                            for mat, prod_name, prod_ticker in materials_with_files:
-                                key = prod_ticker or prod_name
-                                if key not in materials_by_product:
-                                    materials_by_product[key] = []
-                                type_labels = {
-                                    'one_page': 'One Pager', 'apresentacao': 'Apresentação',
-                                    'comite': 'Material do Comitê', 'relatorio': 'Relatório',
-                                    'lamina': 'Lâmina',
-                                }
-                                label = type_labels.get(mat.material_type, mat.material_type or mat.name or 'Documento')
-                                materials_by_product[key].append(f"[ID:{mat.id}] {mat.name or label}")
-                            knowledge_context += "\n--- Materiais com PDF disponível para envio ---\n"
-                            for prod_key, mat_list in materials_by_product.items():
-                                knowledge_context += f"{prod_key}: {', '.join(mat_list)}\n"
-                            knowledge_context += "Para enviar um material, use o marcador [ENVIAR_MATERIAL:ID] na resposta.\n"
-                    except Exception as e:
-                        print(f"[WEBHOOK] Erro ao listar materiais disponíveis: {e}")
+                            from database.models import Material, Product, MaterialFile
+                            materials_with_files = (
+                                db.query(Material, Product.name, Product.ticker)
+                                .join(Product, Product.id == Material.product_id)
+                                .join(MaterialFile, MaterialFile.material_id == Material.id)
+                                .filter(Material.product_id.in_(list(seen_product_ids)))
+                                .filter(Material.publish_status != "arquivado")
+                                .all()
+                            )
+                            if materials_with_files:
+                                materials_by_product = {}
+                                for mat, prod_name, prod_ticker in materials_with_files:
+                                    key = prod_ticker or prod_name
+                                    if key not in materials_by_product:
+                                        materials_by_product[key] = []
+                                    type_labels = {
+                                        'one_page': 'One Pager', 'apresentacao': 'Apresentação',
+                                        'comite': 'Material do Comitê', 'relatorio': 'Relatório',
+                                        'lamina': 'Lâmina',
+                                    }
+                                    label = type_labels.get(mat.material_type, mat.material_type or mat.name or 'Documento')
+                                    materials_by_product[key].append(f"[ID:{mat.id}] {mat.name or label}")
+                                knowledge_context += "\n--- Materiais com PDF disponível para envio ---\n"
+                                for prod_key, mat_list in materials_by_product.items():
+                                    knowledge_context += f"{prod_key}: {', '.join(mat_list)}\n"
+                                knowledge_context += "Para enviar um material, use o marcador [ENVIAR_MATERIAL:ID] na resposta.\n"
+                        except Exception as e:
+                            print(f"[WEBHOOK] Erro ao listar materiais disponíveis: {e}")
         except Exception as e:
             print(f"[WEBHOOK] Erro ao buscar na base de conhecimento: {e}")
         
@@ -940,20 +963,21 @@ async def process_text_message(phone: str, message: str, db: Session, message_re
         
         if search_results:
             for r in search_results:
-                meta = r.get("metadata", {})
+                meta = r.metadata if hasattr(r, 'metadata') else r.get("metadata", {})
                 block_id = meta.get("block_id", "")
                 if block_id:
                     chunks_retrieved.append(block_id)
                     chunk_versions[block_id] = meta.get("version", "1")
                 
-                dist = r.get("distance", 0)
+                dist = r.vector_distance if hasattr(r, 'vector_distance') else r.get("distance", 0)
                 if min_distance is None or dist < min_distance:
                     min_distance = dist
                 if max_distance is None or dist > max_distance:
                     max_distance = dist
                 
                 if not query_type:
-                    query_type = r.get("query_type", "conceptual")
+                    extra = getattr(r, 'extra_meta', {}) if hasattr(r, 'extra_meta') else {}
+                    query_type = extra.get('query_intent', 'conceptual')
         
         assessor_data = None
         if assessor:
@@ -1087,8 +1111,8 @@ async def process_text_message(phone: str, message: str, db: Session, message_re
                 chunks_used=json.dumps(chunks_retrieved[:3]) if chunks_retrieved else None,
                 chunk_versions=json.dumps(chunk_versions) if chunk_versions else None,
                 result_count=len(search_results),
-                min_distance=str(round(min_distance, 4)) if min_distance else None,
-                max_distance=str(round(max_distance, 4)) if max_distance else None,
+                min_distance=str(round(min_distance, 4)) if min_distance is not None else None,
+                max_distance=str(round(max_distance, 4)) if max_distance is not None else None,
                 threshold_applied="0.8",
                 human_transfer=is_human_transfer,
                 transfer_reason=transfer_reason,

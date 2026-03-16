@@ -76,7 +76,8 @@ async def test_agent_message(
         raise HTTPException(status_code=403, detail="Acesso negado")
 
     user_id = current_user.id
-    message = request.message.strip()
+    from services.conversation_flow import normalize_message
+    message = normalize_message(request.message)
 
     if not message:
         raise HTTPException(status_code=400, detail="Mensagem não pode estar vazia")
@@ -90,6 +91,27 @@ async def test_agent_message(
     history = test_conversations[user_id]
     session = test_session_data[user_id]
 
+    try:
+        SESSION_GAP_MINUTES = 120
+        last_ts = session.get("last_response_at")
+        if last_ts:
+            from datetime import timedelta
+            gap = datetime.now() - last_ts
+            if gap > timedelta(minutes=SESSION_GAP_MINUTES) and len(history) >= 4:
+                from services.conversation_memory import generate_session_summary
+                history_for_summary = [
+                    {"role": msg["role"], "content": msg["content"]}
+                    for msg in history[-10:]
+                ]
+                old_summary = await generate_session_summary(history_for_summary, openai_agent.client)
+                if old_summary:
+                    session["last_session_summary"] = old_summary
+                    test_conversations[user_id] = []
+                    history = test_conversations[user_id]
+                    print(f"[AGENT_TEST] Gap de sessão detectado ({gap}), resumo gerado")
+    except Exception as e:
+        print(f"[AGENT_TEST] Erro na detecção de sessão (não-bloqueante): {e}")
+
     history_for_ai = [
         {
             "role": msg["role"],
@@ -99,8 +121,15 @@ async def test_agent_message(
         for msg in history[-10:]
     ]
 
+    if session.get("last_session_summary"):
+        history_for_ai = [{"role": "system", "content": f"[Contexto da sessão anterior]: {session['last_session_summary']}"}] + history_for_ai
+
     from services.query_rewriter import rewrite_query
     rewrite_result = await rewrite_query(message, history_for_ai, openai_agent.client)
+
+    if rewrite_result and rewrite_result.topic_switch and session.get("last_session_summary"):
+        history_for_ai = [h for h in history_for_ai if h.get("role") != "system" or "[Contexto da sessão anterior]" not in h.get("content", "")]
+        print(f"[AGENT_TEST] Topic switch detectado — removendo resumo de sessão anterior")
 
     search_query = rewrite_result.rewritten_query
 
@@ -108,6 +137,7 @@ async def test_agent_message(
     search_results = []
     query_intent = None
     entities_detected = rewrite_result.entities.copy()
+    retrieval_start = datetime.now()
 
     try:
         skip_search = rewrite_result.clarification_needed or rewrite_result.categoria in ("SAUDACAO", "ATENDIMENTO_HUMANO", "FORA_ESCOPO")
@@ -204,6 +234,52 @@ async def test_agent_message(
                         knowledge_context += f" [score:{score:.2f}]"
                         knowledge_context += f":\n{content}\n"
                 print(f"[AGENT_TEST] EnhancedSearch: {len(search_results)} docs | intent={query_intent} | entities={entities_detected}")
+
+                if search_results:
+                    seen_product_ids = set()
+                    for r in search_results:
+                        pid = r.metadata.get("product_id")
+                        mid = r.metadata.get("material_id")
+                        if pid:
+                            seen_product_ids.add(int(pid))
+                        elif mid:
+                            try:
+                                from database.models import Material as Mat
+                                mat_obj = db.query(Mat.product_id).filter(Mat.id == int(mid)).first()
+                                if mat_obj:
+                                    seen_product_ids.add(mat_obj.product_id)
+                            except Exception:
+                                pass
+                    if seen_product_ids:
+                        try:
+                            from database.models import Material, Product, MaterialFile
+                            materials_with_files = (
+                                db.query(Material, Product.name, Product.ticker)
+                                .join(Product, Product.id == Material.product_id)
+                                .join(MaterialFile, MaterialFile.material_id == Material.id)
+                                .filter(Material.product_id.in_(list(seen_product_ids)))
+                                .filter(Material.publish_status != "arquivado")
+                                .all()
+                            )
+                            if materials_with_files:
+                                materials_by_product = {}
+                                for mat, prod_name, prod_ticker in materials_with_files:
+                                    key = prod_ticker or prod_name
+                                    if key not in materials_by_product:
+                                        materials_by_product[key] = []
+                                    type_labels = {
+                                        'one_page': 'One Pager', 'apresentacao': 'Apresentação',
+                                        'comite': 'Material do Comitê', 'relatorio': 'Relatório',
+                                        'lamina': 'Lâmina',
+                                    }
+                                    label = type_labels.get(mat.material_type, mat.material_type or mat.name or 'Documento')
+                                    materials_by_product[key].append(f"[ID:{mat.id}] {mat.name or label}")
+                                knowledge_context += "\n--- Materiais com PDF disponível para envio ---\n"
+                                for prod_key, mat_list in materials_by_product.items():
+                                    knowledge_context += f"{prod_key}: {', '.join(mat_list)}\n"
+                                knowledge_context += "Para enviar um material, use o marcador [ENVIAR_MATERIAL:ID] na resposta.\n"
+                        except Exception as e:
+                            print(f"[AGENT_TEST] Erro ao listar materiais disponíveis: {e}")
             else:
                 print(f"[AGENT_TEST] EnhancedSearch: nenhum resultado para '{message[:50]}'")
         elif skip_search:
@@ -214,6 +290,8 @@ async def test_agent_message(
         print(f"[AGENT_TEST] Erro na busca EnhancedSearch: {e}")
         import traceback
         traceback.print_exc()
+
+    retrieval_time = int((datetime.now() - retrieval_start).total_seconds() * 1000)
 
     try:
         response, should_create_ticket, context = await openai_agent.generate_response(
@@ -235,7 +313,56 @@ async def test_agent_message(
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Erro ao gerar resposta: {str(e)}")
 
-    # Montar lista de documentos para o frontend (com composite_score)
+    session["last_response_at"] = datetime.now()
+    test_session_data[user_id] = session
+
+    try:
+        import json as _json
+        from database.models import RetrievalLog
+        chunks_retrieved = []
+        chunk_versions = {}
+        min_distance = None
+        max_distance = None
+        log_query_type = None
+        is_human_transfer = should_create_ticket or (context and context.get("human_transfer"))
+        transfer_reason = context.get("transfer_reason") if context else None
+
+        for r in search_results:
+            if hasattr(r, 'metadata'):
+                bid = r.metadata.get("block_id", "")
+                if bid:
+                    chunks_retrieved.append(bid)
+                    chunk_versions[bid] = r.metadata.get("version", "1")
+                dist = r.vector_distance if hasattr(r, 'vector_distance') else 0
+                if min_distance is None or dist < min_distance:
+                    min_distance = dist
+                if max_distance is None or dist > max_distance:
+                    max_distance = dist
+                if not log_query_type:
+                    extra = getattr(r, 'extra_meta', {}) if hasattr(r, 'extra_meta') else {}
+                    log_query_type = extra.get('query_intent', query_intent or 'conceptual')
+
+        retrieval_log = RetrievalLog(
+            query=message,
+            query_type=log_query_type or query_intent,
+            chunks_retrieved=_json.dumps(chunks_retrieved) if chunks_retrieved else None,
+            chunks_used=_json.dumps(chunks_retrieved[:3]) if chunks_retrieved else None,
+            chunk_versions=_json.dumps(chunk_versions) if chunk_versions else None,
+            result_count=len(search_results),
+            min_distance=str(round(min_distance, 4)) if min_distance is not None else None,
+            max_distance=str(round(max_distance, 4)) if max_distance is not None else None,
+            threshold_applied="0.8",
+            human_transfer=is_human_transfer,
+            transfer_reason=transfer_reason,
+            user_id=user_id,
+            conversation_id=f"test_{user_id}",
+            response_time_ms=retrieval_time
+        )
+        db.add(retrieval_log)
+        db.commit()
+    except Exception as log_err:
+        print(f"[AGENT_TEST] Erro ao salvar RetrievalLog (não-bloqueante): {log_err}")
+
     knowledge_documents_raw = search_results if search_results else (
         context.get("documents", []) if context else []
     )
