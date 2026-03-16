@@ -61,6 +61,40 @@ def _get_enhanced_search():
     return None
 
 
+def _normalize_doc_for_response(doc) -> dict:
+    """Converte SearchResult ou dict em formato padronizado para resposta da API."""
+    if hasattr(doc, 'metadata'):
+        meta = doc.metadata
+        content = doc.content or ""
+        return {
+            "title": meta.get("document_title", meta.get("source", "Documento")),
+            "category": meta.get("category", ""),
+            "content_preview": (content[:200] + "...") if len(content) > 200 else content,
+            "composite_score": round(doc.composite_score, 3) if hasattr(doc, 'composite_score') else None,
+            "block_type": meta.get("block_type", ""),
+            "product": meta.get("product_name", ""),
+        }
+    elif isinstance(doc, dict):
+        meta = doc.get("metadata", {})
+        content = doc.get("content", "")
+        return {
+            "title": meta.get("document_title", "Documento"),
+            "category": meta.get("category", ""),
+            "content_preview": (content[:200] + "...") if len(content) > 200 else content,
+            "composite_score": doc.get("composite_score"),
+            "block_type": meta.get("block_type", ""),
+            "product": meta.get("product_name", ""),
+        }
+    return {
+        "title": "Documento",
+        "category": "",
+        "content_preview": "",
+        "composite_score": None,
+        "block_type": "",
+        "product": "",
+    }
+
+
 @router.post("/test", response_model=TestMessageResponse)
 async def test_agent_message(
     request: TestMessageRequest,
@@ -402,33 +436,8 @@ async def test_agent_message(
         query_type=query_intent,
         entities_detected=entities_detected if entities_detected else None,
         knowledge_documents=[
-            {
-                "title": (
-                    r.metadata.get("document_title", r.metadata.get("source", "Documento"))
-                    if hasattr(r, 'metadata')
-                    else doc.get("metadata", {}).get("document_title", "Documento")
-                    if isinstance(doc, dict) else "Documento"
-                ),
-                "category": (
-                    r.metadata.get("category", "")
-                    if hasattr(r, 'metadata')
-                    else doc.get("metadata", {}).get("category", "")
-                    if isinstance(doc, dict) else ""
-                ),
-                "content_preview": (
-                    (r.content[:200] + "..." if len(r.content) > 200 else r.content)
-                    if hasattr(r, 'content')
-                    else (doc.get("content", "")[:200] + "..." if len(doc.get("content", "")) > 200 else doc.get("content", ""))
-                    if isinstance(doc, dict) else ""
-                ),
-                "composite_score": round(r.composite_score, 3) if hasattr(r, 'composite_score') else None,
-                "block_type": r.metadata.get("block_type", "") if hasattr(r, 'metadata') else "",
-                "product": r.metadata.get("product_name", "") if hasattr(r, 'metadata') else "",
-            }
-            for doc, r in [
-                (d, d) if hasattr(d, 'metadata') else (d, type('_', (), {'metadata': d.get('metadata', {}), 'content': d.get('content', ''), 'composite_score': d.get('composite_score', 0)})())
-                for d in knowledge_documents_raw
-            ]
+            _normalize_doc_for_response(d)
+            for d in knowledge_documents_raw
         ],
         conversation_length=len(history),
         identified_assessor={
