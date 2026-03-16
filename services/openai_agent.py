@@ -946,19 +946,15 @@ Quando o assessor perguntar sobre estruturas de derivativos ou produtos estrutur
    → Agora sim, responda com a informação específica solicitada
    → Seja objetivo e direto, sem repetir o que não foi pedido
 
-4. DIAGRAMA DE PAYOFF (FERRAMENTA DE AÇÃO):
-   → Quando o assessor PEDIR para ver/enviar/mostrar um diagrama, gráfico, payoff, imagem ou exemplo visual de uma estrutura, inclua a marcação [ENVIAR_DIAGRAMA:slug] na sua resposta
+4. DIAGRAMA DE PAYOFF (USE A FUNÇÃO send_payoff_diagram):
+   → Quando o assessor PEDIR para ver/enviar/mostrar um diagrama, gráfico, payoff, imagem ou exemplo visual de uma estrutura, use a função send_payoff_diagram com o slug correto
    → Se a estrutura tiver diagrama disponível (indicado nos metadados), ofereça ao final: "Quer que eu envie o diagrama de payoff?"
    → NUNCA envie diagrama sem o assessor pedir
-   → A marcação deve usar o slug exato da estrutura. Slugs disponíveis:
+   → Slugs disponíveis:
      booster, swap, collar-com-ativo, fence-com-ativo, step-up, condor-strangle-com-hedge, condor-venda-strangle, venda-straddle, compra-condor, compra-borboleta-fly, compra-straddle, compra-strangle, compra-venda-opcoes, risk-reversal, compra-call-spread, seagull, collar-sem-ativo, compra-put-spread, fence-sem-ativo, call-up-and-in, call-up-and-out, put-down-and-in, put-down-and-out, ndf, financiamento, venda-put-spread, venda-call-spread
-   → EXEMPLOS DE USO:
-     Assessor: "me manda o gráfico da booster" → Responda: "Aqui o diagrama de payoff da Booster! Se precisar de mais detalhes, é só pedir. [ENVIAR_DIAGRAMA:booster]"
-     Assessor: (após receber diagrama da booster) "teria o de call up and in?" → Responda: "Claro! Te envio o diagrama da Call Up and In. [ENVIAR_DIAGRAMA:call-up-and-in]"
-     Assessor: "sim, manda" (após bot oferecer diagrama do collar) → Responda: "Pronto, aí vai! [ENVIAR_DIAGRAMA:collar-com-ativo]"
-     Assessor: "como funciona a collar?" → Responda normalmente SEM marcação (não pediu diagrama, pediu explicação)
    → ATENÇÃO: Use o CONTEXTO da conversa para entender pedidos implícitos. Se acabou de enviar um diagrama e o assessor pede "e o de X?", é um pedido de outro diagrama.
    → Para estruturas ambíguas (collar com/sem ativo, fence com/sem ativo), se o assessor não especificou, PERGUNTE qual variante ele deseja.
+   → NÃO repita na resposta textual que está enviando o diagrama se já chamou a função — a ação fala por si
 
 CATEGORIAS DE DERIVATIVOS DISPONÍVEIS:
 - Alavancagem (ex: Booster, Call Spread)
@@ -972,18 +968,14 @@ CATEGORIAS DE DERIVATIVOS DISPONÍVEIS:
 
 IMPORTANTE: Este fluxo de desambiguação é OBRIGATÓRIO. Não pule etapas. O assessor deve ter controle sobre o nível de detalhe que recebe.
 
-5. ENVIO DE MATERIAL/PDF (FERRAMENTA DE AÇÃO):
-   → Quando o assessor PEDIR para ver/enviar/mandar o material, PDF, one-pager, lâmina ou documento de um produto, inclua a marcação [ENVIAR_MATERIAL:material_id] na sua resposta
+5. ENVIO DE MATERIAL/PDF (USE A FUNÇÃO send_document):
+   → Quando o assessor PEDIR para ver/enviar/mandar o material, PDF, one-pager, lâmina ou documento de um produto, use a função send_document com o material_id dos metadados
    → O material_id será fornecido nos metadados dos documentos de contexto (campo "material_id")
    → NUNCA envie material sem o assessor pedir explicitamente
    → Se houver mais de um material disponível para o produto, pergunte qual o assessor quer
-   → EXEMPLOS DE USO:
-     Assessor: "me manda o PDF do XP Log Prime" → Responda: "Aqui vai o material do XP Log Prime II! [ENVIAR_MATERIAL:22]"
-     Assessor: "tem o one-pager pra eu mandar pro cliente?" → Responda: "Claro! Segue o one-pager. [ENVIAR_MATERIAL:22]"
-     Assessor: "manda o material" (após conversar sobre um produto) → Responda: "Pronto, aí vai! [ENVIAR_MATERIAL:22]"
-     Assessor: "como funciona o XP Log?" → Responda normalmente SEM marcação (não pediu o material, pediu explicação)
    → ATENÇÃO: Use o CONTEXTO da conversa. Se acabou de falar sobre um produto e o assessor pede "manda o material", envie o material daquele produto.
-   → Se o material_id não estiver disponível nos metadados, NÃO use a marcação. Apenas responda com as informações textuais.
+   → Se o material_id não estiver disponível nos metadados, NÃO use a função. Apenas responda com as informações textuais.
+   → NÃO repita na resposta textual que está enviando o material se já chamou a função — a ação fala por si
 
 === PERSONALIDADE E TOM (ADITIVO) ===
 
@@ -1038,6 +1030,51 @@ TROCA DE TÓPICO (REGRA CRÍTICA):
 
 === FIM DO BLOCO DE PERSONALIDADE ==="""
     
+    TOOL_DEFINITIONS = [
+        {
+            "type": "function",
+            "function": {
+                "name": "send_document",
+                "description": "Envia um documento PDF (relatório, one-pager, lâmina) ao assessor via WhatsApp. Use quando o assessor pedir explicitamente para ver/enviar/mandar o material de um produto.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "material_id": {
+                            "type": "integer",
+                            "description": "ID do material a ser enviado (obtido dos metadados do contexto, campo material_id)"
+                        },
+                        "product_name": {
+                            "type": "string",
+                            "description": "Nome do produto/fundo associado ao material"
+                        }
+                    },
+                    "required": ["material_id", "product_name"]
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "send_payoff_diagram",
+                "description": "Envia o diagrama de payoff de uma estrutura de derivativos ao assessor via WhatsApp. Use quando o assessor pedir explicitamente para ver/enviar/mostrar um diagrama, gráfico ou payoff de uma estrutura.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "structure_slug": {
+                            "type": "string",
+                            "description": "Slug da estrutura de derivativos (ex: booster, collar-com-ativo, put-spread)"
+                        },
+                        "structure_name": {
+                            "type": "string",
+                            "description": "Nome legível da estrutura"
+                        }
+                    },
+                    "required": ["structure_slug", "structure_name"]
+                }
+            }
+        }
+    ]
+
     def _get_temperature(self, categoria: str, config: dict = None) -> float:
         """Temperatura adaptiva por tipo de resposta."""
         if config and "temperature" in config:
@@ -1058,10 +1095,10 @@ TROCA DE TÓPICO (REGRA CRÍTICA):
             return config.get("max_tokens", 500)
 
         tokens_map = {
-            "DOCUMENTAL": 900,
-            "PITCH":      800,
-            "ESCOPO":     700,
-            "MERCADO":    600,
+            "DOCUMENTAL": 1200,
+            "PITCH":      1200,
+            "ESCOPO":     1000,
+            "MERCADO":    1000,
             "SAUDACAO":   150,
         }
         return tokens_map.get(categoria, 600)
@@ -2165,9 +2202,11 @@ REGRAS PARA INFORMAÇÕES DA INTERNET:
         
         web_search_results = None
         web_context = ""
+        retrieval_strategy = rewrite_result.retrieval_strategy if rewrite_result else "rag"
         should_search_web, web_reason = self._should_web_search(context_documents, user_message)
         
-        if categoria == "MERCADO" or (should_search_web and categoria not in ["SAUDACAO", "FORA_ESCOPO", "ATENDIMENTO_HUMANO"]):
+        force_web = retrieval_strategy in ("web", "hybrid")
+        if categoria == "MERCADO" or force_web or (should_search_web and categoria not in ["SAUDACAO", "FORA_ESCOPO", "ATENDIMENTO_HUMANO"]):
             print(f"[OpenAI] Ativando busca na web: {web_reason}")
             try:
                 from database.database import SessionLocal
@@ -2214,7 +2253,7 @@ NOTA: {material_note}
         messages = [{"role": "system", "content": system_prompt}]
         
         if conversation_history:
-            messages.extend(conversation_history[-10:])
+            messages.extend(conversation_history[-20:])
         
         if categoria == "MERCADO" and web_context:
             user_content = f"""PERGUNTA SOBRE MERCADO - PRIORIZE AS INFORMAÇÕES DA WEB:
@@ -2312,13 +2351,21 @@ INSTRUÇÕES IMPORTANTES:
             "content": user_content
         })
         
+        has_actionable_context = bool(context_documents) or categoria in ("DOCUMENTAL", "ESCOPO", "PITCH")
+        use_tools = has_actionable_context and categoria not in ("SAUDACAO", "FORA_ESCOPO", "ATENDIMENTO_HUMANO")
+        
         try:
-            response = self.client.chat.completions.create(
-                model=model,
-                messages=messages,
-                max_tokens=max_tokens,
-                temperature=temperature
-            )
+            api_kwargs = {
+                "model": model,
+                "messages": messages,
+                "max_tokens": max_tokens,
+                "temperature": temperature
+            }
+            if use_tools:
+                api_kwargs["tools"] = self.TOOL_DEFINITIONS
+                api_kwargs["tool_choice"] = "auto"
+            
+            response = self.client.chat.completions.create(**api_kwargs)
             try:
                 if response.usage:
                     cost_tracker.track_openai_chat(
@@ -2332,14 +2379,21 @@ INSTRUÇÕES IMPORTANTES:
             except Exception:
                 pass
             
-            ai_response = response.choices[0].message.content
+            choice = response.choices[0]
+            ai_response = choice.message.content or ""
             
-            suggest_ticket = any(phrase in ai_response.lower() for phrase in [
-                "abrir um chamado",
-                "falar com um assessor",
-                "deseja abrir",
-                "quer abrir"
-            ])
+            tool_calls_data = []
+            if choice.message.tool_calls:
+                for tc in choice.message.tool_calls:
+                    try:
+                        args = json.loads(tc.function.arguments)
+                    except (json.JSONDecodeError, TypeError):
+                        args = {}
+                    tool_calls_data.append({
+                        "name": tc.function.name,
+                        "arguments": args
+                    })
+                    print(f"[OpenAI] Tool call: {tc.function.name}({args})")
             
             derivatives_structures = self._detect_derivatives_structures(context_documents)
             
@@ -2349,7 +2403,8 @@ INSTRUÇÕES IMPORTANTES:
                 "identified_assessor": assessor_data,
                 "fii_external_lookup": fii_lookup_result.get('ticker') if fii_lookup_result else None,
                 "ticker_suggestions": similar_tickers_suggestion,
-                "derivatives_structures": derivatives_structures
+                "derivatives_structures": derivatives_structures,
+                "tool_calls": tool_calls_data if tool_calls_data else None
             }
             
         except Exception as e:

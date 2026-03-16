@@ -38,6 +38,10 @@ class TestMessageResponse(BaseModel):
     topic_switch: Optional[bool] = None
     is_comparative: Optional[bool] = None
     clarification_needed: Optional[bool] = None
+    retrieval_strategy: Optional[str] = None
+    is_implicit_continuation: Optional[bool] = None
+    emotional_tone: Optional[str] = None
+    tool_calls: Optional[List[dict]] = None
 
 
 class ConversationMessage(BaseModel):
@@ -152,7 +156,7 @@ async def test_agent_message(
             "content": msg["content"],
             "metadata": msg.get("metadata", {})
         }
-        for msg in history[-10:]
+        for msg in history[-20:]
     ]
 
     if session.get("last_session_summary"):
@@ -311,7 +315,7 @@ async def test_agent_message(
                                 knowledge_context += "\n--- Materiais com PDF disponível para envio ---\n"
                                 for prod_key, mat_list in materials_by_product.items():
                                     knowledge_context += f"{prod_key}: {', '.join(mat_list)}\n"
-                                knowledge_context += "Para enviar um material, use o marcador [ENVIAR_MATERIAL:ID] na resposta.\n"
+                                knowledge_context += "Para enviar um material, use a função send_document com o material_id correspondente.\n"
                         except Exception as e:
                             print(f"[AGENT_TEST] Erro ao listar materiais disponíveis: {e}")
             else:
@@ -449,7 +453,11 @@ async def test_agent_message(
         rewritten_query=rewrite_result.rewritten_query if rewrite_result.rewritten_query != message else None,
         topic_switch=rewrite_result.topic_switch if rewrite_result.topic_switch else None,
         is_comparative=rewrite_result.is_comparative if rewrite_result.is_comparative else None,
-        clarification_needed=rewrite_result.clarification_needed if rewrite_result.clarification_needed else None
+        clarification_needed=rewrite_result.clarification_needed if rewrite_result.clarification_needed else None,
+        retrieval_strategy=rewrite_result.retrieval_strategy if rewrite_result.retrieval_strategy != "rag" else None,
+        is_implicit_continuation=rewrite_result.is_implicit_continuation if rewrite_result.is_implicit_continuation else None,
+        emotional_tone=rewrite_result.emotional_tone if rewrite_result.emotional_tone != "neutral" else None,
+        tool_calls=context.get("tool_calls") if context and context.get("tool_calls") else None
     )
 
 

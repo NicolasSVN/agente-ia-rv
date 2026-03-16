@@ -1,11 +1,12 @@
 """
-Query Rewriter com Contexto Conversacional.
+Query Rewriter com Contexto Conversacional (V2 — GPT-4o + Análise Enriquecida).
 
 Recebe a mensagem atual + histórico e produz:
 - query reescrita autocontida (pronomes resolvidos, contexto incorporado)
 - classificação de intenção (substitui _classify_message)
 - entidades detectadas
 - flags: is_comparative, topic_switch, clarification_needed
+- campos enriquecidos: retrieval_strategy, is_implicit_continuation, resolved_context, emotional_tone
 """
 import json
 import re
@@ -27,6 +28,10 @@ class QueryRewriteResult:
     clarification_text: str = ""
     original_message: str = ""
     used_fallback: bool = False
+    retrieval_strategy: str = "rag"
+    is_implicit_continuation: bool = False
+    resolved_context: str = ""
+    emotional_tone: str = "neutral"
 
 
 REWRITER_SYSTEM_PROMPT = """Você é um módulo interno de pré-processamento de mensagens. Seu papel é analisar a mensagem atual de um assessor financeiro, junto com o histórico recente da conversa, e produzir uma versão da mensagem que seja autocontida — ou seja, que faça sentido sozinha, sem precisar ler o histórico.
@@ -50,6 +55,8 @@ REGRAS DE REESCRITA:
 
 6. A mensagem atual tem PRIORIDADE ABSOLUTA sobre o histórico. O histórico serve apenas para resolver ambiguidades.
 
+7. CONTINUAÇÕES IMPLÍCITAS: quando o assessor responde algo curto que continua o tópico anterior (ex: "e a vacância?", "e o prazo?", "quanto tá rendendo?"), marque is_implicit_continuation=true e preencha resolved_context com o que foi inferido do histórico.
+
 CLASSIFICAÇÃO DE INTENÇÃO (campo "categoria"):
 - SAUDACAO: cumprimentos simples sem conteúdo ("oi", "bom dia", "tudo bem?")
 - DOCUMENTAL: perguntas sobre produtos/fundos/ativos específicos que precisam da base de conhecimento
@@ -61,6 +68,19 @@ CLASSIFICAÇÃO DE INTENÇÃO (campo "categoria"):
 
 Para "categoria", use os mesmos critérios do assessor financeiro: perguntas sobre comitê/produto do mês = ESCOPO com entidade "COMITE".
 
+ESTRATÉGIA DE BUSCA (campo "retrieval_strategy"):
+- "rag": buscar apenas na base de conhecimento interna (padrão para maioria das perguntas)
+- "web": buscar apenas na web (cotações atuais, notícias do dia, eventos em tempo real)
+- "hybrid": buscar tanto na base interna quanto na web (comparações entre ativo interno e mercado, perguntas que precisam de dados internos + contexto de mercado)
+- "none": não precisa de busca (saudações, fora de escopo)
+
+TOM EMOCIONAL (campo "emotional_tone"):
+- "neutral": pergunta técnica normal
+- "urgent": assessor com urgência ou pressão
+- "frustrated": assessor demonstra frustração ou insatisfação
+- "curious": assessor explorando ou aprendendo
+- "friendly": conversa mais leve e próxima
+
 FORMATO DE SAÍDA (JSON):
 {
   "rewritten_query": "query reescrita autocontida",
@@ -69,7 +89,11 @@ FORMATO DE SAÍDA (JSON):
   "is_comparative": false,
   "topic_switch": false,
   "clarification_needed": false,
-  "clarification_text": ""
+  "clarification_text": "",
+  "retrieval_strategy": "rag",
+  "is_implicit_continuation": false,
+  "resolved_context": "",
+  "emotional_tone": "neutral"
 }
 
 Retorne APENAS o JSON, sem explicação."""
@@ -80,14 +104,14 @@ def _build_rewriter_messages(message: str, history: Optional[List[dict]] = None)
 
     history_text = ""
     if history:
-        recent = history[-10:]
+        recent = history[-20:]
         lines = []
         for msg in recent:
             role = msg.get("role", "user")
             content = msg.get("content", "")
             if content:
                 label = "Assessor" if role == "user" else "Stevan"
-                lines.append(f"{label}: {content[:300]}")
+                lines.append(f"{label}: {content}")
         if lines:
             history_text = "\n".join(lines)
 
@@ -111,7 +135,8 @@ def _fallback_classify(message: str) -> QueryRewriteResult:
             rewritten_query=message,
             categoria="SAUDACAO",
             original_message=message,
-            used_fallback=True
+            used_fallback=True,
+            retrieval_strategy="none"
         )
 
     human_keywords = ["falar com alguém", "falar com humano", "chama o broker",
@@ -122,7 +147,8 @@ def _fallback_classify(message: str) -> QueryRewriteResult:
             rewritten_query=message,
             categoria="ATENDIMENTO_HUMANO",
             original_message=message,
-            used_fallback=True
+            used_fallback=True,
+            retrieval_strategy="none"
         )
 
     market_keywords = ["cotação", "cotacao", "mercado hoje", "ifix", "ibov",
@@ -136,7 +162,8 @@ def _fallback_classify(message: str) -> QueryRewriteResult:
             categoria="MERCADO",
             entities=entities,
             original_message=message,
-            used_fallback=True
+            used_fallback=True,
+            retrieval_strategy="web"
         )
 
     pitch_keywords = ["pitch", "texto de venda", "argumento de vendas", "vender"]
@@ -149,7 +176,8 @@ def _fallback_classify(message: str) -> QueryRewriteResult:
             categoria="PITCH",
             entities=entities,
             original_message=message,
-            used_fallback=True
+            used_fallback=True,
+            retrieval_strategy="rag"
         )
 
     ticker_matches = re.findall(r'\b([A-Z]{4,5}(?:11|12|13)?)\b', message, re.IGNORECASE)
@@ -165,7 +193,8 @@ def _fallback_classify(message: str) -> QueryRewriteResult:
             categoria="ESCOPO",
             entities=entities,
             original_message=message,
-            used_fallback=True
+            used_fallback=True,
+            retrieval_strategy="rag"
         )
 
     if entities:
@@ -175,7 +204,8 @@ def _fallback_classify(message: str) -> QueryRewriteResult:
             entities=entities,
             is_comparative=len(entities) >= 2,
             original_message=message,
-            used_fallback=True
+            used_fallback=True,
+            retrieval_strategy="rag"
         )
 
     return QueryRewriteResult(
@@ -183,7 +213,8 @@ def _fallback_classify(message: str) -> QueryRewriteResult:
         categoria="ESCOPO",
         entities=entities,
         original_message=message,
-        used_fallback=True
+        used_fallback=True,
+        retrieval_strategy="rag"
     )
 
 
@@ -210,7 +241,11 @@ def _parse_rewriter_response(raw: str, original_message: str) -> QueryRewriteRes
         clarification_needed=bool(data.get("clarification_needed", False)),
         clarification_text=data.get("clarification_text", ""),
         original_message=original_message,
-        used_fallback=False
+        used_fallback=False,
+        retrieval_strategy=data.get("retrieval_strategy", "rag"),
+        is_implicit_continuation=bool(data.get("is_implicit_continuation", False)),
+        resolved_context=data.get("resolved_context", ""),
+        emotional_tone=data.get("emotional_tone", "neutral")
     )
 
 
@@ -218,7 +253,7 @@ async def rewrite_query(
     message: str,
     history: Optional[List[dict]] = None,
     client: Optional[OpenAI] = None,
-    timeout_seconds: float = 3.0
+    timeout_seconds: float = 5.0
 ) -> QueryRewriteResult:
     if not client:
         try:
@@ -237,14 +272,28 @@ async def rewrite_query(
     try:
         def _call_api():
             return client.chat.completions.create(
-                model="gpt-4o-mini",
+                model="gpt-4o",
                 messages=messages,
                 temperature=0.1,
-                max_tokens=300,
+                max_tokens=400,
                 timeout=timeout_seconds
             )
 
         response = await asyncio.to_thread(_call_api)
+
+        try:
+            from services.cost_tracker import cost_tracker
+            if response.usage:
+                cost_tracker.track_openai_chat(
+                    model="gpt-4o",
+                    prompt_tokens=response.usage.prompt_tokens,
+                    completion_tokens=response.usage.completion_tokens,
+                    total_tokens=response.usage.total_tokens,
+                    operation='query_rewriter'
+                )
+        except Exception:
+            pass
+
         raw_content = response.choices[0].message.content.strip()
 
         result = _parse_rewriter_response(raw_content, message)
@@ -255,7 +304,10 @@ async def rewrite_query(
             f"entities={result.entities} | "
             f"comparative={result.is_comparative} | "
             f"topic_switch={result.topic_switch} | "
-            f"clarification={result.clarification_needed}"
+            f"clarification={result.clarification_needed} | "
+            f"strategy={result.retrieval_strategy} | "
+            f"implicit_cont={result.is_implicit_continuation} | "
+            f"tone={result.emotional_tone}"
         )
         return result
 

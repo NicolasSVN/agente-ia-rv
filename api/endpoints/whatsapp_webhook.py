@@ -948,7 +948,7 @@ async def process_text_message(phone: str, message: str, db: Session, message_re
                                 knowledge_context += "\n--- Materiais com PDF disponível para envio ---\n"
                                 for prod_key, mat_list in materials_by_product.items():
                                     knowledge_context += f"{prod_key}: {', '.join(mat_list)}\n"
-                                knowledge_context += "Para enviar um material, use o marcador [ENVIAR_MATERIAL:ID] na resposta.\n"
+                                knowledge_context += "Para enviar um material, use a função send_document com o material_id correspondente.\n"
                         except Exception as e:
                             print(f"[WEBHOOK] Erro ao listar materiais disponíveis: {e}")
         except Exception as e:
@@ -1005,15 +1005,36 @@ async def process_text_message(phone: str, message: str, db: Session, message_re
         
         diagram_slugs_from_ai = []
         material_ids_from_ai = []
+        
+        tool_calls = context.get("tool_calls") if context else None
+        if tool_calls:
+            for tc in tool_calls:
+                if tc["name"] == "send_document":
+                    mid = str(tc["arguments"].get("material_id", ""))
+                    if mid:
+                        material_ids_from_ai.append(mid)
+                        print(f"[WEBHOOK] Tool call: send_document(material_id={mid})")
+                elif tc["name"] == "send_payoff_diagram":
+                    slug = tc["arguments"].get("structure_slug", "")
+                    if slug:
+                        diagram_slugs_from_ai.append(slug)
+                        print(f"[WEBHOOK] Tool call: send_payoff_diagram(slug={slug})")
+        
         if response:
-            clean_response, diagram_slugs_from_ai = _extract_diagram_markers(response)
-            if diagram_slugs_from_ai:
-                print(f"[WEBHOOK] Marcações de diagrama detectadas na resposta do OpenAI: {diagram_slugs_from_ai}")
+            clean_response, text_diagram_slugs = _extract_diagram_markers(response)
+            if text_diagram_slugs:
+                for slug in text_diagram_slugs:
+                    if slug not in diagram_slugs_from_ai:
+                        diagram_slugs_from_ai.append(slug)
+                print(f"[WEBHOOK] Marcações de diagrama (texto fallback): {text_diagram_slugs}")
                 response = clean_response
             
-            clean_response2, material_ids_from_ai = _extract_material_markers(response)
-            if material_ids_from_ai:
-                print(f"[WEBHOOK] Marcações de material detectadas na resposta do OpenAI: {material_ids_from_ai}")
+            clean_response2, text_material_ids = _extract_material_markers(response)
+            if text_material_ids:
+                for mid in text_material_ids:
+                    if mid not in material_ids_from_ai:
+                        material_ids_from_ai.append(mid)
+                print(f"[WEBHOOK] Marcações de material (texto fallback): {text_material_ids}")
                 response = clean_response2
         
         append_to_history(phone, "user", normalized_message)
@@ -1128,13 +1149,12 @@ async def process_text_message(phone: str, message: str, db: Session, message_re
             print(f"[WEBHOOK] Enviando resposta via Z-API para {phone}...")
             send_result = await zapi_client.send_text(phone, response, delay_typing=2)
             print(f"[WEBHOOK] Resultado envio Z-API: {send_result}")
-            if send_result.get("success"):
-                response_sent_successfully = True
         else:
             print(f"[WEBHOOK] Resposta vazia - não enviando mensagem ao WhatsApp")
             send_result = {"success": False, "reason": "empty_response"}
         
         if send_result.get("success"):
+            response_sent_successfully = True
             save_message_zapi(
                 db,
                 message_id=send_result.get("message_id"),
@@ -1156,30 +1176,39 @@ async def process_text_message(phone: str, message: str, db: Session, message_re
                     fresh_conversation.last_bot_response_at = datetime.utcnow()
                     db.commit()
                     print(f"[WEBHOOK] last_bot_response_at atualizado: {fresh_conversation.last_bot_response_at}")
-            
-            if diagram_slugs_from_ai:
+        
+        if diagram_slugs_from_ai:
+            try:
+                sent = await _send_diagrams_from_markers(phone, diagram_slugs_from_ai, db)
+                if sent:
+                    print(f"[WEBHOOK] Diagramas enviados: {sent}")
+            except Exception as diag_err:
+                print(f"[WEBHOOK] Erro ao enviar diagramas: {diag_err}")
+        elif response_sent_successfully:
+            try:
+                await _send_derivatives_diagram_if_requested(
+                    phone, normalized_message, context, db
+                )
+            except Exception as diag_err:
+                print(f"[WEBHOOK] Erro ao enviar diagrama: {diag_err}")
+        
+        if material_ids_from_ai:
+            try:
+                sent_materials = await _send_materials_from_markers(phone, material_ids_from_ai, db)
+                if sent_materials:
+                    print(f"[WEBHOOK] Materiais enviados: {sent_materials}")
+                failed_materials = [mid for mid in material_ids_from_ai if mid not in sent_materials]
+                if failed_materials:
+                    print(f"[WEBHOOK] Falha ao enviar materiais: {failed_materials}")
+                    await zapi_client.send_text(phone, "Não consegui enviar o documento agora. Tenta pedir novamente em instantes.", delay_typing=1)
+            except Exception as mat_err:
+                print(f"[WEBHOOK] Erro ao enviar materiais: {mat_err}")
                 try:
-                    sent = await _send_diagrams_from_markers(phone, diagram_slugs_from_ai, db)
-                    if sent:
-                        print(f"[WEBHOOK] Diagramas enviados via marcação OpenAI: {sent}")
-                except Exception as diag_err:
-                    print(f"[WEBHOOK] Erro ao enviar diagramas via marcação: {diag_err}")
-            else:
-                try:
-                    await _send_derivatives_diagram_if_requested(
-                        phone, normalized_message, context, db
-                    )
-                except Exception as diag_err:
-                    print(f"[WEBHOOK] Erro ao enviar diagrama: {diag_err}")
-            
-            if material_ids_from_ai:
-                try:
-                    sent_materials = await _send_materials_from_markers(phone, material_ids_from_ai, db)
-                    if sent_materials:
-                        print(f"[WEBHOOK] Materiais enviados via marcação OpenAI: {sent_materials}")
-                except Exception as mat_err:
-                    print(f"[WEBHOOK] Erro ao enviar materiais via marcação: {mat_err}")
-            
+                    await zapi_client.send_text(phone, "Tive um problema ao enviar o documento. Tenta novamente?", delay_typing=1)
+                except:
+                    pass
+        
+        if response_sent_successfully or material_ids_from_ai or diagram_slugs_from_ai:
             try:
                 await save_conversation_insight(
                     db=db,
@@ -1193,6 +1222,12 @@ async def process_text_message(phone: str, message: str, db: Session, message_re
                 )
             except Exception as insight_err:
                 print(f"[WEBHOOK] Erro ao salvar insight: {insight_err}")
+            
+            try:
+                from services.conversation_memory import maybe_incremental_summary
+                await maybe_incremental_summary(phone, db, conversation)
+            except Exception as summ_err:
+                print(f"[WEBHOOK] Erro no resumo incremental: {summ_err}")
         
     except Exception as e:
         print(f"[WEBHOOK] Erro ao processar mensagem: {e}")

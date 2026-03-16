@@ -16,7 +16,8 @@ from sqlalchemy import desc
 
 
 SESSION_GAP_HOURS = 2
-HISTORY_WINDOW = 10
+HISTORY_WINDOW = 20
+INCREMENTAL_SUMMARY_THRESHOLD = 20
 DEBOUNCE_SECONDS = 6
 
 _history_cache: Dict[str, list] = {}
@@ -193,6 +194,44 @@ async def handle_session_transition(phone: str, db: Session, conversation):
         if fresh_history:
             _history_cache[phone] = fresh_history
             print(f"[MEMORY] Histórico pós-gap carregado: {len(fresh_history)} msgs da sessão atual")
+
+
+async def maybe_incremental_summary(phone: str, db: Session, conversation) -> Optional[str]:
+    if not conversation:
+        return None
+
+    history = _history_cache.get(phone, [])
+    if len(history) < INCREMENTAL_SUMMARY_THRESHOLD:
+        return None
+
+    try:
+        from services.openai_agent import openai_agent
+        if not openai_agent.client:
+            return None
+
+        older_msgs = history[:INCREMENTAL_SUMMARY_THRESHOLD // 2]
+        summary = await generate_session_summary(older_msgs, openai_agent.client)
+
+        if summary:
+            _history_cache[phone] = history[INCREMENTAL_SUMMARY_THRESHOLD // 2:]
+
+            prev_summary = getattr(conversation, 'last_session_summary', '') or ''
+            if prev_summary:
+                combined_summary = f"{prev_summary} | {summary}"
+            else:
+                combined_summary = summary
+
+            if len(combined_summary) > 500:
+                combined_summary = combined_summary[-500:]
+
+            conversation.last_session_summary = combined_summary
+            db.commit()
+            print(f"[MEMORY] Resumo incremental gerado para {phone}: {summary[:80]}... (histórico reduzido para {len(_history_cache[phone])} msgs)")
+            return summary
+    except Exception as e:
+        print(f"[MEMORY] Erro no resumo incremental: {e}")
+
+    return None
 
 
 def build_context_with_summary(history: list, conversation, rewrite_result=None) -> list:
