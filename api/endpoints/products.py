@@ -3110,6 +3110,83 @@ async def materials_without_files(
     }
 
 
+@router.get("/admin/all-materials-without-pdf")
+async def all_materials_without_pdf(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Apenas administradores podem acessar")
+
+    from database.models import Material, MaterialFile, Product
+
+    materials_with_db_file = {
+        mf.material_id
+        for mf in db.query(MaterialFile.material_id).all()
+    }
+
+    all_materials = db.query(Material).join(Product).order_by(Product.ticker, Material.name).all()
+
+    missing = []
+    for m in all_materials:
+        if m.id not in materials_with_db_file:
+            product = m.product
+            missing.append({
+                "material_id": m.id,
+                "material_name": m.name,
+                "product_name": product.name if product else "—",
+                "ticker": product.ticker if product else "—",
+                "material_type": m.material_type,
+            })
+
+    return {
+        "total_materials": len(all_materials),
+        "without_pdf": len(missing),
+        "materials": missing,
+    }
+
+
+@router.post("/admin/reupload-pdf/{material_id}")
+async def reupload_pdf(
+    material_id: int,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Apenas administradores podem acessar")
+
+    from database.models import Material
+
+    material = db.query(Material).filter(Material.id == material_id).first()
+    if not material:
+        raise HTTPException(status_code=404, detail=f"Material {material_id} não encontrado")
+
+    if not file.filename.lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Apenas arquivos PDF são aceitos")
+
+    file_content = await file.read()
+    if len(file_content) == 0:
+        raise HTTPException(status_code=400, detail="Arquivo vazio")
+
+    _save_file_to_db(db, material_id, file.filename, file_content, "application/pdf")
+
+    material.source_filename = file.filename
+    db.commit()
+
+    product = material.product
+    print(f"[REUPLOAD] PDF re-uploaded para material_id={material_id} ({material.name}) - {len(file_content)} bytes")
+
+    return {
+        "success": True,
+        "material_id": material_id,
+        "material_name": material.name,
+        "product_name": product.name if product else "—",
+        "filename": file.filename,
+        "file_size": len(file_content),
+    }
+
+
 UPLOAD_DIR_QUEUE = "uploads/materials"
 os.makedirs(UPLOAD_DIR_QUEUE, exist_ok=True)
 
