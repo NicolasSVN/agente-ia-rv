@@ -24,10 +24,17 @@ IS_PRODUCTION = is_production()
 router = APIRouter(prefix="/api/auth", tags=["Autenticação"])
 
 
+DEV_ACCESS_TOKEN = os.getenv("DEV_ACCESS_TOKEN", "")
+
+
 @router.get("/dev-login")
 async def dev_login(request: Request, response: Response, db: Session = Depends(get_db)):
     if IS_PRODUCTION:
-        raise HTTPException(status_code=404)
+        if not DEV_ACCESS_TOKEN:
+            raise HTTPException(status_code=404)
+        token_cookie = request.cookies.get("dev_access_verified")
+        if token_cookie != hashlib.sha256(DEV_ACCESS_TOKEN.encode()).hexdigest():
+            raise HTTPException(status_code=403, detail="Acesso não autorizado")
     admin_user = db.query(crud.User).filter(crud.User.role == "admin").first()
     if not admin_user:
         raise HTTPException(status_code=500, detail="Nenhum admin encontrado")
@@ -39,10 +46,25 @@ async def dev_login(request: Request, response: Response, db: Session = Depends(
     }
     access_token = create_access_token(data=token_data)
     refresh_token = create_refresh_token(data={"sub": admin_user.username, "user_id": admin_user.id})
+    is_secure = IS_PRODUCTION
     redirect = RedirectResponse(url="/", status_code=302)
-    redirect.set_cookie(key="access_token", value=access_token, httponly=True, max_age=86400, samesite="lax", path="/", secure=False)
-    redirect.set_cookie(key="refresh_token", value=refresh_token, httponly=True, max_age=7*86400, samesite="lax", path="/api/auth", secure=False)
+    redirect.set_cookie(key="access_token", value=access_token, httponly=True, max_age=86400, samesite="lax", path="/", secure=is_secure)
+    redirect.set_cookie(key="refresh_token", value=refresh_token, httponly=True, max_age=7*86400, samesite="lax", path="/api/auth", secure=is_secure)
     return redirect
+
+
+@router.post("/dev-login-verify")
+async def dev_login_verify(request: Request, response: Response):
+    """Verifica o token de acesso dev e seta cookie de verificação."""
+    if not IS_PRODUCTION:
+        return {"valid": True}
+    body = await request.json()
+    token = body.get("token", "")
+    if DEV_ACCESS_TOKEN and token == DEV_ACCESS_TOKEN:
+        token_hash = hashlib.sha256(DEV_ACCESS_TOKEN.encode()).hexdigest()
+        response.set_cookie(key="dev_access_verified", value=token_hash, httponly=True, max_age=300, samesite="lax", path="/api/auth", secure=True)
+        return {"valid": True}
+    raise HTTPException(status_code=403, detail="Token inválido")
 
 
 MICROSOFT_CLIENT_ID = os.getenv("MICROSOFT_CLIENT_ID")
