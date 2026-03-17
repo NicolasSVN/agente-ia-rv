@@ -1152,9 +1152,6 @@ async def process_text_message(phone: str, message: str, db: Session, message_re
                     response = "Registrado! O broker responsável já tá sendo avisado e responde em breve."
         
         append_to_history(phone, "user", normalized_message)
-        if response:
-            metadata = context if context else None
-            append_to_history(phone, "assistant", response, metadata)
         
         if message_record:
             if response:
@@ -1195,6 +1192,9 @@ async def process_text_message(phone: str, message: str, db: Session, message_re
         
         if send_result.get("success"):
             response_sent_successfully = True
+            if response:
+                metadata = context if context else None
+                append_to_history(phone, "assistant", response, metadata)
             save_message_zapi(
                 db,
                 message_id=send_result.get("message_id"),
