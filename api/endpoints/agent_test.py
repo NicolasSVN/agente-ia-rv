@@ -362,11 +362,17 @@ async def test_agent_message(
 
     retrieval_time = int((datetime.now() - retrieval_start).total_seconds() * 1000)
 
+    from services.conversation_memory import build_context_dedup_instruction
+    dedup_instruction = build_context_dedup_instruction(history_for_ai, message)
+    full_context = knowledge_context
+    if dedup_instruction:
+        full_context = (full_context or "") + dedup_instruction
+
     try:
         response, should_create_ticket, context = await openai_agent.generate_response(
             message,
             history_for_ai,
-            extra_context=knowledge_context if knowledge_context else None,
+            extra_context=full_context if full_context else None,
             sender_phone=None,
             identified_assessor=session.get("identified_assessor"),
             rewrite_result=rewrite_result

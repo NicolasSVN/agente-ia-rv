@@ -97,6 +97,47 @@ def append_to_history(phone: str, role: str, content: str, metadata: dict = None
     _history_cache[phone] = _history_cache[phone][-HISTORY_WINDOW:]
 
 
+def build_context_dedup_instruction(history: list, current_message: str) -> Optional[str]:
+    """
+    Analisa o histórico recente de conversa para detectar respostas do bot
+    que já cobriram tópicos. Retorna instrução para a IA focar em questões novas,
+    ou None se não há deduplicação necessária.
+    """
+    if not history or len(history) < 2:
+        return None
+
+    recent_bot_responses = []
+    recent_user_questions = []
+    for msg in history[-6:]:
+        role = msg.get("role", "")
+        content = msg.get("content", "")
+        if role == "assistant" and content:
+            recent_bot_responses.append(content[:300])
+        elif role == "user" and content:
+            recent_user_questions.append(content)
+
+    if not recent_bot_responses:
+        return None
+
+    bot_summary = " | ".join(recent_bot_responses[-2:])
+
+    instruction = (
+        f"\n\n⚠️ ATENÇÃO — CONTEXTO DE MENSAGENS ANTERIORES:\n"
+        f"Você JÁ respondeu recentemente sobre os seguintes tópicos nesta conversa:\n"
+        f'"{bot_summary[:500]}"\n\n'
+        f"REGRAS OBRIGATÓRIAS:\n"
+        f"1. NÃO repita informações que você já forneceu nas respostas acima.\n"
+        f"2. Foque EXCLUSIVAMENTE na nova pergunta do usuário: \"{current_message[:200]}\"\n"
+        f"3. Se a nova pergunta pede algo diferente do que você já respondeu, "
+        f"responda APENAS sobre o novo assunto.\n"
+        f"4. Se a nova pergunta é uma continuação, complemente com informações NOVAS, "
+        f"sem repetir os dados já enviados."
+    )
+
+    print(f"[CONTEXT_DEDUP] Instrução de dedup gerada — {len(recent_bot_responses)} respostas recentes analisadas")
+    return instruction
+
+
 def detect_session_gap(phone: str, db: Session) -> bool:
     from database.models import WhatsAppMessage, MessageDirection
 

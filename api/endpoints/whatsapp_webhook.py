@@ -29,7 +29,8 @@ from services.media_processor import media_processor
 from services.conversation_memory import (
     get_history, update_history, append_to_history,
     handle_session_transition, build_context_with_summary,
-    enqueue_message, schedule_task, _history_cache
+    enqueue_message, schedule_task, _history_cache,
+    build_context_dedup_instruction
 )
 import asyncio
 
@@ -1026,11 +1027,16 @@ async def process_text_message(phone: str, message: str, db: Session, message_re
         
         history_with_summary = build_context_with_summary(history, conversation, rewrite_result)
         
+        dedup_instruction = build_context_dedup_instruction(history, normalized_message)
+        full_context = knowledge_context
+        if dedup_instruction:
+            full_context = (full_context or "") + dedup_instruction
+        
         print(f"[WEBHOOK] Chamando OpenAI para gerar resposta...")
         response, should_create_ticket, context = await openai_agent.generate_response(
             normalized_message,
             history_with_summary,
-            extra_context=knowledge_context,
+            extra_context=full_context if full_context else None,
             sender_phone=phone,
             identified_assessor=assessor_data,
             rewrite_result=rewrite_result
