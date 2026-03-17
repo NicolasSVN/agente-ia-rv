@@ -969,13 +969,21 @@ CATEGORIAS DE DERIVATIVOS DISPONÍVEIS:
 IMPORTANTE: Este fluxo de desambiguação é OBRIGATÓRIO. Não pule etapas. O assessor deve ter controle sobre o nível de detalhe que recebe.
 
 5. ENVIO DE MATERIAL/PDF (USE A FUNÇÃO send_document):
-   → Quando o assessor PEDIR para ver/enviar/mandar o material, PDF, one-pager, lâmina ou documento de um produto, use a função send_document
+   → REGRA FUNDAMENTAL: A função send_document serve APENAS para enviar o arquivo PDF físico ao assessor. Use SOMENTE quando ele pedir explicitamente para ENVIAR, MANDAR ou VER o material/PDF/one-pager/lâmina/documento.
+   → NUNCA use send_document quando o assessor pedir para você GERAR, ESCREVER ou CRIAR conteúdo textual. Exemplos de pedidos que NÃO devem acionar send_document:
+     - "me faz um texto comercial sobre X" → GERE o texto na resposta
+     - "escreve um resumo de X para meu cliente" → ESCREVA o resumo na resposta
+     - "me dá um pitch sobre X" → CRIE o pitch na resposta
+     - "faz uma análise de X" → ESCREVA a análise na resposta
+     - "me dá argumentação comercial sobre X" → GERE a argumentação na resposta
+     - "resume o material de X" → RESUMA na resposta usando o contexto RAG
+   → REGRA DE PRIORIDADE: Sempre responda à ÚLTIMA mensagem do assessor. Se antes ele pediu PDF e agora pede texto comercial, IGNORE o pedido anterior de PDF e atenda o pedido atual de texto.
    → REGRA CRÍTICA: Só use send_document com material_id que apareça na seção "Materiais com PDF disponível para envio" do contexto. Se essa seção não existir ou o material não estiver listado, o PDF NÃO está disponível para envio.
    → NUNCA envie material sem o assessor pedir explicitamente
    → Se houver mais de um material disponível para o produto, pergunte qual o assessor quer
    → ATENÇÃO: Use o CONTEXTO da conversa. Se acabou de falar sobre um produto e o assessor pede "manda o material", envie o material daquele produto.
    → Se o material não estiver na lista de PDFs disponíveis, informe ao assessor que o arquivo PDF daquele material ainda não está disponível no sistema e que precisa ser carregado pelo administrador.
-   → NÃO repita na resposta textual que está enviando o material se já chamou a função — a ação fala por si
+   → Quando usar send_document, SEMPRE inclua também uma resposta textual breve (ex: "Mandando o relatório do BTLG11 pra você!"). Nunca deixe a resposta textual vazia ao chamar send_document.
 
 === PERSONALIDADE E TOM (ADITIVO) ===
 
@@ -1731,7 +1739,8 @@ REGRAS PARA INFORMAÇÕES DA INTERNET:
         extra_context: Optional[str] = None,
         sender_phone: Optional[str] = None,
         identified_assessor: Optional[Dict[str, Any]] = None,
-        rewrite_result=None
+        rewrite_result=None,
+        allow_tools: bool = True
     ) -> Tuple[str, bool, dict]:
         """
         Gera uma resposta para a mensagem do usuário.
@@ -2352,7 +2361,7 @@ INSTRUÇÕES IMPORTANTES:
         })
         
         has_actionable_context = bool(context_documents) or categoria in ("DOCUMENTAL", "ESCOPO", "PITCH")
-        use_tools = has_actionable_context and categoria not in ("SAUDACAO", "FORA_ESCOPO", "ATENDIMENTO_HUMANO")
+        use_tools = allow_tools and has_actionable_context and categoria not in ("SAUDACAO", "FORA_ESCOPO", "ATENDIMENTO_HUMANO")
         
         try:
             api_kwargs = {

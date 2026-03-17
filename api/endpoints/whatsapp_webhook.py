@@ -1066,10 +1066,29 @@ async def process_text_message(phone: str, message: str, db: Session, message_re
         diagram_slugs_from_ai = []
         material_ids_from_ai = []
         
+        _TEXT_GEN_PATTERNS = re.compile(
+            r'(?:texto comercial|pitch|argumentação|argumentacao|'
+            r'escreve|escreva|redige|redija|elabore|elabora|'
+            r'prepara um texto|prepare um texto|monta um texto|monte um texto|'
+            r'(?:(?:gere|gera|crie|cria|faça|faz)\s+(?:um |uma |o |a )?(?:texto|resumo|análise|analise|pitch|email|e-mail|apresentação)))',
+            re.IGNORECASE
+        )
+        _EXPLICIT_SEND_PATTERNS = re.compile(
+            r'(?:manda|envia|envie|enviar|mandar|mande)\s.*(?:pdf|material|documento|lâmina|lamina|one.?pager|arquivo)',
+            re.IGNORECASE
+        )
+        _is_text_generation_request = (
+            bool(_TEXT_GEN_PATTERNS.search(normalized_message)) and
+            not bool(_EXPLICIT_SEND_PATTERNS.search(normalized_message))
+        )
+        
         tool_calls = context.get("tool_calls") if context else None
         if tool_calls:
             for tc in tool_calls:
                 if tc["name"] == "send_document":
+                    if _is_text_generation_request:
+                        print(f"[WEBHOOK] BLOQUEADO: send_document ignorado porque mensagem é pedido de geração de texto: '{normalized_message[:80]}'")
+                        continue
                     mid = str(tc["arguments"].get("material_id", ""))
                     if mid:
                         material_ids_from_ai.append(mid)
@@ -1261,23 +1280,92 @@ async def process_text_message(phone: str, message: str, db: Session, message_re
                     print(f"[WEBHOOK] Materiais enviados: {sent_materials}")
                 if failed_list:
                     print(f"[WEBHOOK] Falha ao enviar materiais: {failed_list}")
-                    no_file_failures = [f for f in failed_list if f["reason"] == "no_file"]
-                    other_failures = [f for f in failed_list if f["reason"] != "no_file"]
-                    if no_file_failures:
-                        names = ", ".join(f.get("material_name", "documento") for f in no_file_failures)
-                        await zapi_client.send_text(
-                            phone,
-                            f"O arquivo PDF de {names} não está disponível no momento. O material precisa ser re-carregado no sistema pelo administrador.",
-                            delay_typing=1
-                        )
-                    if other_failures:
-                        await zapi_client.send_text(phone, "Não consegui enviar o documento agora. Tenta pedir novamente em instantes.", delay_typing=1)
+                    response_was_empty = not response or len(response.strip()) < 20
+                    
+                    if response_was_empty:
+                        print(f"[MATERIAL_FALLBACK] Resposta textual vazia/curta e envio de material falhou. Gerando fallback...")
+                        try:
+                            fallback_prompt = (
+                                f"O assessor pediu: \"{normalized_message}\". "
+                                f"Eu tentei enviar o PDF mas não consegui. "
+                                f"Responda ao pedido do assessor da melhor forma possível usando o conhecimento disponível. "
+                                f"Se ele pediu o material/PDF, informe que o arquivo não está disponível no momento e ofereça resumir o conteúdo. "
+                                f"Se ele pediu outra coisa (texto comercial, resumo, análise, pitch), atenda ao pedido normalmente."
+                            )
+                            fallback_history = history_with_summary[-6:] if history_with_summary else []
+                            fallback_response, _, _ = await openai_agent.generate_response(
+                                fallback_prompt,
+                                fallback_history,
+                                extra_context=full_context if full_context else None,
+                                sender_phone=phone,
+                                identified_assessor=assessor_data,
+                                rewrite_result=None,
+                                allow_tools=False
+                            )
+                            if fallback_response and len(fallback_response.strip()) > 10:
+                                print(f"[MATERIAL_FALLBACK] Enviando resposta fallback: {fallback_response[:100]}...")
+                                await zapi_client.send_text(phone, fallback_response, delay_typing=2)
+                                append_to_history(phone, "assistant", fallback_response)
+                            else:
+                                no_file_failures = [f for f in failed_list if f["reason"] == "no_file"]
+                                other_failures = [f for f in failed_list if f["reason"] != "no_file"]
+                                if no_file_failures:
+                                    names = ", ".join(f.get("material_name", "documento") for f in no_file_failures)
+                                    await zapi_client.send_text(phone, f"O arquivo PDF de {names} não está disponível no momento. Posso te ajudar de outra forma — é só pedir!", delay_typing=1)
+                                elif other_failures:
+                                    await zapi_client.send_text(phone, "Não consegui enviar o documento agora. Tenta pedir novamente em instantes.", delay_typing=1)
+                        except Exception as fallback_err:
+                            print(f"[MATERIAL_FALLBACK] Erro no fallback: {fallback_err}")
+                            await zapi_client.send_text(phone, "Não consegui enviar o documento agora. Tenta pedir novamente em instantes.", delay_typing=1)
+                    else:
+                        no_file_failures = [f for f in failed_list if f["reason"] == "no_file"]
+                        other_failures = [f for f in failed_list if f["reason"] != "no_file"]
+                        if no_file_failures:
+                            names = ", ".join(f.get("material_name", "documento") for f in no_file_failures)
+                            await zapi_client.send_text(
+                                phone,
+                                f"O arquivo PDF de {names} não está disponível no momento. O material precisa ser re-carregado no sistema pelo administrador.",
+                                delay_typing=1
+                            )
+                        if other_failures:
+                            await zapi_client.send_text(phone, "Não consegui enviar o documento agora. Tenta pedir novamente em instantes.", delay_typing=1)
             except Exception as mat_err:
                 print(f"[WEBHOOK] Erro ao enviar materiais: {mat_err}")
                 try:
                     await zapi_client.send_text(phone, "Tive um problema ao enviar o documento. Tenta novamente?", delay_typing=1)
                 except:
                     pass
+        
+        if _is_text_generation_request and not response_sent_successfully and not material_ids_from_ai:
+            response_was_empty = not response or len(response.strip()) < 20
+            if response_was_empty:
+                print(f"[MATERIAL_FALLBACK] Pedido de geração de texto sem resposta útil. send_document pode ter sido bloqueado. Gerando fallback...")
+                try:
+                    fallback_prompt = (
+                        f"O assessor pediu: \"{normalized_message}\". "
+                        f"Responda ao pedido do assessor da melhor forma possível usando o conhecimento disponível. "
+                        f"Atenda ao pedido normalmente — gere o texto, resumo, pitch ou análise solicitado."
+                    )
+                    fallback_history = history_with_summary[-6:] if history_with_summary else []
+                    fallback_response, _, _ = await openai_agent.generate_response(
+                        fallback_prompt,
+                        fallback_history,
+                        extra_context=full_context if full_context else None,
+                        sender_phone=phone,
+                        identified_assessor=assessor_data,
+                        rewrite_result=None,
+                        allow_tools=False
+                    )
+                    if fallback_response and len(fallback_response.strip()) > 10:
+                        print(f"[MATERIAL_FALLBACK] Enviando resposta fallback (gate): {fallback_response[:100]}...")
+                        send_result = await zapi_client.send_text(phone, fallback_response, delay_typing=2)
+                        if send_result.get("success"):
+                            response_sent_successfully = True
+                            append_to_history(phone, "assistant", fallback_response)
+                    else:
+                        print(f"[MATERIAL_FALLBACK] Fallback também gerou resposta vazia")
+                except Exception as fallback_err:
+                    print(f"[MATERIAL_FALLBACK] Erro no fallback (gate): {fallback_err}")
         
         if response_sent_successfully or material_ids_from_ai or diagram_slugs_from_ai:
             try:
