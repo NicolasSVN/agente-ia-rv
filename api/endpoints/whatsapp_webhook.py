@@ -902,12 +902,46 @@ async def process_text_message(phone: str, message: str, db: Session, message_re
                 if search_results:
                     knowledge_context = "\n\n--- Informações da Base de Conhecimento ---\n"
                     seen_product_ids = set()
+                    
+                    block_ids = [r.metadata.get("block_id") for r in search_results if r.metadata.get("block_id")]
+                    block_contents_map = {}
+                    if block_ids:
+                        try:
+                            from database.models import ContentBlock as CB
+                            from services.content_formatter import get_rich_content
+                            int_ids = []
+                            for bid in block_ids:
+                                try:
+                                    int_ids.append(int(str(bid).split("_")[-1]) if "_" in str(bid) else int(bid))
+                                except (ValueError, TypeError):
+                                    pass
+                            if int_ids:
+                                blocks = db.query(CB.id, CB.content).filter(CB.id.in_(int_ids)).all()
+                                block_contents_map = {b.id: b.content for b in blocks}
+                        except Exception as e:
+                            print(f"[WEBHOOK] Erro ao buscar content_blocks originais: {e}")
+                    
                     for i, r in enumerate(search_results, 1):
                         metadata = r.metadata
                         title = metadata.get("document_title", "Documento")
-                        content = r.content[:500]
                         mid = metadata.get("material_id")
                         mid_info = f" [material_id={mid}]" if mid else ""
+                        
+                        block_id_raw = metadata.get("block_id")
+                        original_content = None
+                        if block_id_raw:
+                            try:
+                                int_bid = int(str(block_id_raw).split("_")[-1]) if "_" in str(block_id_raw) else int(block_id_raw)
+                                original_content = block_contents_map.get(int_bid)
+                            except (ValueError, TypeError):
+                                pass
+                        
+                        if original_content:
+                            from services.content_formatter import get_rich_content
+                            content = get_rich_content(original_content, r.content, max_chars=800)
+                        else:
+                            content = r.content[:800]
+                        
                         knowledge_context += f"\n[{i}] {title}{mid_info}:\n{content}\n"
                         pid = metadata.get("product_id")
                         if pid:

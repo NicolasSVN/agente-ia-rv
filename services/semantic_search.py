@@ -130,10 +130,10 @@ class TokenExtractor:
     Separa: tickers, nomes de fundos, gestoras, keywords financeiras.
     """
     
-    TICKER_PATTERN = re.compile(r'\b([A-Z]{4,5}(?:11|12|13)?)\b', re.IGNORECASE)
+    TICKER_PATTERN = re.compile(r'\b([A-Z]{4}[0-9]{1,2})\b', re.IGNORECASE)
     
     TICKER_PATTERN_EXTENDED = re.compile(
-        r'\b([A-Z]{4,5}\s*(?:PRE|POS|PRÉ|PÓS|PREV|CDI|IPCA|DI)?\s*(?:11|12|13)?)\b',
+        r'\b([A-Z]{4,5}\s*(?:PRE|POS|PRÉ|PÓS|PREV|CDI|IPCA|DI)?\s*(?:11|12|13))\b',
         re.IGNORECASE
     )
     

@@ -224,6 +224,37 @@ async def test_agent_message(
                     entities_detected.append(ticker)
 
             if search_results:
+                block_ids = [r.metadata.get("block_id") for r in search_results if r.metadata.get("block_id")]
+                block_contents_map = {}
+                if block_ids:
+                    try:
+                        from database.models import ContentBlock as CB
+                        from services.content_formatter import get_rich_content
+                        int_ids = []
+                        for bid in block_ids:
+                            try:
+                                int_ids.append(int(str(bid).split("_")[-1]) if "_" in str(bid) else int(bid))
+                            except (ValueError, TypeError):
+                                pass
+                        if int_ids:
+                            blocks = db.query(CB.id, CB.content).filter(CB.id.in_(int_ids)).all()
+                            block_contents_map = {b.id: b.content for b in blocks}
+                    except Exception as e:
+                        print(f"[AGENT_TEST] Erro ao buscar content_blocks originais: {e}")
+                
+                def _resolve_content(r):
+                    block_id_raw = r.metadata.get("block_id")
+                    if block_id_raw:
+                        try:
+                            int_bid = int(str(block_id_raw).split("_")[-1]) if "_" in str(block_id_raw) else int(block_id_raw)
+                            original = block_contents_map.get(int_bid)
+                            if original:
+                                from services.content_formatter import get_rich_content
+                                return get_rich_content(original, r.content, max_chars=800)
+                        except (ValueError, TypeError):
+                            pass
+                    return r.content[:800]
+                
                 if is_comparative and len(entities_detected) >= 2:
                     tickers_str = " e ".join(entities_detected[:3])
                     knowledge_context = (
@@ -245,7 +276,7 @@ async def test_agent_message(
                             title = r.metadata.get("document_title", r.metadata.get("source", "Documento"))
                             block_type = r.metadata.get("block_type", "")
                             score = r.composite_score
-                            content = r.content[:500]
+                            content = _resolve_content(r)
                             mid = r.metadata.get("material_id")
                             mid_info = f" [material_id={mid}]" if mid else ""
                             knowledge_context += f"\n[{idx}] {title}{mid_info}"
@@ -262,7 +293,7 @@ async def test_agent_message(
                         block_type = r.metadata.get("block_type", "")
                         mid = r.metadata.get("material_id")
                         score = r.composite_score
-                        content = r.content[:500]
+                        content = _resolve_content(r)
                         mid_info = f" [material_id={mid}]" if mid else ""
                         knowledge_context += f"\n[{i}] {title}{mid_info}"
                         if product_name:

@@ -18,7 +18,7 @@ from sqlalchemy import desc
 SESSION_GAP_HOURS = 2
 HISTORY_WINDOW = 20
 INCREMENTAL_SUMMARY_THRESHOLD = 20
-DEBOUNCE_SECONDS = 6
+DEBOUNCE_SECONDS = 12
 
 _history_cache: Dict[str, list] = {}
 
