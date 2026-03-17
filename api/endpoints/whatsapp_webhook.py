@@ -442,27 +442,37 @@ def _extract_material_markers(response: str) -> Tuple[str, List[str]]:
     return clean_response, markers
 
 
-async def _send_material_pdf(phone: str, material_id: str, db: Session) -> bool:
+async def _send_material_pdf(phone: str, material_id: str, db: Session) -> dict:
+    """
+    Tenta enviar um material PDF via WhatsApp.
+    Retorna dict com:
+      - success: bool
+      - reason: str ("sent", "no_file", "no_material", "no_config", "send_error", "exception")
+      - material_name: str (nome do material, se encontrado)
+    """
     try:
         from database.models import Material, MaterialFile
         material = db.query(Material).filter(Material.id == int(material_id)).first()
         if not material:
             print(f"[MATERIAL] Material não encontrado: {material_id}")
-            return False
+            return {"success": False, "reason": "no_material", "material_name": ""}
+
+        product = material.product
+        product_name = product.name if product else material.name
 
         has_db_file = db.query(MaterialFile).filter(MaterialFile.material_id == int(material_id)).first() is not None
         has_disk_file = material.source_file_path and os.path.exists(material.source_file_path)
 
         if not has_db_file and not has_disk_file:
-            print(f"[MATERIAL] Material {material_id} não possui arquivo PDF (nem no banco nem em disco)")
-            return False
+            print(f"[MATERIAL] Material {material_id} ({product_name}) não possui arquivo PDF (nem no banco nem em disco)")
+            return {"success": False, "reason": "no_file", "material_name": product_name}
 
         from core.config import get_public_base_url
         base_url = get_public_base_url()
 
         if not base_url:
             print(f"[MATERIAL] Erro: domínio público não configurado (APP_BASE_URL)")
-            return False
+            return {"success": False, "reason": "no_config", "material_name": product_name}
 
         if has_db_file:
             file_url = f"{base_url}/api/files/{material_id}/download"
@@ -471,8 +481,6 @@ async def _send_material_pdf(phone: str, material_id: str, db: Session) -> bool:
             domain = get_public_domain()
             file_url = f"https://{domain}/{material.source_file_path}"
 
-        product = material.product
-        product_name = product.name if product else material.name
         filename = f"{product_name} - {material.material_type}.pdf"
         filename = re.sub(r'[^\w\s\-\.]', '', filename).strip()
 
@@ -484,6 +492,7 @@ async def _send_material_pdf(phone: str, material_id: str, db: Session) -> bool:
                 'comite': 'Material do Comitê',
                 'relatorio': 'Relatório',
                 'lamina': 'Lâmina',
+                'research': 'Research',
             }
             label = type_labels.get(material.material_type, material.material_type.replace('_', ' ').title())
             caption += f" | {label}"
@@ -497,24 +506,35 @@ async def _send_material_pdf(phone: str, material_id: str, db: Session) -> bool:
 
         if result.get("success"):
             print(f"[MATERIAL] PDF enviado com sucesso: {filename}")
-            return True
+            return {"success": True, "reason": "sent", "material_name": product_name}
         else:
             print(f"[MATERIAL] Erro ao enviar PDF {filename}: {result}")
-            return False
+            return {"success": False, "reason": "send_error", "material_name": product_name}
     except Exception as e:
         print(f"[MATERIAL] Exceção ao enviar material {material_id}: {e}")
-        return False
+        return {"success": False, "reason": "exception", "material_name": ""}
 
 
-async def _send_materials_from_markers(phone: str, material_ids: List[str], db: Session) -> List[str]:
+async def _send_materials_from_markers(phone: str, material_ids: List[str], db: Session) -> dict:
+    """
+    Retorna dict com:
+      - sent: list de IDs enviados com sucesso
+      - failed: list de dicts com detalhes da falha
+    """
     sent_ids = []
+    failed_details = []
     for mid in material_ids:
-        success = await _send_material_pdf(phone, mid, db)
-        if success:
+        result = await _send_material_pdf(phone, mid, db)
+        if result.get("success"):
             sent_ids.append(mid)
         else:
-            print(f"[MATERIAL-MARKER] Falha ao enviar material ID: {mid}")
-    return sent_ids
+            print(f"[MATERIAL-MARKER] Falha ao enviar material ID: {mid} — razão: {result.get('reason')}")
+            failed_details.append({
+                "material_id": mid,
+                "reason": result.get("reason", "unknown"),
+                "material_name": result.get("material_name", ""),
+            })
+    return {"sent": sent_ids, "failed": failed_details}
 
 
 async def _send_diagrams_from_markers(phone: str, slugs: List[str], db: Session) -> List[str]:
@@ -1234,13 +1254,24 @@ async def process_text_message(phone: str, message: str, db: Session, message_re
         
         if material_ids_from_ai:
             try:
-                sent_materials = await _send_materials_from_markers(phone, material_ids_from_ai, db)
+                materials_result = await _send_materials_from_markers(phone, material_ids_from_ai, db)
+                sent_materials = materials_result.get("sent", [])
+                failed_list = materials_result.get("failed", [])
                 if sent_materials:
                     print(f"[WEBHOOK] Materiais enviados: {sent_materials}")
-                failed_materials = [mid for mid in material_ids_from_ai if mid not in sent_materials]
-                if failed_materials:
-                    print(f"[WEBHOOK] Falha ao enviar materiais: {failed_materials}")
-                    await zapi_client.send_text(phone, "Não consegui enviar o documento agora. Tenta pedir novamente em instantes.", delay_typing=1)
+                if failed_list:
+                    print(f"[WEBHOOK] Falha ao enviar materiais: {failed_list}")
+                    no_file_failures = [f for f in failed_list if f["reason"] == "no_file"]
+                    other_failures = [f for f in failed_list if f["reason"] != "no_file"]
+                    if no_file_failures:
+                        names = ", ".join(f.get("material_name", "documento") for f in no_file_failures)
+                        await zapi_client.send_text(
+                            phone,
+                            f"O arquivo PDF de {names} não está disponível no momento. O material precisa ser re-carregado no sistema pelo administrador.",
+                            delay_typing=1
+                        )
+                    if other_failures:
+                        await zapi_client.send_text(phone, "Não consegui enviar o documento agora. Tenta pedir novamente em instantes.", delay_typing=1)
             except Exception as mat_err:
                 print(f"[WEBHOOK] Erro ao enviar materiais: {mat_err}")
                 try:

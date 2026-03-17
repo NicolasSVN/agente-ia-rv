@@ -3060,6 +3060,56 @@ async def fix_stuck_blocks(
     }
 
 
+@router.get("/admin/materials-without-files")
+async def materials_without_files(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Lista materiais que não possuem arquivo PDF disponível (nem no banco nem em disco)."""
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Apenas administradores podem acessar")
+
+    from database.models import Material, MaterialFile, Product
+    from sqlalchemy import and_
+
+    all_materials = db.query(Material).filter(
+        Material.source_file_path.isnot(None),
+        Material.source_file_path != ""
+    ).all()
+
+    materials_with_db_file = {
+        mf.material_id
+        for mf in db.query(MaterialFile.material_id).all()
+    }
+
+    missing = []
+    available = []
+    for m in all_materials:
+        has_db = m.id in materials_with_db_file
+        has_disk = m.source_file_path and os.path.exists(m.source_file_path)
+        product = m.product
+        product_name = product.name if product else m.name
+        info = {
+            "material_id": m.id,
+            "material_name": m.name,
+            "product_name": product_name,
+            "material_type": m.material_type,
+            "has_db_file": has_db,
+            "has_disk_file": has_disk,
+        }
+        if has_db or has_disk:
+            available.append(info)
+        else:
+            missing.append(info)
+
+    return {
+        "total_materials": len(all_materials),
+        "with_file": len(available),
+        "without_file": len(missing),
+        "missing": missing,
+    }
+
+
 UPLOAD_DIR_QUEUE = "uploads/materials"
 os.makedirs(UPLOAD_DIR_QUEUE, exist_ok=True)
 
