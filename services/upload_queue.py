@@ -619,9 +619,18 @@ class UploadQueue:
                         "existing_material_id": duplicate.id
                     })
                     logger.warning(f"[UPLOAD] Duplicata bloqueada: file_hash={file_hash[:12]}... material_id_existente={duplicate.id}")
-                    mat.processing_status = ProcessingStatus.FAILED.value if hasattr(ProcessingStatus, 'FAILED') else "failed"
-                    mat.processing_error = dup_msg
-                    db.commit()
+                    try:
+                        from database.models import MaterialFile
+                        db.query(MaterialFile).filter(MaterialFile.material_id == mat.id).delete()
+                        db.delete(mat)
+                        db.commit()
+                        logger.info(f"[UPLOAD] Material fantasma {item.material_id} deletado (duplicata de {duplicate.id})")
+                    except Exception as del_err:
+                        db.rollback()
+                        logger.warning(f"[UPLOAD] Não foi possível deletar material fantasma: {del_err}")
+                        mat.processing_status = ProcessingStatus.FAILED.value if hasattr(ProcessingStatus, 'FAILED') else "failed"
+                        mat.processing_error = dup_msg
+                        db.commit()
                     item.status = UploadStatus.FAILED
                     item.error = dup_msg
                     self._update_db_status(item)
@@ -827,6 +836,26 @@ class UploadQueue:
                 mat.processing_status = ProcessingStatus.SUCCESS.value
                 db.commit()
                 print(f"[UPLOAD_WORKER] Material {item.material_id} marcado como success, product_id={mat.product_id}")
+
+                try:
+                    from database.models import MaterialFile
+                    existing_file = db.query(MaterialFile).filter(MaterialFile.material_id == item.material_id).first()
+                    if not existing_file and os.path.exists(item.file_path):
+                        with open(item.file_path, 'rb') as pdf_f:
+                            pdf_content = pdf_f.read()
+                        if pdf_content:
+                            new_file = MaterialFile(
+                                material_id=item.material_id,
+                                filename=item.filename or "documento.pdf",
+                                content_type="application/pdf",
+                                file_data=pdf_content,
+                                file_size=len(pdf_content),
+                            )
+                            db.add(new_file)
+                            db.commit()
+                            print(f"[UPLOAD_WORKER] PDF salvo em material_files para material_id={item.material_id} ({len(pdf_content)} bytes)")
+                except Exception as file_err:
+                    logger.warning(f"[UPLOAD_WORKER] Erro ao salvar PDF em material_files: {file_err}")
 
                 if not mat.product:
                     auto_product = self._auto_create_product_from_material_name(db, mat, item)

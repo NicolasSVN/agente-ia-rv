@@ -1912,6 +1912,11 @@ async def list_pending_materials(
         joinedload(Material.product)
     ).order_by(Material.created_at.desc()).all()
     
+    pending_materials = [
+        m for m in pending_materials
+        if not (m.processing_error and 'duplicado bloqueado' in m.processing_error.lower())
+    ]
+    
     result = []
     for m in pending_materials:
         blocks_count = db.query(ContentBlock).filter(ContentBlock.material_id == m.id).count()
@@ -3119,25 +3124,40 @@ async def all_materials_without_pdf(
         raise HTTPException(status_code=403, detail="Apenas administradores podem acessar")
 
     from database.models import Material, MaterialFile, Product
+    from sqlalchemy import func
 
     materials_with_db_file = {
         mf.material_id
         for mf in db.query(MaterialFile.material_id).all()
     }
 
+    materials_with_blocks = {
+        row[0]
+        for row in db.query(ContentBlock.material_id).group_by(ContentBlock.material_id).having(func.count(ContentBlock.id) > 0).all()
+    }
+
     all_materials = db.query(Material).join(Product).order_by(Product.ticker, Material.name).all()
 
     missing = []
     for m in all_materials:
-        if m.id not in materials_with_db_file:
-            product = m.product
-            missing.append({
-                "material_id": m.id,
-                "material_name": m.name,
-                "product_name": product.name if product else "—",
-                "ticker": product.ticker if product else "—",
-                "material_type": m.material_type,
-            })
+        if m.id in materials_with_db_file:
+            continue
+
+        if m.id not in materials_with_blocks:
+            continue
+
+        if m.processing_error and 'duplicado bloqueado' in m.processing_error.lower():
+            continue
+
+        product = m.product
+        missing.append({
+            "material_id": m.id,
+            "material_name": m.name,
+            "product_name": product.name if product else "—",
+            "ticker": product.ticker if product else "—",
+            "material_type": m.material_type,
+            "blocks_count": 1 if m.id in materials_with_blocks else 0,
+        })
 
     return {
         "total_materials": len(all_materials),
@@ -3283,6 +3303,31 @@ async def batch_upload(
         content = await file.read()
         with open(file_path, "wb") as f:
             f.write(content)
+
+        import hashlib as hl
+        file_hash = hl.sha256(content).hexdigest()
+        existing_success = db.query(Material).filter(
+            Material.file_hash == file_hash,
+            Material.file_hash != None,
+            Material.processing_status == "success"
+        ).first()
+        if existing_success:
+            db.delete(material)
+            db.commit()
+            try:
+                os.remove(file_path)
+            except OSError:
+                pass
+            dup_name = existing_success.name
+            queued_items.append({
+                "filename": file.filename,
+                "error": f"Arquivo idêntico já processado como '{dup_name}'. Upload duplicado bloqueado.",
+                "queued": False,
+                "existing_material_id": existing_success.id
+            })
+            continue
+
+        _save_file_to_db(db, material.id, file.filename or "documento.pdf", content)
 
         upload_id = str(uuid.uuid4())
         queue_item = UploadQueueItem(
