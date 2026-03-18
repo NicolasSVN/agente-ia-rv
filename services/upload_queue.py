@@ -833,9 +833,25 @@ class UploadQueue:
 
             mat = db.query(Material).filter(Material.id == item.material_id).first()
             if mat:
-                mat.processing_status = ProcessingStatus.SUCCESS.value
-                db.commit()
-                print(f"[UPLOAD_WORKER] Material {item.material_id} marcado como success, product_id={mat.product_id}")
+                if verify_count > 0:
+                    mat.processing_status = ProcessingStatus.SUCCESS.value
+                    db.commit()
+                    print(f"[UPLOAD_WORKER] Material {item.material_id} marcado como success ({verify_count} blocos), product_id={mat.product_id}")
+                else:
+                    mat.processing_status = ProcessingStatus.FAILED.value if hasattr(ProcessingStatus, 'FAILED') else "failed"
+                    mat.processing_error = "Processamento completou mas nenhum bloco de conteúdo foi gerado. Verifique o PDF."
+                    db.commit()
+                    print(f"[UPLOAD_WORKER] Material {item.material_id} marcado como FAILED — 0 blocos gerados")
+                    item.status = UploadStatus.FAILED
+                    item.error = "Nenhum bloco de conteúdo gerado"
+                    self._update_db_status(item)
+                    self._broadcast_event({
+                        "type": "error",
+                        "upload_id": item.upload_id,
+                        "message": "Processamento completou mas nenhum conteúdo foi extraído do PDF.",
+                        "material_id": item.material_id
+                    })
+                    return
 
                 try:
                     from database.models import MaterialFile
