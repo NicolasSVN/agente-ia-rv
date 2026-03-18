@@ -41,7 +41,7 @@ The application is built using FastAPI with a modular architecture.
 - **Separate Ticket Architecture V2.3:** `Conversation` and `ConversationTicket` are separate models, allowing continuous chat sessions with distinct historical data.
 - **Insights Dashboard:** A management dashboard for Variable Income with `ConversationInsight` model, post-conversation GPT analysis, classification categories, dynamic filters, KPI cards, Chart.js graphs, rankings, and campaign summaries.
 - **Web Search (Tavily AI):** Fallback for real-time market data when internal knowledge is insufficient, including a whitelist of trusted sources and an audit log.
-- **Deployment Strategy:** Migrated from Replit to Railway via GitHub. The Dockerfile uses `python:3.12-slim` with necessary system dependencies. React frontend builds are pre-compiled in Replit and committed to the repository, as the Dockerfile is Python-only.
+- **Deployment Strategy:** Migrated from Replit to Railway via GitHub. The Dockerfile uses `python:3.12-slim` with necessary system dependencies. React frontend builds are pre-compiled in Replit and committed to the repository, as the Dockerfile is Python-only. **IMPORTANT:** The production `main.py` serves React assets from `frontend/react-knowledge/dist/` (NOT `frontend/static/react-knowledge/`). Always build with default output: `cd frontend/react-knowledge && npx vite build` (outputs to `dist/`). Commit the `dist/` directory for Railway deployment.
 
 **Feature Specifications:** Dynamic control over AI behavior parameters, real-time campaign sending with SSE, background document processing, customizable fields, and automatic admin user creation.
 
