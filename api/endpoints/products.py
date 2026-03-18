@@ -2049,6 +2049,22 @@ async def smart_upload_without_product(
     
     from datetime import datetime
 
+    content_bytes = await file.read()
+
+    import hashlib as _hashlib
+    file_hash = _hashlib.sha256(content_bytes).hexdigest()
+    existing_dup = db.query(Material).filter(
+        Material.file_hash == file_hash,
+        Material.file_hash != None,
+        Material.processing_status == "success"
+    ).first()
+    if existing_dup:
+        dup_date = existing_dup.created_at.strftime('%d/%m/%Y') if existing_dup.created_at else 'data desconhecida'
+        raise HTTPException(
+            status_code=409,
+            detail=f"Arquivo idêntico já processado como '{existing_dup.name}' em {dup_date}. Upload duplicado bloqueado."
+        )
+
     material_name = name or file.filename.replace('.pdf', '')
     temp_product = find_or_create_product_from_name(db, material_name)
     if not temp_product:
@@ -2076,7 +2092,8 @@ async def smart_upload_without_product(
         description=description,
         valid_from=parsed_valid_from,
         valid_until=parsed_valid_until,
-        publish_status="rascunho"
+        publish_status="rascunho",
+        file_hash=file_hash
     )
     db.add(material)
     db.commit()
@@ -2085,11 +2102,10 @@ async def smart_upload_without_product(
     unique_filename = f"{uuid.uuid4()}.pdf"
     file_path = os.path.join(UPLOAD_DIR, unique_filename)
     
-    content = await file.read()
     with open(file_path, "wb") as f:
-        f.write(content)
+        f.write(content_bytes)
 
-    _save_file_to_db(db, material.id, file.filename or "documento.pdf", content)
+    _save_file_to_db(db, material.id, file.filename or "documento.pdf", content_bytes)
     
     document_title = name or file.filename.replace('.pdf', '')
     
@@ -2144,6 +2160,23 @@ async def smart_upload_stream(
     
     from datetime import datetime as dt
 
+    content_bytes = await file.read()
+    await file.seek(0)
+
+    import hashlib as _hashlib
+    file_hash = _hashlib.sha256(content_bytes).hexdigest()
+    existing_dup = db.query(Material).filter(
+        Material.file_hash == file_hash,
+        Material.file_hash != None,
+        Material.processing_status == "success"
+    ).first()
+    if existing_dup:
+        dup_date = existing_dup.created_at.strftime('%d/%m/%Y') if existing_dup.created_at else 'data desconhecida'
+        raise HTTPException(
+            status_code=409,
+            detail=f"Arquivo idêntico já processado como '{existing_dup.name}' em {dup_date}. Upload duplicado bloqueado."
+        )
+
     material_name2 = name or file.filename.replace('.pdf', '')
     temp_product2 = find_or_create_product_from_name(db, material_name2)
     if not temp_product2:
@@ -2186,7 +2219,8 @@ async def smart_upload_stream(
         valid_until=parsed_valid_until,
         tags=json_lib.dumps(parsed_tags),
         material_categories=json_lib.dumps(parsed_categories),
-        publish_status="rascunho"
+        publish_status="rascunho",
+        file_hash=file_hash
     )
     db.add(material)
     db.commit()
@@ -2195,11 +2229,10 @@ async def smart_upload_stream(
     unique_filename = f"{uuid.uuid4()}.pdf"
     file_path = os.path.join(UPLOAD_DIR, unique_filename)
     
-    content = await file.read()
     with open(file_path, "wb") as f:
-        f.write(content)
+        f.write(content_bytes)
 
-    _save_file_to_db(db, material.id, file.filename or "documento.pdf", content)
+    _save_file_to_db(db, material.id, file.filename or "documento.pdf", content_bytes)
     
     upload_id = str(uuid.uuid4())
     progress_queue = queue.Queue()
