@@ -145,6 +145,21 @@ class ZAPIClient:
                     "error_code": "HTTP_ERROR"
                 }
     
+    async def send_composing(self, to: str) -> dict:
+        url = f"{self._get_base_url()}/send-action"
+        payload = {
+            "phone": self._normalize_phone(to),
+            "action": "composing"
+        }
+        async with httpx.AsyncClient() as client:
+            try:
+                response = await client.post(url, json=payload, headers=self._get_headers(), timeout=10.0)
+                raw_data = response.json() if response.content else {}
+                return self._parse_response(response, raw_data)
+            except Exception as e:
+                print(f"[Z-API] Erro ao enviar composing para {to}: {e}")
+                return {"success": False, "error": str(e)}
+
     async def send_image(self, to: str, image_url: str, caption: str = "", view_once: bool = False) -> dict:
         """
         Envia uma imagem para um número de WhatsApp.

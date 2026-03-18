@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from database.models import (
     Conversation, Assessor, ConversationState, ConversationStatus, 
-    TransferReason, TicketStatusV2, EscalationLevel, WhatsAppMessage
+    TicketStatusV2, EscalationLevel, WhatsAppMessage
 )
 
 
@@ -99,87 +99,6 @@ def get_identification_confirmation(name: str) -> str:
         f"Show, {name}! Pode mandar sua dúvida.",
     ]
     return random.choice(variations)
-
-
-def get_out_of_scope_redirect() -> str:
-    """Retorna mensagem de redirecionamento para mensagens fora do escopo."""
-    variations = [
-        "Entendi! Meu foco aqui é suporte de RV. Tem algo nessa linha?",
-        "Legal! Mas minha área é renda variável. Posso ajudar em algo sobre isso?",
-        "Certo! Aqui é mais questões de RV mesmo. Como te ajudo nessa área?",
-        "Beleza! Mas sou do time de Renda Variável. Alguma dúvida nessa linha?",
-    ]
-    return random.choice(variations)
-
-
-def get_transfer_message(reason: str = None) -> str:
-    """Retorna mensagem de transferência para humano."""
-    if reason == TransferReason.EXPLICIT_REQUEST.value:
-        variations = [
-            "Sem problemas! Já passo pro pessoal de RV.",
-            "Claro! Vou chamar o responsável.",
-            "Perfeito! Deixa eu acionar quem pode te ajudar.",
-        ]
-    elif reason == TransferReason.EXCESSIVE_SPECIFICITY.value:
-        variations = [
-            "Esse ponto precisa de uma análise mais específica. Vou envolver o especialista.",
-            "Para esse caso, melhor acionar quem pode te dar uma resposta mais precisa.",
-            "Essa questão exige um olhar mais detalhado. Vou passar pro responsável.",
-        ]
-    elif reason == TransferReason.NO_PROGRESS.value:
-        variations = [
-            "Acho que alguém do time pode te ajudar melhor nisso. Vou acionar.",
-            "Deixa eu passar pro responsável te ajudar diretamente.",
-            "Vou encaminhar pra quem pode resolver isso contigo.",
-        ]
-    else:
-        variations = [
-            "Vou acionar o pessoal pra te ajudar.",
-            "Deixa eu passar pro responsável.",
-            "Vou chamar quem pode te ajudar melhor.",
-        ]
-    return random.choice(variations)
-
-
-def check_explicit_transfer_request(message: str) -> bool:
-    """Verifica se usuário pediu explicitamente para falar com humano."""
-    text = normalize_message(message).lower()
-    
-    patterns = [
-        r'\b(falar|conversar|chamar)\b.*(humano|pessoa|atendente|assessor|responsavel|responsável|alguem|alguém)',
-        r'\b(quero|preciso|gostaria)\b.*(atendente|assessor|humano|pessoa|responsavel|responsável)',
-        r'\b(passa|encaminha|transfere)\b.*(assessor|atendente|responsavel|responsável)',
-        r'n[aã]o\s*(é|e)\s*bot',
-        r'quero\s*falar\s*com\s*gente',
-        r'atendimento\s*humano',
-    ]
-    
-    for pattern in patterns:
-        if re.search(pattern, text):
-            return True
-    
-    return False
-
-
-def check_emotional_friction(message: str, history: list = None) -> bool:
-    """Detecta sinais de frustração ou urgência."""
-    text = normalize_message(message).lower()
-    
-    friction_patterns = [
-        r'n[aã]o\s*(entend[eio]|funciona|resolve|ajuda)',
-        r'(absurdo|ridiculo|ridículo|inadmiss[ií]vel)',
-        r'(urgente|urgencia|urgência|pressa)',
-        r'(raiva|irritado|nervoso|bravo)',
-        r'ja\s*(falei|disse|expliquei|repeti)',
-        r'(problema|erro)\s*(grave|serio|sério)',
-        r'voc[eê]\s*n[aã]o\s*(entende|ajuda|serve)',
-    ]
-    
-    for pattern in friction_patterns:
-        if re.search(pattern, text):
-            return True
-    
-    return False
 
 
 def normalize_phone_variants(phone: str) -> list:
@@ -442,28 +361,6 @@ def reset_stalled_counter(db: Session, conversation: Conversation):
         db.commit()
 
 
-def should_transfer_to_human(
-    message: str,
-    conversation: Conversation,
-    ai_response: str = None
-) -> Tuple[bool, Optional[str]]:
-    """
-    Avalia se deve transferir para humano.
-    
-    Returns:
-        Tuple de (should_transfer: bool, reason: str ou None)
-    """
-    if check_explicit_transfer_request(message):
-        return True, TransferReason.EXPLICIT_REQUEST.value
-    
-    if check_emotional_friction(message):
-        return True, TransferReason.EMOTIONAL_FRICTION.value
-    
-    stalled = conversation.stalled_interactions or 0
-    if stalled >= 3:
-        return True, TransferReason.NO_PROGRESS.value
-    
-    return False, None
 
 
 CLASSIFICATION_PROMPT_ADDITION = """

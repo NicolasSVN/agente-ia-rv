@@ -275,95 +275,6 @@ def save_message_zapi(
     return message
 
 
-DIAGRAM_VISUAL_KEYWORDS = [
-    "gráfico", "grafico", "diagrama", "imagem", "figura", "visual",
-    "exemplo", "funcionamento", "payoff", "pay off", "pay-off",
-    "ilustração", "ilustracao", "desenho", "esquema"
-]
-
-DIAGRAM_ACTION_KEYWORDS = [
-    "manda", "mandar", "envia", "enviar", "mostra", "mostrar",
-    "quero ver", "quero o", "me envia", "me manda", "me mostra",
-    "consegue mandar", "consegue enviar", "pode mandar", "pode enviar",
-    "tem como mandar", "tem como enviar"
-]
-
-DIAGRAM_CONFIRMATION_KEYWORDS = [
-    "sim, o diagrama", "sim o diagrama", "sim, quero", "sim quero",
-    "sim, por favor", "sim por favor", "pode mandar", "manda sim",
-    "manda aí", "manda ai", "pode enviar", "sim, envia", "sim envia",
-    "quero sim", "manda", "sim"
-]
-
-DERIVATIVE_STRUCTURE_NAMES = None
-
-def _get_derivative_structure_names():
-    global DERIVATIVE_STRUCTURE_NAMES
-    if DERIVATIVE_STRUCTURE_NAMES is not None:
-        return DERIVATIVE_STRUCTURE_NAMES
-    try:
-        from scripts.xpi_derivatives.derivatives_dataset import get_all_structures
-        structures = get_all_structures()
-        names_map = {}
-        base_names_seen = {}
-        for s in structures:
-            slug = s["slug"]
-            name_lower = s["name"].lower()
-            names_map[name_lower] = slug
-            simple = name_lower.replace("compra de ", "").replace("venda de ", "").replace("compra e venda de ", "")
-            if simple != name_lower:
-                names_map[simple] = slug
-            slug_clean = slug.replace("-", " ")
-            names_map[slug_clean] = slug
-            for alias in s.get("keywords", []):
-                names_map[alias.lower()] = slug
-            base_parts = name_lower.split()
-            for word in ["collar", "fence", "straddle", "strangle", "condor", "borboleta", "fly",
-                         "booster", "seagull", "swap", "ndf", "financiamento", "spread"]:
-                if word in base_parts or word in slug_clean:
-                    if word not in base_names_seen:
-                        base_names_seen[word] = slug
-                        names_map[word] = slug
-        DERIVATIVE_STRUCTURE_NAMES = names_map
-    except Exception as e:
-        print(f"[WEBHOOK] Erro ao carregar nomes de estruturas: {e}")
-        DERIVATIVE_STRUCTURE_NAMES = {}
-    return DERIVATIVE_STRUCTURE_NAMES
-
-
-def _detect_diagram_request(msg_lower: str) -> tuple:
-    has_visual_kw = any(kw in msg_lower for kw in DIAGRAM_VISUAL_KEYWORDS)
-    has_action_kw = any(kw in msg_lower for kw in DIAGRAM_ACTION_KEYWORDS)
-
-    if not has_visual_kw:
-        return False, None
-
-    names_map = _get_derivative_structure_names()
-    matched_slug = None
-    matched_name = None
-
-    sorted_names = sorted(names_map.keys(), key=len, reverse=True)
-    for name in sorted_names:
-        if name in msg_lower:
-            matched_slug = names_map[name]
-            matched_name = name
-            break
-
-    if matched_slug:
-        print(f"[DIAGRAM] Pedido de diagrama detectado: visual_kw={has_visual_kw}, action_kw={has_action_kw}, structure='{matched_name}' -> {matched_slug}")
-        return True, matched_slug
-
-    return False, None
-
-
-def _bot_offered_diagram_recently(phone: str) -> bool:
-    history = conversation_history.get(phone, [])
-    for entry in reversed(history[-4:]):
-        if entry.get("role") == "assistant":
-            content = entry.get("content", "").lower()
-            if "diagrama" in content and ("quer que" in content or "deseja" in content or "envio" in content or "enviar" in content):
-                return True
-    return False
 
 
 async def _send_diagram_for_slug(phone: str, slug: str, db: Session):
@@ -548,84 +459,6 @@ async def _send_diagrams_from_markers(phone: str, slugs: List[str], db: Session)
     return sent_slugs
 
 
-async def _send_derivatives_diagram_if_requested(
-    phone: str, user_message: str, context: dict, db: Session
-):
-    msg_lower = user_message.lower().strip()
-
-    is_diagram_request, detected_slug = _detect_diagram_request(msg_lower)
-
-    if is_diagram_request and detected_slug:
-        await _send_diagram_for_slug(phone, detected_slug, db)
-        return
-
-    is_confirmation = (
-        any(kw in msg_lower for kw in DIAGRAM_CONFIRMATION_KEYWORDS)
-        and _bot_offered_diagram_recently(phone)
-    )
-
-    if not is_confirmation:
-        return
-
-    derivatives_structures = []
-    if context:
-        derivatives_structures = context.get("derivatives_structures", [])
-
-    if not derivatives_structures:
-        history = conversation_history.get(phone, [])
-        for entry in reversed(history):
-            if entry.get("role") == "assistant" and entry.get("metadata"):
-                prev_structures = entry["metadata"].get("derivatives_structures", [])
-                if prev_structures:
-                    derivatives_structures = prev_structures
-                    print(f"[DIAGRAM] Usando derivatives_structures do histórico anterior")
-                    break
-
-    if not derivatives_structures:
-        print(f"[DIAGRAM] Confirmação de diagrama detectada mas sem estruturas no contexto")
-        return
-
-    from core.config import get_public_domain
-    domain = get_public_domain()
-
-    for structure in derivatives_structures:
-        if not structure.get("has_diagram"):
-            continue
-
-        slug = structure.get("slug", "")
-        name = structure.get("name", slug)
-
-        diagram_url = f"https://{domain}/derivatives-diagrams/{slug}.png"
-
-        print(f"[DIAGRAM] Enviando diagrama de payoff: {name} ({slug}) para {phone}")
-        print(f"[DIAGRAM] URL do diagrama: {diagram_url}")
-
-        caption = f"📊 Diagrama de Payoff - {name}"
-
-        try:
-            result = await zapi_client.send_image(
-                to=phone,
-                image_url=diagram_url,
-                caption=caption
-            )
-
-            if result.get("success"):
-                print(f"[DIAGRAM] Diagrama enviado com sucesso: {name}")
-                save_message_zapi(
-                    db,
-                    message_id=result.get("message_id"),
-                    zaap_id=result.get("zaap_id"),
-                    phone=phone,
-                    direction=MessageDirection.OUTBOUND.value,
-                    message_type=MessageType.IMAGE.value,
-                    from_me=True,
-                    body=caption,
-                    sender_type=SenderType.BOT.value
-                )
-            else:
-                print(f"[DIAGRAM] Erro ao enviar diagrama {name}: {result}")
-        except Exception as e:
-            print(f"[DIAGRAM] Exceção ao enviar diagrama {name}: {e}")
 
 
 async def process_text_message(phone: str, message: str, db: Session, message_record: WhatsAppMessage = None, conversation: Conversation = None):
@@ -636,11 +469,11 @@ async def process_text_message(phone: str, message: str, db: Session, message_re
     """
     from services.conversation_flow import (
         normalize_message, extract_first_name, identify_contact,
-        get_transfer_message, should_transfer_to_human, update_conversation_state,
+        update_conversation_state,
         increment_stalled_counter, reset_stalled_counter, escalate_to_human_with_analysis,
         is_positive_confirmation, mark_bot_resolved
     )
-    from database.models import ConversationState, TransferReason
+    from database.models import ConversationState
     
     print(f"[WEBHOOK] Iniciando process_text_message para {phone}: {message[:50]}...")
     
@@ -649,6 +482,9 @@ async def process_text_message(phone: str, message: str, db: Session, message_re
     try:
         normalized_message = normalize_message(message)
         print(f"[WEBHOOK] Mensagem normalizada: {normalized_message[:50]}...")
+        
+        import asyncio as _asyncio
+        _asyncio.create_task(zapi_client.send_composing(phone))
         
         if not conversation:
             conversation = db.query(Conversation).filter(Conversation.phone == phone).first()
@@ -705,80 +541,16 @@ async def process_text_message(phone: str, message: str, db: Session, message_re
                 conversation.contact_name = assessor.nome
                 db.commit()
         
-        is_diagram_req, diagram_slug = _detect_diagram_request(normalized_message.lower().strip())
-        if is_diagram_req and diagram_slug:
-            print(f"[WEBHOOK] Interceptando pedido de diagrama ANTES do OpenAI: {diagram_slug}")
-            diagram_sent = await _send_diagram_for_slug(phone, diagram_slug, db)
-            if diagram_sent:
-                from scripts.xpi_derivatives.derivatives_dataset import get_all_structures
-                struct_name = diagram_slug
-                for s in get_all_structures():
-                    if s["slug"] == diagram_slug:
-                        struct_name = s["name"]
-                        break
-                
-                assessor_name = ""
-                if assessor and hasattr(assessor, 'nome') and assessor.nome:
-                    assessor_name = assessor.nome.split()[0]
-                
-                import random
-                diagram_responses = [
-                    f"Aqui o diagrama de payoff da {struct_name}! Se precisar de mais detalhes sobre a estrutura, é só pedir.",
-                    f"Pronto, enviei o diagrama da {struct_name}! Quer que eu explique como funciona?",
-                    f"Aí está o payoff da {struct_name}! Qualquer dúvida sobre a estrutura, me avisa.",
-                ]
-                greeting = f"{assessor_name}, " if assessor_name else ""
-                response = greeting + random.choice(diagram_responses)
-                
-                result = await zapi_client.send_text(phone, response, delay_typing=1)
-                if result.get("success"):
-                    save_message_zapi(
-                        db, message_id=result.get("message_id"), zaap_id=result.get("zaap_id"),
-                        phone=phone, direction=MessageDirection.OUTBOUND.value,
-                        message_type=MessageType.TEXT.value, from_me=True, body=response,
-                        sender_type=SenderType.BOT.value
-                    )
-                
-                if message_record:
-                    message_record.ai_response = response
-                    message_record.ai_intent = "diagram_request"
-                    db.commit()
-                
-                if conversation:
-                    conversation.last_bot_response_at = datetime.utcnow()
-                    db.commit()
-                
-                append_to_history(phone, "user", normalized_message)
-                append_to_history(phone, "assistant", response)
-                
-                try:
-                    await save_conversation_insight(
-                        db=db,
-                        conversation_id=str(conversation.id) if conversation else None,
-                        user_message=normalized_message,
-                        agent_response=response,
-                        resolved_by_ai=True,
-                        escalated_to_human=False,
-                        ticket_id=None,
-                        assessor_phone=phone
-                    )
-                except Exception as insight_err:
-                    print(f"[WEBHOOK] Erro ao salvar insight de diagrama: {insight_err}")
-                
-                return
-        
-        should_transfer, transfer_reason = should_transfer_to_human(normalized_message, conversation)
-        
-        if should_transfer:
+        stalled = conversation.stalled_interactions or 0
+        if stalled >= 3:
+            print(f"[WEBHOOK] Stalled interactions >= 3, escalando para humano")
             try:
                 escalation_result = await escalate_to_human_with_analysis(
-                    db, conversation, normalized_message, transfer_reason
+                    db, conversation, normalized_message, "no_progress"
                 )
                 created_ticket_id = escalation_result.get("ticket_id") if escalation_result else None
                 broker_name = escalation_result.get("broker_name") if escalation_result else None
                 assessor_first_name = escalation_result.get("assessor_name") if escalation_result else None
-                
-                print(f"[WEBHOOK] Escalação V2.1 completa - categoria: {conversation.escalation_category}, ticket: {created_ticket_id}, broker: {broker_name}")
                 
                 if assessor_first_name and broker_name:
                     response = f"{assessor_first_name}, registrado! O {broker_name} já tá sendo avisado e responde em breve."
@@ -787,27 +559,23 @@ async def process_text_message(phone: str, message: str, db: Session, message_re
                 elif assessor_first_name:
                     response = f"{assessor_first_name}, registrado! O broker que te acompanha já tá sendo avisado e responde em breve."
                 else:
-                    response = get_transfer_message(transfer_reason)
+                    response = "Registrado! O broker responsável já tá sendo avisado e responde em breve."
                 
                 if created_ticket_id:
                     response += f"\n\nChamado #{created_ticket_id} criado com sucesso!"
                     
             except Exception as e:
-                print(f"[WEBHOOK] Erro na análise de escalação, usando fallback: {e}")
+                print(f"[WEBHOOK] Erro na escalação por stalled, usando fallback: {e}")
                 import traceback
                 traceback.print_exc()
-                conversation.escalation_category = "other"
-                conversation.escalation_reason_detail = str(transfer_reason) if transfer_reason else "Transferência automática"
-                conversation.ticket_summary = normalized_message[:200] if normalized_message else "Solicitação de atendimento"
-                conversation.conversation_topic = "Geral"
                 conversation.ticket_status = TicketStatusV2.NEW.value
                 conversation.escalation_level = EscalationLevel.T1_HUMAN.value
                 conversation.status = ConversationState.HUMAN_TAKEOVER.value
                 conversation.conversation_state = ConversationState.HUMAN_TAKEOVER.value
-                conversation.transfer_reason = transfer_reason
+                conversation.transfer_reason = "no_progress"
                 conversation.transferred_at = datetime.utcnow()
                 db.commit()
-                response = get_transfer_message(transfer_reason)
+                response = "Registrado! O broker responsável já tá sendo avisado e responde em breve."
             
             if message_record:
                 message_record.ai_response = response
@@ -1143,16 +911,16 @@ async def process_text_message(phone: str, message: str, db: Session, message_re
                 
                 print(f"[WEBHOOK] Escalação via OpenAI completa - ticket_status: {conversation.ticket_status}, ticket_id: {created_ticket_id}, broker: {broker_name}")
                 
+                if assessor_first_name and broker_name:
+                    response = f"{assessor_first_name}, registrado! O {broker_name} já tá sendo avisado e responde em breve."
+                elif broker_name:
+                    response = f"Registrado! O {broker_name} já tá sendo avisado e responde em breve."
+                elif assessor_first_name:
+                    response = f"{assessor_first_name}, registrado! O broker que te acompanha já tá sendo avisado e responde em breve."
+                else:
+                    response = "Registrado! O broker responsável já tá sendo avisado e responde em breve."
+                
                 if created_ticket_id:
-                    if assessor_first_name and broker_name:
-                        response = f"{assessor_first_name}, registrado! O {broker_name} já tá sendo avisado e responde em breve."
-                    elif broker_name:
-                        response = f"Registrado! O {broker_name} já tá sendo avisado e responde em breve."
-                    elif assessor_first_name:
-                        response = f"{assessor_first_name}, registrado! O broker que te acompanha já tá sendo avisado e responde em breve."
-                    else:
-                        response = "Registrado! O broker responsável já tá sendo avisado e responde em breve."
-                    
                     response += f"\n\nChamado #{created_ticket_id} criado com sucesso!"
             except Exception as e:
                 print(f"[WEBHOOK] Erro na escalação via OpenAI, usando fallback: {e}")
@@ -1234,7 +1002,7 @@ async def process_text_message(phone: str, message: str, db: Session, message_re
         
         if response:
             print(f"[WEBHOOK] Enviando resposta via Z-API para {phone}...")
-            send_result = await zapi_client.send_text(phone, response, delay_typing=2)
+            send_result = await zapi_client.send_text(phone, response)
             print(f"[WEBHOOK] Resultado envio Z-API: {send_result}")
         else:
             print(f"[WEBHOOK] Resposta vazia - não enviando mensagem ao WhatsApp")
@@ -1272,15 +1040,24 @@ async def process_text_message(phone: str, message: str, db: Session, message_re
                 sent = await _send_diagrams_from_markers(phone, diagram_slugs_from_ai, db)
                 if sent:
                     print(f"[WEBHOOK] Diagramas enviados: {sent}")
+                failed_slugs = [s for s in diagram_slugs_from_ai if s not in sent]
+                if failed_slugs:
+                    print(f"[WEBHOOK] Diagramas falharam: {failed_slugs}")
+                    await zapi_client.send_text(
+                        phone,
+                        "Não consegui enviar o diagrama agora. Quer que eu descreva o payoff por texto?",
+                        delay_typing=1
+                    )
             except Exception as diag_err:
                 print(f"[WEBHOOK] Erro ao enviar diagramas: {diag_err}")
-        elif response_sent_successfully:
-            try:
-                await _send_derivatives_diagram_if_requested(
-                    phone, normalized_message, context, db
-                )
-            except Exception as diag_err:
-                print(f"[WEBHOOK] Erro ao enviar diagrama: {diag_err}")
+                try:
+                    await zapi_client.send_text(
+                        phone,
+                        "Não consegui enviar o diagrama agora. Quer que eu descreva o payoff por texto?",
+                        delay_typing=1
+                    )
+                except Exception:
+                    pass
         
         if material_ids_from_ai:
             try:

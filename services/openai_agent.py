@@ -931,26 +931,14 @@ Quando um ticker ou ativo NÃO for encontrado na base de conhecimento:
 3. Se houver sugestões similares disponíveis, APENAS pergunte "Você quis dizer X ou Y?" e PARE - não dê mais informações até o usuário confirmar
 4. NÃO use frases de deflexão como "o melhor é acionar o responsável" ou "consulte a área" - isso é evasivo e frustrante
 
-ESTRUTURAS DE DERIVATIVOS (FLUXO CONVERSACIONAL OBRIGATÓRIO):
-Quando o assessor perguntar sobre estruturas de derivativos ou produtos estruturados, SIGA ESTE FLUXO:
+ESTRUTURAS DE DERIVATIVOS:
+Quando o assessor perguntar sobre estruturas de derivativos ou produtos estruturados, use seu julgamento para responder da melhor forma:
 
-1. PERGUNTA GENÉRICA (ex: "quais estruturas de proteção?", "me fala de alavancagem", "o que tem de derivativos?"):
-   → Liste APENAS OS NOMES das estruturas disponíveis naquela categoria
-   → Pergunte qual delas o assessor quer conhecer melhor
-   → NÃO explique nenhuma estrutura ainda
-   → Exemplo: "Na categoria Proteção temos: Put Spread, Collar, Fence e Seagull. Qual delas quer saber mais?"
+- Se o assessor perguntar sobre uma estrutura ESPECÍFICA (ex: "como funciona o Collar?"), responda diretamente com a informação solicitada. Não force etapas intermediárias.
+- Se o assessor fizer uma pergunta GENÉRICA (ex: "o que tem de derivativos?", "quais estruturas de proteção?"), liste as estruturas disponíveis na categoria e pergunte qual interessa.
+- Adapte o nível de detalhe ao que o assessor pediu. Se ele quer saber como funciona, explique. Se quer o diagrama, envie.
 
-2. ASSESSOR ESCOLHE UMA ESTRUTURA (ex: "Collar", "a segunda", "me fala do Booster"):
-   → Pergunte O QUE ele quer saber sobre aquela estrutura
-   → Ofereça opções como: como funciona, perfil de risco, para qual cenário é adequado, componentes, vantagens e desvantagens
-   → NÃO despeje toda a informação de uma vez
-   → Exemplo: "Sobre o Collar, o que quer saber? Como funciona, pra qual momento é adequado, perfil de risco...?"
-
-3. ASSESSOR DIZ O QUE QUER SABER (ex: "como funciona", "perfil de risco", "pra quem é"):
-   → Agora sim, responda com a informação específica solicitada
-   → Seja objetivo e direto, sem repetir o que não foi pedido
-
-4. DIAGRAMA DE PAYOFF (USE A FUNÇÃO send_payoff_diagram):
+DIAGRAMA DE PAYOFF (USE A FUNÇÃO send_payoff_diagram):
    → Quando o assessor PEDIR para ver/enviar/mostrar um diagrama, gráfico, payoff, imagem ou exemplo visual de uma estrutura, use a função send_payoff_diagram com o slug correto
    → Se a estrutura tiver diagrama disponível (indicado nos metadados), ofereça ao final: "Quer que eu envie o diagrama de payoff?"
    → NUNCA envie diagrama sem o assessor pedir
@@ -969,8 +957,6 @@ CATEGORIAS DE DERIVATIVOS DISPONÍVEIS:
 - Exóticas (ex: Knock-In, Knock-Out)
 - Hedge Cambial (ex: NDF, Collar Cambial)
 - Remuneração de Carteira (ex: Financiamento, Venda Coberta)
-
-IMPORTANTE: Este fluxo de desambiguação é OBRIGATÓRIO. Não pule etapas. O assessor deve ter controle sobre o nível de detalhe que recebe.
 
 5. ENVIO DE MATERIAL/PDF (USE A FUNÇÃO send_document):
    → REGRA FUNDAMENTAL: A função send_document serve APENAS para enviar o arquivo PDF físico ao assessor. Use SOMENTE quando ele pedir explicitamente para ENVIAR, MANDAR ou VER o material/PDF/one-pager/lâmina/documento.
@@ -1039,6 +1025,22 @@ TROCA DE TÓPICO (REGRA CRÍTICA):
 - Se a mensagem atual mencionar um ativo/fundo diferente dos citados recentemente, foque NO ATIVO MENCIONADO NA MENSAGEM ATUAL, ignorando o histórico anterior.
 - Se a mensagem atual pedir comparação entre dois ativos (palavras como "entre", "versus", "vs", "qual o melhor entre", "os dois", "ambos"), SEMPRE compare os dois ativos explicitamente. NÃO continue respondendo sobre um único ativo como se fosse continuação do tópico anterior.
 - O ativo mencionado NA MENSAGEM ATUAL tem prioridade absoluta sobre o contexto anterior.
+
+QUANDO NÃO ENCONTRAR INFORMAÇÃO (FALLBACK INTELIGENTE):
+Quando o contexto da base de conhecimento não contiver informação suficiente para responder:
+1. Seja TRANSPARENTE sobre o motivo: diga algo como "esse fundo ainda não foi indexado na nossa base" ou "não tenho esse dado documentado ainda" — nunca seja evasivo.
+2. ANTES de escalar, tente oferecer o que tem: informação parcial encontrada, dados públicos se disponíveis, ou reformule a pergunta para ver se pode ajudar de outra forma.
+3. Se realmente não puder ajudar, use o nome do BROKER RESPONSÁVEL do assessor (se disponível no contexto) para personalizar a escalação — ex: "Posso chamar o Marcelo que te acompanha pra resolver isso."
+4. NUNCA use frases genéricas como "consulte o broker" ou "acione a área". Sempre personalize com o nome do broker quando disponível.
+
+ASSESSOR FRUSTRADO OU URGENTE:
+Quando o tom da mensagem indicar frustração ou urgência:
+1. Reconheça o sentimento de forma breve e empática ("Entendo a urgência", "Saquei, vou resolver rápido")
+2. Vá direto à solução ou escalação, sem enrolação
+3. Se não puder resolver, ofereça escalar imediatamente para o broker responsável
+
+MENSAGENS FORA DO ESCOPO:
+Quando o assessor enviar mensagens fora do escopo de renda variável, redirecione naturalmente e de forma variada. Não use frases engessadas — gere uma resposta curta e natural que indique seu foco em RV e pergunte como pode ajudar nessa área.
 
 === FIM DO BLOCO DE PERSONALIDADE ==="""
     
@@ -1253,129 +1255,6 @@ REGRAS PARA INFORMAÇÕES DA INTERNET:
 5. SEJA TRANSPARENTE: Deixe claro quando a informação vem da internet e não da base oficial.
 """
     
-    def _check_pending_derivatives_selection(
-        self,
-        user_message: str,
-        conversation_history: Optional[List[dict]]
-    ) -> Optional[Tuple[str, bool, dict]]:
-        """
-        Verifica se o usuário está respondendo a uma listagem de categorias ou estruturas de derivativos.
-        Trata seleção por ordinal, nome ou keyword.
-        """
-        if not conversation_history:
-            return None
-        
-        try:
-            from scripts.xpi_derivatives.derivatives_dataset import TABS
-        except ImportError:
-            return None
-        
-        msg_lower = user_message.lower().strip()
-        
-        ordinal_map = {
-            'primeiro': 0, 'primeira': 0, '1': 0, 'o primeiro': 0, 'a primeira': 0,
-            'segundo': 1, 'segunda': 1, '2': 1, 'o segundo': 1, 'a segunda': 1,
-            'terceiro': 2, 'terceira': 2, '3': 2, 'o terceiro': 2, 'a terceira': 2,
-            'quarto': 3, 'quarta': 3, '4': 3,
-            'quinto': 4, 'quinta': 4, '5': 4,
-            'sexto': 5, 'sexta': 5, '6': 5,
-            'sétimo': 6, 'sétima': 6, '7': 6,
-            'oitavo': 7, 'oitava': 7, '8': 7,
-        }
-        
-        for hist in reversed(conversation_history[-4:]):
-            metadata = hist.get('metadata', {})
-            intent = metadata.get('intent', '')
-            
-            if intent == 'derivatives_category_listing':
-                categories = metadata.get('categories', [])
-                
-                for ordinal, idx in ordinal_map.items():
-                    if ordinal in msg_lower and idx < len(categories):
-                        chosen_category = categories[idx]
-                        return self._list_structures_for_category(chosen_category, TABS)
-                
-                for tab in TABS:
-                    tab_lower = tab["name"].lower()
-                    if tab_lower in msg_lower:
-                        return self._list_structures_for_category(tab["name"], TABS)
-                
-                break
-            
-            elif intent == 'derivatives_structure_listing':
-                category = metadata.get('category', '')
-                structures = metadata.get('structures', [])
-                
-                for ordinal, idx in ordinal_map.items():
-                    if ordinal in msg_lower and idx < len(structures):
-                        chosen = structures[idx]
-                        return self._ask_what_about_structure(chosen, category)
-                
-                for struct_name in structures:
-                    if struct_name.lower() in msg_lower:
-                        return self._ask_what_about_structure(struct_name, category)
-                
-                break
-            
-            elif intent == 'derivatives_structure_selected':
-                structure = metadata.get('structure', '')
-                category = metadata.get('category', '')
-                if structure:
-                    print(f"[OpenAI] Follow-up sobre estrutura '{structure}' - injetando no contexto")
-                    return (
-                        f"__DERIVATIVES_QUERY__{structure}|||{category}|||{user_message}",
-                        False,
-                        {
-                            "intent": "derivatives_detail_query",
-                            "structure": structure,
-                            "category": category,
-                            "original_question": user_message
-                        }
-                    )
-                break
-        
-        return None
-    
-    def _list_structures_for_category(self, category_name: str, tabs: list) -> Optional[Tuple[str, bool, dict]]:
-        """Lista estruturas de uma categoria específica."""
-        for tab in tabs:
-            if tab["name"] == category_name:
-                structures = []
-                for strategy in tab["strategies"]:
-                    for struct in strategy["structures"]:
-                        structures.append(struct["name"])
-                
-                structures_text = "\n".join([f"• {name}" for name in structures])
-                response = f"Na categoria {category_name} temos:\n\n{structures_text}\n\nQual delas quer conhecer melhor?"
-                
-                print(f"[OpenAI] Usuário escolheu categoria '{category_name}' - listando {len(structures)} estruturas")
-                
-                return (
-                    response,
-                    False,
-                    {
-                        "intent": "derivatives_structure_listing",
-                        "category": category_name,
-                        "structures": structures
-                    }
-                )
-        return None
-    
-    def _ask_what_about_structure(self, structure_name: str, category: str) -> Tuple[str, bool, dict]:
-        """Pergunta ao assessor o que ele quer saber sobre uma estrutura específica."""
-        response = f"Sobre o {structure_name}, o que quer saber? Como funciona, perfil de risco, pra qual cenário é adequado, componentes...?"
-        
-        print(f"[OpenAI] Usuário escolheu estrutura '{structure_name}' - perguntando o que quer saber")
-        
-        return (
-            response,
-            False,
-            {
-                "intent": "derivatives_structure_selected",
-                "structure": structure_name,
-                "category": category
-            }
-        )
 
     def _check_pending_manager_selection(
         self, 
@@ -1477,114 +1356,6 @@ REGRAS PARA INFORMAÇÕES DA INTERNET:
         
         return None
     
-    def _check_derivatives_disambiguation(
-        self,
-        user_message: str,
-        conversation_history: Optional[List[dict]] = None
-    ) -> Optional[Tuple[str, bool, dict]]:
-        """
-        Verifica se a query é sobre estruturas de derivativos de forma genérica (por categoria).
-        Se sim, lista as estruturas disponíveis e pergunta qual interessa.
-        """
-        msg_lower = user_message.lower().strip()
-        
-        CATEGORY_KEYWORDS = {
-            "Alavancagem": ["alavancagem", "alavancada", "alavancar", "dobrar participação", "participação dobrada"],
-            "Juros": ["juros", "taxa de juros", "pré-di", "swap", "curva de juros"],
-            "Proteção": ["proteção", "proteger", "hedge", "proteger carteira", "proteger posição"],
-            "Volatilidade": ["volatilidade", "vol", "straddle", "strangle"],
-            "Direcionais": ["direcional", "direcionais", "visão de mercado", "aposta direcional"],
-            "Exóticas": ["exótica", "exóticas", "knock-in", "knock-out", "barreira"],
-            "Hedge Cambial": ["hedge cambial", "cambial", "dólar", "moeda", "câmbio", "proteger câmbio"],
-            "Remuneração de Carteira": ["remuneração", "remunerar carteira", "renda extra", "financiamento", "venda coberta", "covered call"],
-        }
-        
-        GENERIC_DERIVATIVES_KEYWORDS = [
-            "derivativos", "derivativo", "estruturas", "estruturados", "produtos estruturados",
-            "opções", "opcoes", "estruturas de derivativos", "o que tem de derivativos",
-            "quais estruturas", "quais derivativos", "lista de estruturas"
-        ]
-        
-        try:
-            from scripts.xpi_derivatives.derivatives_dataset import TABS
-        except ImportError:
-            return None
-        
-        is_generic_derivatives = any(kw in msg_lower for kw in GENERIC_DERIVATIVES_KEYWORDS)
-        if is_generic_derivatives:
-            specific_structure_names = []
-            for tab in TABS:
-                for strategy in tab["strategies"]:
-                    for struct in strategy["structures"]:
-                        if struct["name"].lower() in msg_lower or struct["slug"].lower() in msg_lower:
-                            specific_structure_names.append(struct["name"])
-            
-            if specific_structure_names:
-                return None
-            
-            categories_list = []
-            for tab in TABS:
-                structure_count = sum(len(s["structures"]) for s in tab["strategies"])
-                categories_list.append(f"• {tab['name']} ({structure_count} estruturas)")
-            
-            categories_text = "\n".join(categories_list)
-            response = f"Temos estruturas de derivativos nas seguintes categorias:\n\n{categories_text}\n\nQual categoria te interessa?"
-            
-            print(f"[OpenAI] Query genérica de derivativos detectada - listando categorias")
-            
-            return (
-                response,
-                False,
-                {
-                    "intent": "derivatives_category_listing",
-                    "categories": [t["name"] for t in TABS]
-                }
-            )
-        
-        matched_category = None
-        for category, keywords in CATEGORY_KEYWORDS.items():
-            if any(kw in msg_lower for kw in keywords):
-                specific_found = False
-                for tab in TABS:
-                    if tab["name"] == category:
-                        for strategy in tab["strategies"]:
-                            for struct in strategy["structures"]:
-                                if struct["name"].lower() in msg_lower or struct["slug"] in msg_lower:
-                                    specific_found = True
-                                    break
-                if not specific_found:
-                    matched_category = category
-                break
-        
-        if not matched_category:
-            return None
-        
-        for tab in TABS:
-            if tab["name"] == matched_category:
-                structures = []
-                for strategy in tab["strategies"]:
-                    for struct in strategy["structures"]:
-                        structures.append(struct["name"])
-                
-                if len(structures) == 1:
-                    return None
-                
-                structures_text = "\n".join([f"• {name}" for name in structures])
-                response = f"Na categoria {matched_category} temos as seguintes estruturas:\n\n{structures_text}\n\nQual delas quer conhecer melhor?"
-                
-                print(f"[OpenAI] Categoria de derivativos '{matched_category}' detectada com {len(structures)} estruturas - listando")
-                
-                return (
-                    response,
-                    False,
-                    {
-                        "intent": "derivatives_structure_listing",
-                        "category": matched_category,
-                        "structures": structures
-                    }
-                )
-        
-        return None
 
     def _check_manager_disambiguation(
         self, 
@@ -1963,19 +1734,6 @@ REGRAS PARA INFORMAÇÕES DA INTERNET:
         max_tokens = self._get_max_tokens(categoria, config)
         print(f"[OpenAI] Parâmetros adaptativos - Categoria: {categoria}, Temp: {temperature}, MaxTokens: {max_tokens} | QueryRewriter: query='{rewrite_result.rewritten_query[:80]}', topic_switch={rewrite_result.topic_switch}, comparative={rewrite_result.is_comparative}")
         
-        pending_derivatives = self._check_pending_derivatives_selection(user_message, conversation_history)
-        if pending_derivatives:
-            response_text, should_ticket, context_info = pending_derivatives
-            if response_text.startswith("__DERIVATIVES_QUERY__"):
-                parts = response_text.replace("__DERIVATIVES_QUERY__", "").split("|||")
-                structure_name = parts[0] if len(parts) > 0 else ""
-                category = parts[1] if len(parts) > 1 else ""
-                original_question = parts[2] if len(parts) > 2 else user_message
-                user_message = f"{structure_name} {original_question}"
-                print(f"[OpenAI] Query substituída para derivativos: '{user_message}'")
-            else:
-                return pending_derivatives
-        
         pending_manager_selection = self._check_pending_manager_selection(user_message, conversation_history)
         if pending_manager_selection:
             response_text, should_ticket, context_info = pending_manager_selection
@@ -1995,10 +1753,6 @@ REGRAS PARA INFORMAÇÕES DA INTERNET:
         manager_disambiguation = self._check_manager_disambiguation(user_message)
         if manager_disambiguation:
             return manager_disambiguation
-        
-        derivatives_disambiguation = self._check_derivatives_disambiguation(user_message, conversation_history)
-        if derivatives_disambiguation:
-            return derivatives_disambiguation
         
         enriched_query = rewrite_result.rewritten_query
         
@@ -2021,25 +1775,8 @@ REGRAS PARA INFORMAÇÕES DA INTERNET:
             print(f"[OpenAI] Saudação detectada - NÃO consultando documentos")
         elif categoria == "ATENDIMENTO_HUMANO":
             print(f"[OpenAI] Pedido de atendimento humano detectado - Marcando para escalação")
-            assessor_name = ""
-            if identified_assessor and identified_assessor.get("nome"):
-                assessor_name = identified_assessor["nome"].split()[0]
-            
-            ticket_response_variations = [
-                "abrindo o chamado agora! Vou passar pro broker que cuida de você, ele já te responde por aqui.",
-                "chamado aberto! Já tô passando pro seu broker, ele já responde aqui mesmo.",
-                "pronto, chamado criado! Passando pro broker que te atende, ele já retorna por aqui.",
-                "feito! Vou direcionar pro broker responsável por você, ele já te atende aqui.",
-                "chamado aberto! Tô notificando o broker que cuida da sua carteira, ele já responde.",
-                "tudo certo! Passando agora pro seu broker, ele já te responde por aqui.",
-                "registrado! O broker que te acompanha já tá sendo avisado e responde em breve."
-            ]
-            
-            variation = random.choice(ticket_response_variations)
-            greeting = f"{assessor_name}, " if assessor_name else ""
-            
             return (
-                f"{greeting}{variation}",
+                None,
                 True,
                 {
                     "human_transfer": True,
@@ -2374,12 +2111,20 @@ IMPORTANTE: Ao responder sobre este fundo, você DEVE:
 2. Apresentar os dados técnicos acima como informação de mercado pública
 3. Não recomendar ou sugerir investimento neste fundo"""
 
+        emotional_tone = rewrite_result.emotional_tone if rewrite_result else "neutral"
+        tone_instruction = ""
+        if emotional_tone == "frustrated":
+            tone_instruction = "\n\nATENÇÃO: O assessor demonstra FRUSTRAÇÃO. Reconheça brevemente, vá direto à solução. Se não puder resolver, ofereça escalar imediatamente."
+        elif emotional_tone == "urgent":
+            tone_instruction = "\n\nATENÇÃO: O assessor demonstra URGÊNCIA. Seja direto e rápido na resposta."
+
         user_content += f"""
 
 ---
 
 PERGUNTA DO ASSESSOR/CLIENTE:
 {user_message}
+{tone_instruction}
 
 INSTRUÇÕES IMPORTANTES:
 1. SEMPRE use as informações do CONTEXTO acima para responder, mesmo que os nomes não sejam exatamente iguais (ex: "TG Core" pode ser "TGRI", "TG RI", etc.)
