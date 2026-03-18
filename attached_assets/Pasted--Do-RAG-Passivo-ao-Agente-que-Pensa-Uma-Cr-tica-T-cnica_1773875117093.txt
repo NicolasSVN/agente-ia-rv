@@ -1,0 +1,405 @@
+# Do RAG Passivo ao Agente que Pensa: Uma Crítica Técnica e Proposta de Migração para Agentic RAG
+
+> **Por um consultor especialista em arquiteturas RAG para aplicações conversacionais em produção**
+
+---
+
+## Sumário
+
+1. [O diagnóstico: seu LLM está castrado](#1-o-diagnóstico-seu-llm-está-castrado)
+2. [O pecado original: confundir pipeline com agente](#2-o-pecado-original-confundir-pipeline-com-agente)
+3. [A inversão de controle que muda tudo](#3-a-inversão-de-controle-que-muda-tudo)
+4. [O anti-padrão da injeção de contexto no user turn](#4-o-anti-padrão-da-injeção-de-contexto-no-user-turn)
+5. [O loop que falta: razão → ação → observação → avaliação](#5-o-loop-que-falta-razão--ação--observação--avaliação)
+6. [A query que o código não sabe formular](#6-a-query-que-o-código-não-sabe-formular)
+7. [O que permanece pré-carregado — e por quê](#7-o-que-permanece-pré-carregado--e-por-quê)
+8. [O trade-off de latência: honestidade antes de romantismo](#8-o-trade-off-de-latência-honestidade-antes-de-romantismo)
+9. [Proposta: o sistema prompt da V2](#9-proposta-o-sistema-prompt-da-v2)
+10. [Conclusão: o modelo como arquiteto do contexto](#10-conclusão-o-modelo-como-arquiteto-do-contexto)
+11. [Referências](#referências)
+
+---
+
+## 1. O diagnóstico: seu LLM está castrado
+
+Existe um padrão que vejo repetidamente em sistemas RAG que chegaram à produção via prototipagem rápida: o código faz o trabalho inteligente, e o LLM recebe o resultado. Parece eficiente. É, na prática, um desperdício.
+
+No sistema descrito neste documento, quando uma mensagem chega do assessor, o código já:
+- decidiu buscar no RAG,
+- formulou a query,
+- recuperou os trechos,
+- decidiu se também consultava FII externo,
+- decidiu se também fazia web search,
+- montou tudo numa mensagem inflada que é entregue ao modelo como um *fait accompli*.
+
+O LLM, nesse fluxo, é um **redator**, não um **agente**. Ele não raciocina sobre o que precisa saber — ele apenas sumariza o que o código já decidiu que era relevante.
+
+A distinção importa. Um redator escreve bem. Um agente pensa, decide, age e avalia. Para um assistente financeiro como o Stevan — que precisa navegar ambiguidades, reconhecer seguimentos de conversa, e decidir entre múltiplas fontes — só o segundo serve.
+
+---
+
+## 2. O pecado original: confundir pipeline com agente
+
+O RAG tradicional, descrito pela literatura como *Naive RAG*, opera numa sequência linear e determinística: recebe a query → busca → injeta contexto → gera resposta. Não há raciocínio sobre *se* buscar, *o que* buscar, ou *se o resultado foi suficiente*.[^1]
+
+Esse modelo tem mérito em casos simples. Mas ele carrega limitações estruturais que se tornam críticas em conversas multi-turno com alta variabilidade de intenção:
+
+- **Busca cega:** recupera os mesmos top-k chunks independentemente da complexidade ou intenção da query.[^2]
+- **Sem validação:** o resultado da busca nunca é avaliado antes de ser usado para gerar resposta.
+- **Sem iteração:** se a busca trouxe o produto errado, o modelo não sabe — e constrói uma resposta errada com confiança.
+
+O que o sistema Stevan V1 faz é um Naive RAG com cosmética de agente. O código simula a decisão de busca — mas a decisão real (quando buscar, com que query, avaliar o resultado) nunca chegou ao modelo.
+
+> **"Traditional RAG systems face critical limitations: they operate with static retrieval strategies, always fetching the same top-k chunks regardless of query complexity or user intent."**
+> — TechAhead, *Agentic RAG: When LLMs Decide What and How to Retrieve* (2025)
+
+A evolução natural, documentada extensamente na literatura desde 2024, é o **Agentic RAG**: o LLM assume controle ativo sobre o processo de recuperação, integrando recuperação ao seu raciocínio em vez de recebê-la como insumo externo.[^3]
+
+---
+
+## 3. A inversão de controle que muda tudo
+
+O princípio central da transição para Agentic RAG é uma **inversão de controle**: a decisão de buscar, quando buscar, e com qual query deixa de ser do orquestrador (o código) e passa a ser do modelo.
+
+A NVIDIA descreve isso com clareza em sua documentação técnica sobre Agentic RAG:
+
+> *"Agentic RAG is more dynamic. Here, the AI agent actively manages how it gets information, integrating RAG into its reasoning process. It's not just retrieving; it's refining its queries using reasoning, turning RAG into a sophisticated tool."*
+> — NVIDIA Technical Blog, *Traditional RAG vs. Agentic RAG* (2025)[^4]
+
+Na prática, isso significa que a tool `search_knowledge_base` deixa de ser chamada pelo código e passa a ser disponibilizada ao modelo como uma **ferramenta opcional**. O modelo decide se a chama, quando a chama, e com qual argumento.
+
+Esse design não é apenas mais elegante — é mais robusto. Considere o cenário onde o assessor manda "oi, bom dia". No V1, o código provavelmente disparou uma busca no RAG antes de perceber que era uma saudação. No V2, o modelo classifica a mensagem em milissegundos como casual e responde diretamente, sem nenhuma tool call.
+
+O ganho não é só em qualidade — é também em custo e latência para os casos simples, que tendem a ser frequentes em conversas reais.
+
+---
+
+## 4. O anti-padrão da injeção de contexto no user turn
+
+Este é o ponto mais técnico e o mais frequentemente ignorado em implementações amadoras.
+
+No V1, o contexto RAG é injetado **dentro da mensagem do usuário** (item 3 da estrutura). Isso cria um problema de semântica de papel (*role semantics*) que afeta diretamente como o modelo processa a informação.
+
+Modelos de linguagem aprendem a interpretar mensagens segundo os papéis atribuídos a elas:
+- `system`: instruções e identidade
+- `assistant`: respostas anteriores do modelo
+- `user`: intenções e perguntas do interlocutor
+- `tool` / `tool_result`: resultado de chamadas a ferramentas
+
+Quando o código injeta resultados de busca *dentro* do `user` turn, está dizendo ao modelo: "o assessor disse isso". O modelo não tem como distinguir o que é voz do assessor do que é contexto recuperado. Isso polui a interpretação de intenção e, pior, impede que o modelo saiba o que já buscou em turnos anteriores.
+
+A forma correta é que os resultados de tool calls apareçam no histórico como mensagens do tipo `tool_result`, encadeadas ao `tool_use` que as originou. Assim o modelo, ao receber a próxima mensagem, pode ver:
+
+```
+[user]: me fala do BTLG11
+[assistant → tool_use]: search_knowledge_base("BTLG11")
+[tool_result]: { ... conteúdo recuperado ... }
+[assistant]: Com base nos materiais internos, o BTLG11...
+[user]: e o dividend yield atual?
+```
+
+Nesse histórico, o modelo sabe exatamente o que já buscou, o que retornou, e o que ainda precisa buscar para responder a nova pergunta. Isso é **memória de curto prazo funcional** — não contexto injetado de fora.
+
+> *"Advanced pipelines interleave reasoning steps with retrieval using ReAct-style patterns. The LLM can decide it needs a document, call the RAG tool, then reason over returned passages. Each tool invocation becomes part of the thought chain, preserving context across steps."*
+> — ChatNexus, *Contextual RAG: Maintaining Conversation Context in Retrieval* (2025)[^5]
+
+---
+
+## 5. O loop que falta: razão → ação → observação → avaliação
+
+O framework que fundamenta toda arquitetura agentic robusta foi publicado por Yao et al. (2022) no paper **ReAct: Synergizing Reasoning and Acting in Language Models**[^6], aceito no ICLR 2023.
+
+O princípio é deceptivamente simples: em vez de separar raciocínio e ação como capacidades distintas, o modelo as executa de forma **intercalada**. A cada passo, o modelo:
+
+1. **Pensa** (*Thought*): raciocina sobre o estado atual e o que precisa saber
+2. **Age** (*Action*): chama uma ferramenta ou responde diretamente
+3. **Observa** (*Observation*): recebe o resultado da ação
+4. Retorna ao passo 1 com novo contexto
+
+Esse ciclo continua até que o modelo tenha informação suficiente para responder.
+
+O que torna o ReAct superior a abordagens de apenas-ação ou apenas-raciocínio é que as *traces* de pensamento permitem ao modelo "induzir, rastrear e atualizar planos de ação enquanto lida com exceções"[^6] — algo impossível num modelo que recebe contexto pré-digerido.
+
+No contexto do Stevan, o loop se traduz assim:
+
+```
+Assessor: "compara o BTLG11 com o HGLG11"
+
+Thought: "Preciso de dados de ambos os fundos. 
+          Vou buscar BTLG11 primeiro, depois HGLG11."
+Action: search_knowledge_base("BTLG11 estratégia composição")
+Observation: { material encontrado sobre BTLG11 }
+
+Thought: "Tenho dados do BTLG11. Agora preciso do HGLG11."
+Action: search_knowledge_base("HGLG11 estratégia composição")
+Observation: { material encontrado sobre HGLG11 }
+
+Thought: "Tenho os dois. Posso fazer a comparação agora."
+Action: [responde diretamente]
+```
+
+Sem esse loop explícito no design do sistema prompt, o modelo não tem como executar recuperações sequenciais com raciocínio intermediário. Ele apenas recebe os dados e gera uma saída — o que é fundamentalmente diferente.
+
+A NVIDIA documenta exatamente esse ponto em sua arquitetura de referência:
+
+> *"RAG works well, but it's limited because the LLM can't determine how data is retrieved, control for data quality, or choose between data sources. Agentic RAG takes the concept further by combining language comprehension, contextual reasoning, and flexible generation with dynamic tool usage."*
+> — NVIDIA Technical Blog, *Build a RAG Agent with NVIDIA Nemotron* (2025)[^7]
+
+---
+
+## 6. A query que o código não sabe formular
+
+Há um problema específico de qualidade de recuperação que merece atenção separada: **a query de busca gerada pelo código é, por definição, a mensagem bruta do assessor**.
+
+Isso funciona razoavelmente quando a mensagem é direta: "me fala do BTLG11". Mas falha em vários cenários comuns:
+
+**Cenário 1 — Pronomes e referências anafóricas:**
+> Assessor: "e o histórico de rentabilidade dele?"
+
+O código não sabe que "dele" se refere ao BTLG11 discutido dois turnos atrás. A busca retorna lixo.
+
+**Cenário 2 — Follow-up implícito:**
+> Assessor: "tem algo parecido mas com mais proteção?"
+
+Nenhuma keyword identificável para busca no RAG.
+
+**Cenário 3 — Consulta de múltiplos aspectos:**
+> Assessor: "compara os dois fundos que você mencionou em termos de risco e liquidez"
+
+Requer duas buscas separadas, com queries diferentes.
+
+O modelo, ao contrário do código, tem acesso ao histórico completo da conversa e à capacidade de raciocinar sobre qual é a query *ótima* para cada situação. Ele pode reescrever "e o histórico de rentabilidade dele?" para "BTLG11 rentabilidade histórica" antes de fazer a chamada à tool.
+
+Essa capacidade — chamada de **query rewriting** na literatura — é amplamente documentada como crítica para RAG conversacional de qualidade:
+
+> *"Many users approach AI assistants like Google search, throwing in a few keywords and expecting an answer. RAG systems require more specific queries for optimal performance. We found 20% of user queries are under five words."*
+> — Shekhar Gulati, *Query Rewriting in RAG Applications* (2024)[^8]
+
+Quando o modelo controla a formulação da query, ele aplica naturalmente técnicas de rewriting: resolve pronomes, expande abreviações, desambigua termos. O código nunca terá essa capacidade sem implementar explicitamente um LLM de rewriting — o que é, basicamente, delegar de volta ao modelo aquilo que ele deveria estar fazendo desde o início.
+
+---
+
+## 7. O que permanece pré-carregado — e por quê
+
+A migração para Agentic RAG não significa "remover tudo que o código injeta". Significa remover o que o **modelo deve decidir** e manter o que é **contexto estrutural invariante**.
+
+A distinção é clara quando pensamos em dois tipos de informação:
+
+**Contexto estrutural** — informação que é sempre verdadeira independentemente da mensagem, e que o modelo precisa para operar corretamente:
+- Identidade e personalidade do Stevan
+- Data e hora atuais
+- Dados do assessor identificado (nome, equipe, unidade)
+- Lista de materiais com PDF disponível (para `send_document`)
+- Histórico das últimas 20 mensagens
+
+**Contexto dinâmico** — informação que é relevante apenas para *algumas* mensagens, e que só faz sentido buscar depois de interpretar a intenção:
+- Trechos do RAG
+- Dados de FII externo
+- Resultados de web search
+
+O primeiro grupo deve continuar no system prompt. O segundo deve ser removido do pipeline e disponibilizado como tools.
+
+Essa separação é exatamente o que a Microsoft recomenda em sua documentação de Agentic RAG para Azure AI Search:
+
+> *"Agentic retrieval represents the evolution from traditional single-query RAG patterns to multi-query intelligent retrieval, providing context-aware query planning using conversation history."*
+> — Microsoft Learn, *RAG and Generative AI — Azure AI Search* (2025)[^9]
+
+A lista de materiais disponíveis (IDs para `send_document`) é um caso especial: ela não é contexto RAG — é um índice de capacidade. O modelo precisa saber *que pode* enviar o material X antes de decidir se o envia. Isso pertence ao system prompt, não às tools.
+
+---
+
+## 8. O trade-off de latência: honestidade antes de romantismo
+
+Seria desonesto apresentar a migração para Agentic RAG sem discutir o trade-off mais óbvio: **latência**.
+
+No V1, o código faz tudo em paralelo antes de chamar o modelo. O modelo recebe contexto pronto e gera uma resposta em um único inference call. Latência: 1 round-trip para o LLM.
+
+No V2, para uma consulta que requer busca, o fluxo é:
+1. Inference call 1: modelo recebe mensagem, decide buscar, gera tool call
+2. Execução da tool: busca no RAG
+3. Inference call 2: modelo recebe resultado, avalia, decide se responde ou busca de novo
+4. (Opcionalmente) Inference call 3: segunda busca e resposta final
+
+Latência: 2-3 round-trips para o LLM, versus 1 no V1. Em números reais, isso pode significar de 2 a 8 segundos adicionais dependendo do modelo e da infraestrutura.
+
+A pesquisa de Relace sobre agentic search documenta esse trade-off diretamente:
+
+> *"At the cost of latency and tokens, you now have really awesome search."*
+> — Relace, *Exploiting Parallel Tool Calls to Make Agentic Search 4x Faster* (2025)[^10]
+
+A mitigação mais efetiva é o que eu chamo de **classificação rápida antes da ação**: o sistema prompt deve instruir o modelo a identificar, antes de qualquer tool call, se a mensagem é casual ou é um follow-up com dados já disponíveis no histórico. Nesses casos, o modelo responde diretamente, sem nenhuma tool call adicional — mantendo a latência do V1 para os casos simples.
+
+Para conversas onde a busca é necessária, a latência adicional é o preço da qualidade. E é um preço que, na minha experiência, os usuários pagam confortavelmente quando a resposta que recebem é substancialmente melhor.
+
+Uma alternativa complementar, para sistemas com volume alto, é **semantic caching** — armazenar pares (query, resultado) de buscas anteriores e reutilizá-los quando a nova query é semanticamente similar. Isso pode reduzir a latência de buscas repetidas a near-zero.[^11]
+
+---
+
+## 9. Proposta: o sistema prompt da V2
+
+A seguir, a estrutura recomendada para o system prompt do Stevan V2, com justificativa para cada bloco.
+
+---
+
+### Bloco 1 — Identidade e escopo (mantido do V1)
+```
+Você é Stevan, agente interno da SVN para Renda Variável.
+[... personalidade, tom, restrições ...]
+```
+**Por quê:** Contexto estrutural invariante. Sempre necessário.
+
+---
+
+### Bloco 2 — Contexto temporal (mantido do V1)
+```
+Data e hora atuais: [injetado dinamicamente pelo código]
+```
+**Por quê:** O modelo precisa para referências temporais ("esse fundo subiu este mês"). Sem custo de decisão.
+
+---
+
+### Bloco 3 — Dados do assessor (mantido do V1)
+```
+Assessor identificado: [nome, equipe, unidade, broker]
+```
+**Por quê:** Contexto de quem está falando. Não depende da mensagem — é sempre verdadeiro naquela conversa.
+
+---
+
+### Bloco 4 — Materiais disponíveis para envio (mantido do V1)
+```
+Materiais com PDF disponível (use send_document):
+- BTLG11: [ID:42] BTG Pactual Logística — One Pager 2024
+- HGLG11: [ID:18] CSHG Logística — Relatório Mensal
+[...]
+```
+**Por quê:** Índice de capacidade, não contexto RAG. O modelo precisa saber o que pode enviar para decidir quando enviar.
+
+---
+
+### Bloco 5 — Loop de raciocínio (**NOVO — núcleo da V2**)
+
+```markdown
+### ANTES DE RESPONDER — SEU PROCESSO INTERNO
+
+Antes de formular qualquer resposta, percorra este fluxo:
+
+**PASSO 1 — Classifique a mensagem:**
+- CASUAL: saudação, agradecimento, conversa sem conteúdo técnico
+- FOLLOW-UP: o assessor continua sobre algo já presente no histórico com dados suficientes
+- NOVA CONSULTA: pergunta sobre produto, dado, ticker, gestora, conceito
+- AMBÍGUA: intenção não está clara o suficiente para agir
+
+**PASSO 2 — Decida a ação:**
+- CASUAL ou FOLLOW-UP com dados disponíveis → responda direto, sem tool call
+- NOVA CONSULTA → identifique qual(is) tools são necessárias
+- AMBÍGUA → pergunte antes de buscar (não desperdice uma tool call numa query errada)
+
+**PASSO 3 — Formule a query (se for buscar):**
+Antes de chamar a tool, defina internamente:
+- O que exatamente preciso saber para responder esta pergunta?
+- Qual é o termo mais específico e direto para essa busca?
+- Se há pronome ou referência ao histórico, resolva: "ele" → "BTLG11"
+- Prefira queries específicas: "BTLG11 rentabilidade 2024" > "fundo imobiliário"
+
+**PASSO 4 — Avalie o resultado:**
+Após receber o resultado da tool, avalie:
+- O resultado é sobre o produto/ticker correto? 
+- O resultado responde o aspecto específico perguntado?
+- Se sim → componha a resposta
+- Se parcial ou incorreto → reformule a query e tente novamente
+- Após 3 tentativas sem sucesso → informe o assessor e ofereça alternativas
+
+**PASSO 5 — Componha a resposta:**
+Só responda ao assessor após ter os dados necessários em mãos.
+```
+
+---
+
+### Bloco 6 — Critérios de suficiência (**NOVO**)
+
+```markdown
+### QUANDO UM RESULTADO DE BUSCA É SUFICIENTE
+
+Suficiente quando:
+- Contém dados diretamente sobre o produto/ticker perguntado
+- Cobre o aspecto específico da pergunta (rentabilidade, estratégia, composição, risco...)
+- A data do material é compatível com o contexto da pergunta
+
+Insuficiente quando:
+- Retornou documentos de produtos diferentes
+- Retornou o produto certo mas não o aspecto perguntado
+- Retornou poucos ou nenhum resultado relevante
+
+Neste caso: reformule com termos alternativos, use ticker em vez do nome (ou vice-versa),
+tente sinônimos. Máximo 3 tentativas por mensagem.
+```
+
+---
+
+### O que foi removido do user turn
+
+| Elemento (V1) | Status V2 | Motivo |
+|---|---|---|
+| Contexto RAG pré-buscado | ❌ Removido | Modelo decide quando e como buscar |
+| Resultado de web search | ❌ Removido | Tool disponível ao modelo |
+| Dados de FII externo | ❌ Removido | Tool disponível ao modelo |
+| Identidade / personalidade | ✅ Permanece (system) | Contexto estrutural |
+| Contexto temporal | ✅ Permanece (system) | Sempre necessário |
+| Dados do assessor | ✅ Permanece (system) | Contexto invariante |
+| Lista de materiais | ✅ Permanece (system) | Índice de capacidade |
+| Histórico de conversa | ✅ Permanece (messages) | Memória de curto prazo |
+| Tool results anteriores | ✅ Entra no histórico | Memória de buscas já feitas |
+
+---
+
+## 10. Conclusão: o modelo como arquiteto do contexto
+
+A tese central deste documento pode ser resumida em uma frase: **um modelo que recebe contexto pré-digerido nunca desenvolverá a capacidade de decidir o que precisa saber**.
+
+Isso não é apenas uma questão de arquitetura técnica. É uma questão de design de sistema que afeta diretamente a qualidade das respostas, a robustez em casos-limite, e a capacidade do sistema de lidar com a variabilidade natural de uma conversa real.
+
+O Stevan V1 é um modelo de geração de texto com RAG decorativo. O Stevan V2 — se implementado com os princípios aqui descritos — pode ser um agente que raciocina sobre o que precisa saber, busca com intenção, avalia se encontrou, e só responde quando tem base para responder.
+
+A literatura é unânime: agentic RAG outperforms traditional RAG em qualidade de resposta para queries complexas e conversacionais. O custo é latência adicional para os casos que requerem busca — um trade-off gerenciável com classificação rápida de intenção e caching semântico.
+
+> *"Agentic RAG turns retrieval into an iterative process: the agent can retrieve, evaluate, re-retrieve, and validate context before generating the final answer. This makes agentic RAG more robust than one-shot retrieval in production systems."*
+> — Weaviate, *What is Agentic RAG?* (2024)[^12]
+
+A mudança não é trivial. Requer redesenho do sistema prompt, refatoração do pipeline, e ajuste no gerenciamento do histórico de conversa. Mas é a evolução natural e inevitável de qualquer sistema RAG que pretende ir além do demo.
+
+---
+
+## Referências
+
+[^1]: Gao et al. (2023). *Retrieval-Augmented Generation for Large Language Models: A Survey*. [Prompt Engineering Guide — RAG Survey](https://www.promptingguide.ai/research/rag)
+
+[^2]: TechAhead (2025). *Agentic RAG: When LLMs Decide What and How to Retrieve*. [techaheadcorp.com](https://www.techaheadcorp.com/blog/agentic-rag-when-llms-decide-what-and-how-to-retrieve/)
+
+[^3]: IBM (2025). *What is Agentic RAG?*. [ibm.com/think/topics/agentic-rag](https://www.ibm.com/think/topics/agentic-rag)
+
+[^4]: NVIDIA Technical Blog (2025). *Traditional RAG vs. Agentic RAG — Why AI Agents Need Dynamic Knowledge to Get Smarter*. [developer.nvidia.com](https://developer.nvidia.com/blog/traditional-rag-vs-agentic-rag-why-ai-agents-need-dynamic-knowledge-to-get-smarter/)
+
+[^5]: ChatNexus (2025). *Contextual RAG: Maintaining Conversation Context in Retrieval*. [articles.chatnexus.io](https://articles.chatnexus.io/knowledge-base/contextual-rag-maintaining-conversation-context-in-retrieval/)
+
+[^6]: Yao, S., Zhao, J., Yu, D., Du, N., Shafran, I., Narasimhan, K., & Cao, Y. (2023). *ReAct: Synergizing Reasoning and Acting in Language Models*. ICLR 2023. [arxiv.org/abs/2210.03629](https://arxiv.org/abs/2210.03629)
+
+[^7]: NVIDIA Technical Blog (2025). *Build a Retrieval-Augmented Generation (RAG) Agent with NVIDIA Nemotron*. [developer.nvidia.com](https://developer.nvidia.com/blog/build-a-rag-agent-with-nvidia-nemotron/)
+
+[^8]: Gulati, S. (2024). *Query Rewriting in RAG Applications*. [shekhargulati.com](https://shekhargulati.com/2024/07/17/query-rewriting-in-rag-applications/)
+
+[^9]: Microsoft Learn (2025). *RAG and Generative AI — Azure AI Search*. [learn.microsoft.com](https://learn.microsoft.com/en-us/azure/search/retrieval-augmented-generation-overview)
+
+[^10]: Relace (2025). *Exploiting Parallel Tool Calls to Make Agentic Search 4x Faster*. [relace.ai/blog/fast-agentic-search](https://relace.ai/blog/fast-agentic-search)
+
+[^11]: Towards Data Science (2025). *Zero-Waste Agentic RAG: Designing Caching Architectures to Minimize Latency and LLM Costs at Scale*. [towardsdatascience.com](https://towardsdatascience.com/zero-waste-agentic-rag-designing-caching-architectures-to-minimize-latency-and-llm-costs-at-scale/)
+
+[^12]: Weaviate (2024). *What is Agentic RAG? From LLM RAG to AI Agents*. [weaviate.io/blog/what-is-agentic-rag](https://weaviate.io/blog/what-is-agentic-rag)
+
+[^13]: LangChain Docs (2025). *Build a custom RAG agent with LangGraph*. [docs.langchain.com](https://docs.langchain.com/oss/python/langgraph/agentic-rag)
+
+[^14]: Stevens Online (2026). *The Hidden Economics of AI Agents: Managing Token Costs and Latency Trade-offs*. [online.stevens.edu](https://online.stevens.edu/blog/hidden-economics-ai-agents-token-costs-latency/)
+
+---
+
+*Documento elaborado para suporte à decisão arquitetural do sistema Stevan — SVN Renda Variável. Março de 2026.*

@@ -22,7 +22,6 @@ from database.models import (
 from database import crud
 from services.whatsapp_client import zapi_client
 from services.openai_agent import openai_agent
-from services.vector_store import get_vector_store
 from services.sse_manager import get_sse_manager
 from services.insight_analyzer import save_conversation_insight
 from services.media_processor import media_processor
@@ -30,7 +29,6 @@ from services.conversation_memory import (
     get_history, update_history, append_to_history,
     handle_session_transition, build_context_with_summary,
     enqueue_message, schedule_task, _history_cache,
-    build_context_dedup_instruction
 )
 import asyncio
 
@@ -600,30 +598,9 @@ async def process_text_message(phone: str, message: str, db: Session, message_re
         
         history = get_history(phone, db)
         
-        rewrite_result = None
-        search_query = normalized_message
-        try:
-            from services.query_rewriter import rewrite_query
-            rewrite_result = await rewrite_query(normalized_message, history, openai_agent.client)
-            if rewrite_result and rewrite_result.rewritten_query:
-                search_query = rewrite_result.rewritten_query
-                print(f"[WEBHOOK] Query reescrita para RAG: '{normalized_message[:50]}' -> '{search_query[:50]}'")
-                if rewrite_result.categoria:
-                    print(f"[WEBHOOK] Categoria detectada: {rewrite_result.categoria}")
-        except Exception as e:
-            print(f"[WEBHOOK] Erro no query_rewriter (não-bloqueante): {e}")
-        
         if conversation.awaiting_confirmation:
-            detected_categoria = rewrite_result.categoria if rewrite_result else None
-            NEW_INTERACTION_CATEGORIES = ("SAUDACAO", "DOCUMENTAL", "ESCOPO", "MERCADO", "PITCH", "ATENDIMENTO_HUMANO")
-            
-            if detected_categoria in NEW_INTERACTION_CATEGORIES:
-                print(f"[WEBHOOK] awaiting_confirmation ativo mas IA classificou como {detected_categoria} - tratando como nova interação")
-                conversation.awaiting_confirmation = False
-                conversation.confirmation_sent_at = None
-                db.commit()
-            elif is_positive_confirmation(normalized_message):
-                print(f"[WEBHOOK] Confirmação positiva detectada (categoria={detected_categoria}) - marcando como resolvido pelo bot")
+            if is_positive_confirmation(normalized_message):
+                print(f"[WEBHOOK] Confirmação positiva detectada - marcando como resolvido pelo bot")
                 await mark_bot_resolved(db, conversation)
                 
                 farewell_messages = [
@@ -652,163 +629,10 @@ async def process_text_message(phone: str, message: str, db: Session, message_re
                     )
                 return
             else:
-                print(f"[WEBHOOK] awaiting_confirmation ativo, mensagem não reconhecida como confirmação (categoria={detected_categoria}) - continuando atendimento")
+                print(f"[WEBHOOK] awaiting_confirmation ativo, mensagem não reconhecida como confirmação - continuando atendimento")
                 conversation.awaiting_confirmation = False
                 conversation.confirmation_sent_at = None
                 db.commit()
-        
-        skip_rag = False
-        if rewrite_result:
-            skip_rag = rewrite_result.clarification_needed or rewrite_result.categoria in ("SAUDACAO", "ATENDIMENTO_HUMANO", "FORA_ESCOPO")
-            if skip_rag:
-                print(f"[WEBHOOK] Busca RAG pulada — categoria={rewrite_result.categoria}")
-        
-        knowledge_context = ""
-        retrieval_start = datetime.now()
-        search_results = []
-        try:
-            if not skip_rag:
-                from services.semantic_search import EnhancedSearch
-                from services.vector_store import filter_expired_results
-                vector_store = get_vector_store()
-                enhanced = EnhancedSearch(vector_store)
-                raw_results = enhanced.search(
-                    query=search_query,
-                    n_results=6,
-                    conversation_id=str(conversation.id) if conversation else None,
-                    similarity_threshold=0.8,
-                    db=db
-                )
-                raw_dicts = [
-                    {
-                        "content": r.content,
-                        "metadata": r.metadata,
-                        "distance": r.vector_distance,
-                        "composite_score": r.composite_score,
-                        "confidence_level": r.confidence_level,
-                    }
-                    for r in raw_results
-                ]
-                search_results_filtered = filter_expired_results(raw_dicts, db)[:5]
-                filtered_ids = {d.get("metadata", {}).get("block_id") for d in search_results_filtered}
-                search_results = [
-                    r for r in raw_results
-                    if r.metadata.get("block_id") in filtered_ids
-                ] if filtered_ids else []
-            
-                if search_results:
-                    knowledge_context = "\n\n--- Informações da Base de Conhecimento ---\n"
-                    seen_product_ids = set()
-                    
-                    block_ids = [r.metadata.get("block_id") for r in search_results if r.metadata.get("block_id")]
-                    block_contents_map = {}
-                    if block_ids:
-                        try:
-                            from database.models import ContentBlock as CB
-                            from services.content_formatter import get_rich_content
-                            int_ids = []
-                            for bid in block_ids:
-                                try:
-                                    int_ids.append(int(str(bid).split("_")[-1]) if "_" in str(bid) else int(bid))
-                                except (ValueError, TypeError):
-                                    pass
-                            if int_ids:
-                                blocks = db.query(CB.id, CB.content).filter(CB.id.in_(int_ids)).all()
-                                block_contents_map = {b.id: b.content for b in blocks}
-                        except Exception as e:
-                            print(f"[WEBHOOK] Erro ao buscar content_blocks originais: {e}")
-                    
-                    for i, r in enumerate(search_results, 1):
-                        metadata = r.metadata
-                        title = metadata.get("document_title", "Documento")
-                        mid = metadata.get("material_id")
-                        mid_info = f" [material_id={mid}]" if mid else ""
-                        
-                        block_id_raw = metadata.get("block_id")
-                        original_content = None
-                        if block_id_raw:
-                            try:
-                                int_bid = int(str(block_id_raw).split("_")[-1]) if "_" in str(block_id_raw) else int(block_id_raw)
-                                original_content = block_contents_map.get(int_bid)
-                            except (ValueError, TypeError):
-                                pass
-                        
-                        if original_content:
-                            from services.content_formatter import get_rich_content
-                            content = get_rich_content(original_content, r.content, max_chars=800)
-                        else:
-                            content = r.content[:800]
-                        
-                        knowledge_context += f"\n[{i}] {title}{mid_info}:\n{content}\n"
-                        pid = metadata.get("product_id")
-                        if pid:
-                            seen_product_ids.add(int(pid))
-                        elif mid:
-                            try:
-                                from database.models import Material as Mat
-                                mat_obj = db.query(Mat.product_id).filter(Mat.id == int(mid)).first()
-                                if mat_obj:
-                                    seen_product_ids.add(mat_obj.product_id)
-                            except Exception:
-                                pass
-
-                    if seen_product_ids:
-                        try:
-                            from database.models import Material, Product, MaterialFile
-                            materials_with_files = (
-                                db.query(Material, Product.name, Product.ticker)
-                                .join(Product, Product.id == Material.product_id)
-                                .join(MaterialFile, MaterialFile.material_id == Material.id)
-                                .filter(Material.product_id.in_(list(seen_product_ids)))
-                                .filter(Material.publish_status != "arquivado")
-                                .all()
-                            )
-                            if materials_with_files:
-                                materials_by_product = {}
-                                for mat, prod_name, prod_ticker in materials_with_files:
-                                    key = prod_ticker or prod_name
-                                    if key not in materials_by_product:
-                                        materials_by_product[key] = []
-                                    type_labels = {
-                                        'one_page': 'One Pager', 'apresentacao': 'Apresentação',
-                                        'comite': 'Material do Comitê', 'relatorio': 'Relatório',
-                                        'lamina': 'Lâmina',
-                                    }
-                                    label = type_labels.get(mat.material_type, mat.material_type or mat.name or 'Documento')
-                                    materials_by_product[key].append(f"[ID:{mat.id}] {mat.name or label}")
-                                knowledge_context += "\n--- Materiais com PDF disponível para envio ---\n"
-                                for prod_key, mat_list in materials_by_product.items():
-                                    knowledge_context += f"{prod_key}: {', '.join(mat_list)}\n"
-                                knowledge_context += "Para enviar um material, use a função send_document com o material_id correspondente.\n"
-                        except Exception as e:
-                            print(f"[WEBHOOK] Erro ao listar materiais disponíveis: {e}")
-        except Exception as e:
-            print(f"[WEBHOOK] Erro ao buscar na base de conhecimento: {e}")
-        
-        retrieval_time = int((datetime.now() - retrieval_start).total_seconds() * 1000)
-        chunks_retrieved = []
-        chunk_versions = {}
-        min_distance = None
-        max_distance = None
-        query_type = None
-        
-        if search_results:
-            for r in search_results:
-                meta = r.metadata if hasattr(r, 'metadata') else r.get("metadata", {})
-                block_id = meta.get("block_id", "")
-                if block_id:
-                    chunks_retrieved.append(block_id)
-                    chunk_versions[block_id] = meta.get("version", "1")
-                
-                dist = r.vector_distance if hasattr(r, 'vector_distance') else r.get("distance", 0)
-                if min_distance is None or dist < min_distance:
-                    min_distance = dist
-                if max_distance is None or dist > max_distance:
-                    max_distance = dist
-                
-                if not query_type:
-                    extra = getattr(r, 'extra_meta', {}) if hasattr(r, 'extra_meta') else {}
-                    query_type = extra.get('query_intent', 'conceptual')
         
         assessor_data = None
         if assessor:
@@ -821,59 +645,36 @@ async def process_text_message(phone: str, message: str, db: Session, message_re
                 "broker": assessor.broker_responsavel
             }
         
-        history_with_summary = build_context_with_summary(history, conversation, rewrite_result)
+        history_with_summary = build_context_with_summary(history, conversation, None)
         
-        dedup_instruction = build_context_dedup_instruction(history, normalized_message)
-        full_context = knowledge_context
-        if dedup_instruction:
-            full_context = (full_context or "") + dedup_instruction
-        
-        print(f"[WEBHOOK] Chamando OpenAI para gerar resposta...")
-        response, should_create_ticket, context = await openai_agent.generate_response(
-            normalized_message,
-            history_with_summary,
-            extra_context=full_context if full_context else None,
+        print(f"[WEBHOOK] Chamando Pipeline V2 (agentic RAG)...")
+        response, should_create_ticket, context = await openai_agent.generate_response_v2(
+            user_message=normalized_message,
+            conversation_history=history_with_summary,
             sender_phone=phone,
             identified_assessor=assessor_data,
-            rewrite_result=rewrite_result
+            db=db,
+            conversation_id=str(conversation.id) if conversation else None,
+            allow_tools=True,
         )
-        print(f"[WEBHOOK] Resposta gerada: {response[:100] if response else 'VAZIA'}...")
+        print(f"[WEBHOOK] V2 Resposta gerada: {response[:100] if response else 'VAZIA'} | iterations={context.get('iterations')} elapsed={context.get('elapsed_ms')}ms")
         
         diagram_slugs_from_ai = []
         material_ids_from_ai = []
         
-        _TEXT_GEN_PATTERNS = re.compile(
-            r'(?:texto comercial|pitch|argumentação|argumentacao|'
-            r'escreve|escreva|redige|redija|elabore|elabora|'
-            r'prepara um texto|prepare um texto|monta um texto|monte um texto|'
-            r'(?:(?:gere|gera|crie|cria|faça|faz)\s+(?:um |uma |o |a )?(?:texto|resumo|análise|analise|pitch|email|e-mail|apresentação)))',
-            re.IGNORECASE
-        )
-        _EXPLICIT_SEND_PATTERNS = re.compile(
-            r'(?:manda|envia|envie|enviar|mandar|mande)\s.*(?:pdf|material|documento|lâmina|lamina|one.?pager|arquivo)',
-            re.IGNORECASE
-        )
-        _is_text_generation_request = (
-            bool(_TEXT_GEN_PATTERNS.search(normalized_message)) and
-            not bool(_EXPLICIT_SEND_PATTERNS.search(normalized_message))
-        )
-        
-        tool_calls = context.get("tool_calls") if context else None
-        if tool_calls:
-            for tc in tool_calls:
+        action_tool_calls = context.get("action_tool_calls") if context else None
+        if action_tool_calls:
+            for tc in action_tool_calls:
                 if tc["name"] == "send_document":
-                    if _is_text_generation_request:
-                        print(f"[WEBHOOK] BLOQUEADO: send_document ignorado porque mensagem é pedido de geração de texto: '{normalized_message[:80]}'")
-                        continue
                     mid = str(tc["arguments"].get("material_id", ""))
                     if mid:
                         material_ids_from_ai.append(mid)
-                        print(f"[WEBHOOK] Tool call: send_document(material_id={mid})")
+                        print(f"[WEBHOOK] V2 Action: send_document(material_id={mid})")
                 elif tc["name"] == "send_payoff_diagram":
                     slug = tc["arguments"].get("structure_slug", "")
                     if slug:
                         diagram_slugs_from_ai.append(slug)
-                        print(f"[WEBHOOK] Tool call: send_payoff_diagram(slug={slug})")
+                        print(f"[WEBHOOK] V2 Action: send_payoff_diagram(slug={slug})")
         
         if response:
             clean_response, text_diagram_slugs = _extract_diagram_markers(response)
@@ -971,29 +772,23 @@ async def process_text_message(phone: str, message: str, db: Session, message_re
         if message_record:
             if response:
                 message_record.ai_response = response
-            if rewrite_result and rewrite_result.categoria:
-                message_record.ai_intent = rewrite_result.categoria
-            else:
-                message_record.ai_intent = context.get("intent") if context else None
+            message_record.ai_intent = context.get("intent") if context else None
             if created_ticket_id:
                 message_record.conversation_ticket_id = created_ticket_id
             db.commit()
         
         try:
+            tool_calls_for_log = context.get("tool_calls", []) if context else []
+            search_tools = [tc for tc in (tool_calls_for_log or []) if tc.get("name") == "search_knowledge_base"]
             retrieval_log = RetrievalLog(
                 query=normalized_message,
-                query_type=query_type,
-                chunks_retrieved=json.dumps(chunks_retrieved) if chunks_retrieved else None,
-                chunks_used=json.dumps(chunks_retrieved[:3]) if chunks_retrieved else None,
-                chunk_versions=json.dumps(chunk_versions) if chunk_versions else None,
-                result_count=len(search_results),
-                min_distance=str(round(min_distance, 4)) if min_distance is not None else None,
-                max_distance=str(round(max_distance, 4)) if max_distance is not None else None,
-                threshold_applied="0.8",
+                query_type="v2_agentic",
+                result_count=len(search_tools),
+                threshold_applied="v2_auto",
                 human_transfer=is_human_transfer,
                 transfer_reason=transfer_reason,
                 conversation_id=str(conversation.id) if conversation else None,
-                response_time_ms=retrieval_time
+                response_time_ms=context.get("elapsed_ms") if context else None
             )
             db.add(retrieval_log)
             db.commit()
@@ -1080,15 +875,13 @@ async def process_text_message(phone: str, message: str, db: Session, message_re
                                 f"Se ele pediu o material/PDF, informe que o arquivo não está disponível no momento e ofereça resumir o conteúdo. "
                                 f"Se ele pediu outra coisa (texto comercial, resumo, análise, pitch), atenda ao pedido normalmente."
                             )
-                            fallback_history = history_with_summary[-6:] if history_with_summary else []
-                            fallback_response, _, _ = await openai_agent.generate_response(
-                                fallback_prompt,
-                                fallback_history,
-                                extra_context=full_context if full_context else None,
+                            fallback_response, _, _ = await openai_agent.generate_response_v2(
+                                user_message=fallback_prompt,
+                                conversation_history=history_with_summary[-6:] if history_with_summary else [],
                                 sender_phone=phone,
                                 identified_assessor=assessor_data,
-                                rewrite_result=None,
-                                allow_tools=False
+                                db=db,
+                                allow_tools=False,
                             )
                             if fallback_response and len(fallback_response.strip()) > 10:
                                 print(f"[MATERIAL_FALLBACK] Enviando resposta fallback: {fallback_response[:100]}...")
@@ -1124,36 +917,29 @@ async def process_text_message(phone: str, message: str, db: Session, message_re
                 except:
                     pass
         
-        if _is_text_generation_request and not response_sent_successfully and not material_ids_from_ai:
+        if not response_sent_successfully and not material_ids_from_ai and not diagram_slugs_from_ai:
             response_was_empty = not response or len(response.strip()) < 20
             if response_was_empty:
-                print(f"[MATERIAL_FALLBACK] Pedido de geração de texto sem resposta útil. send_document pode ter sido bloqueado. Gerando fallback...")
+                print(f"[WEBHOOK] Resposta V2 vazia sem ações — gerando fallback sem tools...")
                 try:
-                    fallback_prompt = (
-                        f"O assessor pediu: \"{normalized_message}\". "
-                        f"Responda ao pedido do assessor da melhor forma possível usando o conhecimento disponível. "
-                        f"Atenda ao pedido normalmente — gere o texto, resumo, pitch ou análise solicitado."
-                    )
-                    fallback_history = history_with_summary[-6:] if history_with_summary else []
-                    fallback_response, _, _ = await openai_agent.generate_response(
-                        fallback_prompt,
-                        fallback_history,
-                        extra_context=full_context if full_context else None,
+                    fallback_response, _, _ = await openai_agent.generate_response_v2(
+                        user_message=normalized_message,
+                        conversation_history=history_with_summary[-6:] if history_with_summary else [],
                         sender_phone=phone,
                         identified_assessor=assessor_data,
-                        rewrite_result=None,
-                        allow_tools=False
+                        db=db,
+                        allow_tools=False,
                     )
                     if fallback_response and len(fallback_response.strip()) > 10:
-                        print(f"[MATERIAL_FALLBACK] Enviando resposta fallback (gate): {fallback_response[:100]}...")
+                        print(f"[WEBHOOK] Fallback V2 enviando: {fallback_response[:100]}...")
                         send_result = await zapi_client.send_text(phone, fallback_response, delay_typing=2)
                         if send_result.get("success"):
                             response_sent_successfully = True
                             append_to_history(phone, "assistant", fallback_response)
                     else:
-                        print(f"[MATERIAL_FALLBACK] Fallback também gerou resposta vazia")
+                        print(f"[WEBHOOK] Fallback V2 também gerou resposta vazia")
                 except Exception as fallback_err:
-                    print(f"[MATERIAL_FALLBACK] Erro no fallback (gate): {fallback_err}")
+                    print(f"[WEBHOOK] Erro no fallback V2: {fallback_err}")
         
         if response_sent_successfully or material_ids_from_ai or diagram_slugs_from_ai:
             try:

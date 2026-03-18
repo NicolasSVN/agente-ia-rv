@@ -2238,6 +2238,287 @@ INSTRUÇÕES IMPORTANTES:
         
         return structures_found
 
+    async def generate_response_v2(
+        self,
+        user_message: str,
+        conversation_history: Optional[List[dict]] = None,
+        sender_phone: Optional[str] = None,
+        identified_assessor: Optional[Dict[str, Any]] = None,
+        db=None,
+        conversation_id: Optional[str] = None,
+        allow_tools: bool = True,
+    ) -> Tuple[str, bool, dict]:
+        """
+        Pipeline V2: GPT decide, depois age (agentic RAG com tool-calling).
+        
+        O GPT recebe a mensagem crua do assessor (sem contexto injetado no user turn)
+        e decide quais tools usar via function calling. Loop iterativo com MAX_ITERATIONS=3.
+        
+        Args:
+            user_message: Mensagem crua do assessor (sem contexto injetado)
+            conversation_history: Histórico da conversa (formato OpenAI messages)
+            sender_phone: Telefone do remetente
+            identified_assessor: Dados do assessor já identificado
+            db: Sessão do banco de dados (para queries de materiais, etc)
+            conversation_id: ID da conversa para logs
+            allow_tools: Se deve permitir tool calling
+            
+        Returns:
+            Tuple (response, should_create_ticket, context_info)
+        """
+        import asyncio
+        import time
+        from services.agent_tools import ALL_TOOLS_V2, execute_tool_call
+        from services.agent_prompt import build_system_prompt_v2
+
+        MAX_ITERATIONS = 3
+        start_time = time.time()
+
+        if not self.client:
+            return (
+                "Desculpe, o serviço de IA não está configurado no momento.",
+                False,
+                {"intent": "error"}
+            )
+
+        config = self._get_config_from_db()
+        model = config.get("model", "gpt-4o") if config else "gpt-4o"
+        temperature = config.get("temperature", 0.4) if config else 0.4
+        max_tokens = config.get("max_tokens", 1200) if config else 1200
+
+        assessor_data = identified_assessor
+        if not assessor_data and sender_phone:
+            assessor_data = self._search_assessor_by_phone(sender_phone)
+            if assessor_data:
+                print(f"[V2] Assessor identificado por telefone: {assessor_data['nome']}")
+
+        if not assessor_data:
+            extracted_name = self._extract_name_from_message(user_message)
+            if extracted_name:
+                assessor_data = self._search_assessor_by_name(extracted_name)
+                if assessor_data:
+                    print(f"[V2] Assessor identificado por nome: {assessor_data['nome']}")
+
+        available_materials = []
+        if db:
+            try:
+                available_materials = self._list_available_materials(db)
+            except Exception as e:
+                print(f"[V2] Erro ao listar materiais: {e}")
+
+        system_prompt = build_system_prompt_v2(
+            config=config,
+            assessor_data=assessor_data,
+            available_materials=available_materials,
+        )
+
+        messages = [{"role": "system", "content": system_prompt}]
+
+        if conversation_history:
+            clean_history = [
+                {"role": m["role"], "content": m["content"]}
+                for m in conversation_history[-20:]
+                if m.get("role") in ("user", "assistant") and m.get("content")
+            ]
+            messages.extend(clean_history)
+
+        messages.append({"role": "user", "content": user_message})
+
+        tool_definitions = ALL_TOOLS_V2 if allow_tools else None
+        tool_calls_log = []
+        iterations = 0
+
+        for iteration in range(MAX_ITERATIONS):
+            iterations = iteration + 1
+            print(f"[V2] Iteração {iterations}/{MAX_ITERATIONS} — {len(messages)} mensagens no contexto")
+
+            try:
+                api_kwargs = {
+                    "model": model,
+                    "messages": messages,
+                    "max_tokens": max_tokens,
+                    "temperature": temperature,
+                }
+                if tool_definitions:
+                    api_kwargs["tools"] = tool_definitions
+                    api_kwargs["tool_choice"] = "auto"
+
+                response = self.client.chat.completions.create(**api_kwargs)
+
+                try:
+                    if response.usage:
+                        cost_tracker.track_openai_chat(
+                            model=model,
+                            prompt_tokens=response.usage.prompt_tokens,
+                            completion_tokens=response.usage.completion_tokens,
+                            total_tokens=response.usage.total_tokens,
+                            operation='chat_response_v2',
+                            conversation_id=conversation_id
+                        )
+                except Exception:
+                    pass
+
+            except Exception as e:
+                print(f"[V2] Erro na chamada OpenAI (iteração {iterations}): {e}")
+                return (
+                    None,
+                    False,
+                    {"intent": "error", "error": str(e), "identified_assessor": assessor_data}
+                )
+
+            choice = response.choices[0]
+            assistant_message = choice.message
+
+            if not assistant_message.tool_calls:
+                ai_response = assistant_message.content or ""
+                elapsed_ms = int((time.time() - start_time) * 1000)
+                print(f"[V2] Resposta final — {iterations} iteração(ões), {elapsed_ms}ms total, {len(tool_calls_log)} tool calls")
+
+                action_tool_calls = [
+                    tc for tc in tool_calls_log
+                    if tc["name"] in ("send_document", "send_payoff_diagram")
+                ]
+
+                handoff_calls = [
+                    tc for tc in tool_calls_log
+                    if tc["name"] == "request_human_handoff"
+                ]
+                should_create_ticket = bool(handoff_calls)
+                handoff_reason = handoff_calls[0]["arguments"].get("reason") if handoff_calls else None
+
+                return ai_response, should_create_ticket, {
+                    "intent": "question",
+                    "identified_assessor": assessor_data,
+                    "tool_calls": tool_calls_log if tool_calls_log else None,
+                    "action_tool_calls": action_tool_calls if action_tool_calls else None,
+                    "human_transfer": should_create_ticket,
+                    "transfer_reason": handoff_reason,
+                    "iterations": iterations,
+                    "elapsed_ms": elapsed_ms,
+                    "pipeline": "v2",
+                }
+
+            messages.append({
+                "role": "assistant",
+                "content": assistant_message.content,
+                "tool_calls": [
+                    {
+                        "id": tc.id,
+                        "type": "function",
+                        "function": {
+                            "name": tc.function.name,
+                            "arguments": tc.function.arguments,
+                        }
+                    }
+                    for tc in assistant_message.tool_calls
+                ]
+            })
+
+            tasks = []
+            for tc in assistant_message.tool_calls:
+                tasks.append(execute_tool_call(tc, db=db, conversation_id=conversation_id))
+
+            if len(tasks) == 1:
+                results = [await tasks[0]]
+            else:
+                results = await asyncio.gather(*tasks, return_exceptions=True)
+
+            for tc, result in zip(assistant_message.tool_calls, results):
+                tc_name = tc.function.name
+                try:
+                    tc_args = json.loads(tc.function.arguments)
+                except (json.JSONDecodeError, TypeError):
+                    tc_args = {}
+
+                if isinstance(result, Exception):
+                    result_str = json.dumps({"error": str(result)}, ensure_ascii=False)
+                else:
+                    result_str = json.dumps(result, ensure_ascii=False)
+
+                if len(result_str) > 8000:
+                    if isinstance(result, dict) and "results" in result:
+                        truncated = dict(result)
+                        while len(json.dumps(truncated, ensure_ascii=False)) > 7500 and truncated.get("results"):
+                            if isinstance(truncated["results"], list) and len(truncated["results"]) > 1:
+                                truncated["results"] = truncated["results"][:-1]
+                            else:
+                                break
+                        truncated["_truncated"] = True
+                        result_str = json.dumps(truncated, ensure_ascii=False)
+                    else:
+                        result_str = result_str[:7500]
+
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": tc.id,
+                    "content": result_str,
+                })
+
+                tool_calls_log.append({
+                    "name": tc_name,
+                    "arguments": tc_args,
+                    "result_preview": result_str[:200] if not isinstance(result, Exception) else str(result)[:200],
+                    "iteration": iterations,
+                })
+
+        elapsed_ms = int((time.time() - start_time) * 1000)
+        print(f"[V2] MAX_ITERATIONS atingido ({MAX_ITERATIONS}) — {elapsed_ms}ms total")
+
+        try:
+            api_kwargs_final = {
+                "model": model,
+                "messages": messages,
+                "max_tokens": max_tokens,
+                "temperature": temperature,
+            }
+            final_response = self.client.chat.completions.create(**api_kwargs_final)
+            ai_response = final_response.choices[0].message.content or ""
+        except Exception as e:
+            print(f"[V2] Erro na resposta final após max iterations: {e}")
+            ai_response = "Desculpe, tive um problema ao processar sua pergunta. Pode tentar novamente?"
+
+        action_tool_calls = [
+            tc for tc in tool_calls_log
+            if tc["name"] in ("send_document", "send_payoff_diagram")
+        ]
+
+        return ai_response, False, {
+            "intent": "question",
+            "identified_assessor": assessor_data,
+            "tool_calls": tool_calls_log if tool_calls_log else None,
+            "action_tool_calls": action_tool_calls if action_tool_calls else None,
+            "iterations": iterations + 1,
+            "elapsed_ms": elapsed_ms,
+            "pipeline": "v2",
+            "max_iterations_reached": True,
+        }
+
+    def _list_available_materials(self, db) -> List[str]:
+        """Lista materiais com PDF disponível para o system prompt V2."""
+        try:
+            from database.models import Material, Product, MaterialFile
+            materials_with_files = (
+                db.query(Material.id, Material.name, Material.material_type, Product.name.label("pname"), Product.ticker)
+                .join(Product, Product.id == Material.product_id)
+                .join(MaterialFile, MaterialFile.material_id == Material.id)
+                .filter(Material.publish_status != "arquivado")
+                .all()
+            )
+            result = []
+            type_labels = {
+                'one_page': 'One Pager', 'apresentacao': 'Apresentação',
+                'comite': 'Material do Comitê', 'relatorio': 'Relatório',
+                'lamina': 'Lâmina',
+            }
+            for mat in materials_with_files:
+                label = type_labels.get(mat.material_type, mat.name or 'Documento')
+                key = mat.ticker or mat.pname
+                result.append(f"{key}: [ID:{mat.id}] {mat.name or label}")
+            return result
+        except Exception as e:
+            print(f"[V2] Erro ao listar materiais: {e}")
+            return []
+
     def is_available(self) -> bool:
         """Verifica se o agente está configurado e disponível."""
         return self.client is not None
