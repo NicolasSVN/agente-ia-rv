@@ -640,10 +640,42 @@ async def send_confirmation_request(
     return False
 
 
+def _had_substantive_interaction(db: Session, conversation) -> bool:
+    """Verifica se o bot respondeu algo substantivo (não apenas saudação) na sessão.
+    Checks the most recent INBOUND message's ai_intent (which stores the query
+    rewriter's categoria) to determine if the user asked a real question."""
+    from database.models import WhatsAppMessage, MessageDirection
+    
+    NON_SUBSTANTIVE_INTENTS = {
+        "unidentified_contact_greeting", "blocked_ticket_open",
+        "SAUDACAO", "FORA_ESCOPO",
+    }
+    
+    last_inbound_msg = (
+        db.query(WhatsAppMessage)
+        .filter(
+            WhatsAppMessage.phone == conversation.phone,
+            WhatsAppMessage.direction == MessageDirection.INBOUND.value,
+            WhatsAppMessage.ai_intent.isnot(None),
+        )
+        .order_by(WhatsAppMessage.created_at.desc())
+        .first()
+    )
+    
+    if not last_inbound_msg:
+        return False
+    
+    if last_inbound_msg.ai_intent in NON_SUBSTANTIVE_INTENTS:
+        return False
+    
+    return True
+
+
 async def check_pending_confirmations(db: Session, zapi_client, timeout_minutes: int = 5):
     """
     Verifica conversas que aguardam confirmação há mais de X minutos.
     Chamado periodicamente pelo scheduler.
+    Só envia confirmação se o bot respondeu algo substantivo na sessão.
     """
     from datetime import timedelta
     
@@ -660,6 +692,9 @@ async def check_pending_confirmations(db: Session, zapi_client, timeout_minutes:
     
     for conv in pending_conversations:
         try:
+            if not _had_substantive_interaction(db, conv):
+                print(f"[FLOW] Confirmação NÃO enviada para {conv.phone} — sem interação substantiva (apenas saudação)")
+                continue
             await send_confirmation_request(db, conv, zapi_client)
             print(f"[FLOW] Confirmação enviada para {conv.phone}")
         except Exception as e:

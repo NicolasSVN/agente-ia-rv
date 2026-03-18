@@ -238,7 +238,7 @@ async def generate_session_summary(history: list, client) -> str:
         response = await asyncio.get_event_loop().run_in_executor(
             None,
             lambda: client.chat.completions.create(
-                model="gpt-4o-mini",
+                model="gpt-4o",
                 messages=[
                     {
                         "role": "system",
@@ -267,6 +267,13 @@ async def handle_session_transition(phone: str, db: Session, conversation):
         return
 
     print(f"[MEMORY] Gap de sessão detectado para {phone}")
+
+    if conversation:
+        if getattr(conversation, 'awaiting_confirmation', False):
+            conversation.awaiting_confirmation = False
+            conversation.confirmation_sent_at = None
+            db.commit()
+            print(f"[MEMORY] awaiting_confirmation limpo por gap de sessão para {phone}")
 
     old_history = _history_cache.get(phone, [])
     if not old_history:

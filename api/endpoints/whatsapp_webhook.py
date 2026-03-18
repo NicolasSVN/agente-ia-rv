@@ -670,42 +670,6 @@ async def process_text_message(phone: str, message: str, db: Session, message_re
                 db.commit()
             return
         
-        if conversation.awaiting_confirmation:
-            if is_positive_confirmation(normalized_message):
-                print(f"[WEBHOOK] Confirmação positiva detectada - marcando como resolvido pelo bot")
-                await mark_bot_resolved(db, conversation)
-                
-                farewell_messages = [
-                    "Boa! Qualquer coisa, é só chamar! 👋",
-                    "Tranquilo! Precisando, estou por aqui!",
-                    "Show! Fico à disposição! 🚀",
-                    "Perfeito! Até mais!",
-                    "Beleza! Qualquer dúvida, só chamar!",
-                ]
-                import random
-                response = random.choice(farewell_messages)
-                
-                if message_record:
-                    message_record.ai_response = response
-                    message_record.ai_intent = "bot_resolution_confirmed"
-                    db.commit()
-                
-                result = await zapi_client.send_text(phone, response, delay_typing=1)
-                if result.get("success"):
-                    response_sent_successfully = True
-                    save_message_zapi(
-                        db, message_id=result.get("message_id"), zaap_id=result.get("zaap_id"),
-                        phone=phone, direction=MessageDirection.OUTBOUND.value,
-                        message_type=MessageType.TEXT.value, from_me=True, body=response,
-                        sender_type=SenderType.BOT.value
-                    )
-                return
-            else:
-                conversation.awaiting_confirmation = False
-                conversation.confirmation_sent_at = None
-                db.commit()
-                print(f"[WEBHOOK] Nova dúvida após confirmação - continuando atendimento")
-        
         assessor, is_known = identify_contact(db, phone)
         print(f"[WEBHOOK] Assessor identificado: {assessor.nome if assessor else 'Nenhum'}, conhecido: {is_known}")
         
@@ -880,6 +844,50 @@ async def process_text_message(phone: str, message: str, db: Session, message_re
                     print(f"[WEBHOOK] Categoria detectada: {rewrite_result.categoria}")
         except Exception as e:
             print(f"[WEBHOOK] Erro no query_rewriter (não-bloqueante): {e}")
+        
+        if conversation.awaiting_confirmation:
+            detected_categoria = rewrite_result.categoria if rewrite_result else None
+            NEW_INTERACTION_CATEGORIES = ("SAUDACAO", "DOCUMENTAL", "ESCOPO", "MERCADO", "PITCH", "ATENDIMENTO_HUMANO")
+            
+            if detected_categoria in NEW_INTERACTION_CATEGORIES:
+                print(f"[WEBHOOK] awaiting_confirmation ativo mas IA classificou como {detected_categoria} - tratando como nova interação")
+                conversation.awaiting_confirmation = False
+                conversation.confirmation_sent_at = None
+                db.commit()
+            elif is_positive_confirmation(normalized_message):
+                print(f"[WEBHOOK] Confirmação positiva detectada (categoria={detected_categoria}) - marcando como resolvido pelo bot")
+                await mark_bot_resolved(db, conversation)
+                
+                farewell_messages = [
+                    "Boa! Qualquer coisa, é só chamar! 👋",
+                    "Tranquilo! Precisando, estou por aqui!",
+                    "Show! Fico à disposição! 🚀",
+                    "Perfeito! Até mais!",
+                    "Beleza! Qualquer dúvida, só chamar!",
+                ]
+                import random
+                response = random.choice(farewell_messages)
+                
+                if message_record:
+                    message_record.ai_response = response
+                    message_record.ai_intent = "bot_resolution_confirmed"
+                    db.commit()
+                
+                result = await zapi_client.send_text(phone, response, delay_typing=1)
+                if result.get("success"):
+                    response_sent_successfully = True
+                    save_message_zapi(
+                        db, message_id=result.get("message_id"), zaap_id=result.get("zaap_id"),
+                        phone=phone, direction=MessageDirection.OUTBOUND.value,
+                        message_type=MessageType.TEXT.value, from_me=True, body=response,
+                        sender_type=SenderType.BOT.value
+                    )
+                return
+            else:
+                print(f"[WEBHOOK] awaiting_confirmation ativo, mensagem não reconhecida como confirmação (categoria={detected_categoria}) - continuando atendimento")
+                conversation.awaiting_confirmation = False
+                conversation.confirmation_sent_at = None
+                db.commit()
         
         skip_rag = False
         if rewrite_result:
@@ -1195,7 +1203,10 @@ async def process_text_message(phone: str, message: str, db: Session, message_re
         if message_record:
             if response:
                 message_record.ai_response = response
-            message_record.ai_intent = context.get("intent") if context else None
+            if rewrite_result and rewrite_result.categoria:
+                message_record.ai_intent = rewrite_result.categoria
+            else:
+                message_record.ai_intent = context.get("intent") if context else None
             if created_ticket_id:
                 message_record.conversation_ticket_id = created_ticket_id
             db.commit()

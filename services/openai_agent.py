@@ -101,7 +101,7 @@ Se NEGA_TODOS ou NOVA_PERGUNTA, ticker deve ser null."""
 
         try:
             response = self.client.chat.completions.create(
-                model="gpt-4o-mini",
+                model="gpt-4o",
                 messages=[
                     {"role": "system", "content": "Você é um classificador de intenções. Responda apenas em JSON válido."},
                     {"role": "user", "content": prompt}
@@ -113,7 +113,7 @@ Se NEGA_TODOS ou NOVA_PERGUNTA, ticker deve ser null."""
             try:
                 if response.usage:
                     cost_tracker.track_openai_chat(
-                        model='gpt-4o-mini',
+                        model='gpt-4o',
                         prompt_tokens=response.usage.prompt_tokens,
                         completion_tokens=response.usage.completion_tokens,
                         total_tokens=response.usage.total_tokens,
@@ -321,7 +321,7 @@ Responda em JSON:
 
         try:
             response = self.client.chat.completions.create(
-                model="gpt-4o-mini",
+                model="gpt-4o",
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.3,
                 max_tokens=500
@@ -329,7 +329,7 @@ Responda em JSON:
             try:
                 if response.usage:
                     cost_tracker.track_openai_chat(
-                        model='gpt-4o-mini',
+                        model='gpt-4o',
                         prompt_tokens=response.usage.prompt_tokens,
                         completion_tokens=response.usage.completion_tokens,
                         total_tokens=response.usage.total_tokens,
@@ -395,7 +395,7 @@ Telefone: {assessor.get('telefone', 'N/A')}
         
         try:
             response = self.client.chat.completions.create(
-                model="gpt-4o-mini",
+                model="gpt-4o",
                 messages=[
                     {
                         "role": "system",
@@ -482,7 +482,7 @@ Retorne APENAS o JSON."""
             try:
                 if response.usage:
                     cost_tracker.track_openai_chat(
-                        model='gpt-4o-mini',
+                        model='gpt-4o',
                         prompt_tokens=response.usage.prompt_tokens,
                         completion_tokens=response.usage.completion_tokens,
                         total_tokens=response.usage.total_tokens,
