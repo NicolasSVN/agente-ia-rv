@@ -288,7 +288,7 @@ async def _send_diagram_for_slug(phone: str, slug: str, db: Session):
             CampaignStructure.campaign_slug == slug,
             CampaignStructure.is_active == 1,
             (CampaignStructure.valid_from.is_(None)) | (CampaignStructure.valid_from <= now),
-            (CampaignStructure.valid_until.is_(None)) | (CampaignStructure.valid_until > now),
+            (CampaignStructure.valid_until.is_(None)) | (CampaignStructure.valid_until >= now),
         ).first()
     except Exception as e:
         print(f"[DIAGRAM] Erro ao buscar campanha para slug {slug}: {e}")

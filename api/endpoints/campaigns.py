@@ -2468,7 +2468,7 @@ async def list_campaign_structures(
         query = query.filter(
             CampaignStructure.is_active == 1,
             (CampaignStructure.valid_from.is_(None)) | (CampaignStructure.valid_from <= now),
-            (CampaignStructure.valid_until.is_(None)) | (CampaignStructure.valid_until > now),
+            (CampaignStructure.valid_until.is_(None)) | (CampaignStructure.valid_until >= now),
         )
     structures = query.order_by(CampaignStructure.created_at.desc()).all()
     return {"structures": [_structure_to_dict(s) for s in structures]}
@@ -2483,7 +2483,7 @@ async def get_active_campaign_structures(
     structures = db.query(CampaignStructure).filter(
         CampaignStructure.is_active == 1,
         (CampaignStructure.valid_from.is_(None)) | (CampaignStructure.valid_from <= now),
-        (CampaignStructure.valid_until.is_(None)) | (CampaignStructure.valid_until > now),
+        (CampaignStructure.valid_until.is_(None)) | (CampaignStructure.valid_until >= now),
     ).order_by(CampaignStructure.name).all()
     return {"structures": [_structure_to_dict(s) for s in structures]}
 

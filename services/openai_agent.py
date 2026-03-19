@@ -2520,7 +2520,7 @@ INSTRUÇÕES IMPORTANTES:
             campaigns = db.query(CampaignStructure).filter(
                 CampaignStructure.is_active == 1,
                 (CampaignStructure.valid_from.is_(None)) | (CampaignStructure.valid_from <= now),
-                (CampaignStructure.valid_until.is_(None)) | (CampaignStructure.valid_until > now),
+                (CampaignStructure.valid_until.is_(None)) | (CampaignStructure.valid_until >= now),
             ).all()
 
             result = []
