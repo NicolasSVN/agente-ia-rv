@@ -211,7 +211,7 @@ async def execute_tool_call(tool_call, db=None, conversation_id=None) -> Dict[st
         elif name == "lookup_fii_public":
             result = await _execute_lookup_fii(args)
         elif name == "send_document":
-            result = {"action": "send_document", "material_id": args.get("material_id"), "product_name": args.get("product_name")}
+            result = await _validate_and_prepare_send_document(args, db)
         elif name == "send_payoff_diagram":
             result = {"action": "send_payoff_diagram", "structure_slug": args.get("structure_slug"), "structure_name": args.get("structure_name")}
         elif name == "request_human_handoff":
@@ -396,3 +396,33 @@ async def _execute_lookup_fii(args: dict) -> Dict[str, Any]:
         "source": "FundsExplorer",
         "note": "Dados públicos — este fundo pode NÃO estar na base oficial de recomendações da SVN."
     }
+
+
+async def _validate_and_prepare_send_document(args: dict, db=None) -> Dict[str, Any]:
+    material_id = args.get("material_id")
+    product_name = args.get("product_name", "")
+
+    if not material_id:
+        return {"error": "material_id não informado"}
+
+    if not db:
+        return {"action": "send_document", "material_id": material_id, "product_name": product_name}
+
+    try:
+        from database.models import Material, MaterialFile
+        material = db.query(Material).filter(Material.id == int(material_id)).first()
+        if not material:
+            return {"error": f"Material ID {material_id} não encontrado na base de dados."}
+
+        if material.publish_status == "arquivado":
+            return {"error": f"Material '{material.name}' está arquivado e não pode ser enviado."}
+
+        has_file = db.query(MaterialFile).filter(MaterialFile.material_id == int(material_id)).first()
+        if not has_file:
+            return {"error": f"Material '{material.name}' não possui arquivo PDF disponível para envio."}
+
+        return {"action": "send_document", "material_id": material_id, "product_name": product_name}
+
+    except Exception as e:
+        print(f"[V2 Tool] Erro ao validar send_document: {e}")
+        return {"error": f"Erro ao validar material: {str(e)}"}

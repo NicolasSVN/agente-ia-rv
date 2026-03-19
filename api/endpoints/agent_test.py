@@ -150,18 +150,19 @@ async def test_agent_message(
         transfer_reason = context.get("transfer_reason") if context else None
 
         tool_calls_for_log = context.get("tool_calls", []) if context else []
-        search_tools = [tc for tc in (tool_calls_for_log or []) if tc.get("name") == "search_knowledge_base"]
+        tools_used = [tc.get("name") for tc in (tool_calls_for_log or [])]
 
         retrieval_log = RetrievalLog(
             query=message,
             query_type="v2_agentic",
-            result_count=len(search_tools),
+            result_count=len(tool_calls_for_log) if tool_calls_for_log else 0,
             threshold_applied="v2_auto",
             human_transfer=is_human_transfer,
             transfer_reason=transfer_reason,
             user_id=user_id,
             conversation_id=f"test_{user_id}",
-            response_time_ms=context.get("elapsed_ms") if context else None
+            response_time_ms=context.get("elapsed_ms") if context else None,
+            chunks_retrieved=_json.dumps(tools_used, ensure_ascii=False) if tools_used else None,
         )
         db.add(retrieval_log)
         db.commit()

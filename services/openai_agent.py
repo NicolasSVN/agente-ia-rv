@@ -2318,7 +2318,7 @@ INSTRUÇÕES IMPORTANTES:
             clean_history = [
                 {"role": m["role"], "content": m["content"]}
                 for m in conversation_history[-20:]
-                if m.get("role") in ("user", "assistant") and m.get("content")
+                if m.get("role") in ("user", "assistant", "system") and m.get("content")
             ]
             messages.extend(clean_history)
 
@@ -2361,7 +2361,7 @@ INSTRUÇÕES IMPORTANTES:
             except Exception as e:
                 print(f"[V2] Erro na chamada OpenAI (iteração {iterations}): {e}")
                 return (
-                    None,
+                    "Desculpe, não foi possível processar sua mensagem no momento.",
                     False,
                     {"intent": "error", "error": str(e), "identified_assessor": assessor_data}
                 )
@@ -2482,11 +2482,20 @@ INSTRUÇÕES IMPORTANTES:
             if tc["name"] in ("send_document", "send_payoff_diagram")
         ]
 
-        return ai_response, False, {
+        handoff_calls = [
+            tc for tc in tool_calls_log
+            if tc["name"] == "request_human_handoff"
+        ]
+        should_create_ticket = bool(handoff_calls)
+        handoff_reason = handoff_calls[0]["arguments"].get("reason") if handoff_calls else None
+
+        return ai_response, should_create_ticket, {
             "intent": "question",
             "identified_assessor": assessor_data,
             "tool_calls": tool_calls_log if tool_calls_log else None,
             "action_tool_calls": action_tool_calls if action_tool_calls else None,
+            "human_transfer": should_create_ticket,
+            "transfer_reason": handoff_reason,
             "iterations": iterations + 1,
             "elapsed_ms": elapsed_ms,
             "pipeline": "v2",

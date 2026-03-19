@@ -778,17 +778,19 @@ async def process_text_message(phone: str, message: str, db: Session, message_re
             db.commit()
         
         try:
+            import json as _json
             tool_calls_for_log = context.get("tool_calls", []) if context else []
-            search_tools = [tc for tc in (tool_calls_for_log or []) if tc.get("name") == "search_knowledge_base"]
+            tools_used = [tc.get("name") for tc in (tool_calls_for_log or [])]
             retrieval_log = RetrievalLog(
                 query=normalized_message,
                 query_type="v2_agentic",
-                result_count=len(search_tools),
+                result_count=len(tool_calls_for_log) if tool_calls_for_log else 0,
                 threshold_applied="v2_auto",
                 human_transfer=is_human_transfer,
                 transfer_reason=transfer_reason,
                 conversation_id=str(conversation.id) if conversation else None,
-                response_time_ms=context.get("elapsed_ms") if context else None
+                response_time_ms=context.get("elapsed_ms") if context else None,
+                chunks_retrieved=_json.dumps(tools_used, ensure_ascii=False) if tools_used else None,
             )
             db.add(retrieval_log)
             db.commit()
