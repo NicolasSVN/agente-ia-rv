@@ -10,6 +10,7 @@ def build_system_prompt_v2(
     config: dict = None,
     assessor_data: dict = None,
     available_materials: list = None,
+    active_campaigns: list = None,
 ) -> str:
     """
     Monta o system prompt completo para o Pipeline V2.
@@ -32,6 +33,9 @@ def build_system_prompt_v2(
 
     if available_materials:
         parts.append(_get_materials_context(available_materials))
+
+    if active_campaigns:
+        parts.append(_get_active_campaigns_context(active_campaigns))
 
     return "\n\n".join(p for p in parts if p)
 
@@ -242,7 +246,9 @@ CATEGORIAS DISPONÍVEIS:
 - Remuneração de Carteira (ex: Financiamento, Venda Coberta)
 
 Slugs disponíveis para send_payoff_diagram:
-booster, swap, collar-com-ativo, fence-com-ativo, step-up, condor-strangle-com-hedge, condor-venda-strangle, venda-straddle, compra-condor, compra-borboleta-fly, compra-straddle, compra-strangle, compra-venda-opcoes, risk-reversal, compra-call-spread, seagull, collar-sem-ativo, compra-put-spread, fence-sem-ativo, call-up-and-in, call-up-and-out, put-down-and-in, put-down-and-out, ndf, financiamento, venda-put-spread, venda-call-spread"""
+booster, swap, collar-com-ativo, fence-com-ativo, step-up, condor-strangle-com-hedge, condor-venda-strangle, venda-straddle, compra-condor, compra-borboleta-fly, compra-straddle, compra-strangle, compra-venda-opcoes, risk-reversal, compra-call-spread, seagull, collar-sem-ativo, compra-put-spread, fence-sem-ativo, call-up-and-in, call-up-and-out, put-down-and-in, put-down-and-out, ndf, financiamento, venda-put-spread, venda-call-spread
+
+IMPORTANTE: Campanhas ativas podem ter slugs adicionais (ex: put-spread-petr4). Veja a seção "CAMPANHAS ATIVAS" abaixo se existir."""
 
 
 def _get_temporal_context() -> str:
@@ -312,4 +318,33 @@ def _get_materials_context(materials: list) -> str:
     for mat in materials:
         lines.append(mat)
     lines.append("Para enviar um material, use send_document com o material_id correspondente.")
+    return "\n".join(lines)
+
+
+def _get_active_campaigns_context(campaigns: list) -> str:
+    if not campaigns:
+        return ""
+
+    lines = ["=== CAMPANHAS ATIVAS (ESTRUTURAS DE DERIVATIVOS) ==="]
+    lines.append("As seguintes campanhas estão ativas e foram enviadas aos assessores.")
+    lines.append("Se um assessor perguntar sobre essas operações, você TEM o contexto.")
+    lines.append("")
+
+    for c in campaigns:
+        lines.append(f"📌 {c['name']} ({c['ticker']})")
+        lines.append(f"   Tipo: {c['structure_type']}")
+        lines.append(f"   Slug do diagrama: {c['campaign_slug']}")
+        if c.get("key_data"):
+            for k, v in c["key_data"].items():
+                lines.append(f"   {k}: {v}")
+        if c.get("valid_until"):
+            lines.append(f"   Válido até: {c['valid_until']}")
+        lines.append("")
+
+    lines.append("REGRAS PARA CAMPANHAS ATIVAS:")
+    lines.append("- Se o assessor perguntar sobre uma operação de campanha, use os dados acima para responder")
+    lines.append("- Para enviar o diagrama da campanha, use send_payoff_diagram com o slug indicado")
+    lines.append("- Os dados da campanha (strikes, custos, vencimento) estão acima — use-os diretamente")
+    lines.append("- Se o assessor mencionar o ticker de uma campanha ativa, priorize as informações da campanha")
+
     return "\n".join(lines)

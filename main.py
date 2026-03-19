@@ -141,6 +141,25 @@ def _apply_incremental_migrations():
         "CREATE INDEX IF NOT EXISTS ix_material_files_material_id ON material_files(material_id)",
         "ALTER TABLE conversations ADD COLUMN IF NOT EXISTS last_session_summary TEXT",
         "ALTER TABLE conversations ADD COLUMN IF NOT EXISTS last_session_ended_at TIMESTAMPTZ",
+        """CREATE TABLE IF NOT EXISTS campaign_structures (
+            id SERIAL PRIMARY KEY,
+            name VARCHAR(255) NOT NULL,
+            ticker VARCHAR(20),
+            structure_type VARCHAR(100) NOT NULL,
+            campaign_slug VARCHAR(100) NOT NULL UNIQUE,
+            key_data TEXT DEFAULT '{}',
+            diagram_filename VARCHAR(255),
+            material_id INTEGER REFERENCES materials(id),
+            valid_from TIMESTAMPTZ,
+            valid_until TIMESTAMPTZ,
+            is_active INTEGER DEFAULT 1,
+            created_by INTEGER REFERENCES users(id),
+            created_at TIMESTAMPTZ DEFAULT NOW(),
+            updated_at TIMESTAMPTZ
+        )""",
+        "CREATE INDEX IF NOT EXISTS ix_campaign_structures_slug ON campaign_structures(campaign_slug)",
+        "CREATE INDEX IF NOT EXISTS ix_campaign_structures_ticker ON campaign_structures(ticker)",
+        "CREATE INDEX IF NOT EXISTS ix_campaign_structures_name ON campaign_structures(name)",
     ]
     db = SessionLocal()
     try:
@@ -948,6 +967,21 @@ async def campanhas_page(request: Request):
         return RedirectResponse(url="/login?error=permission")
     
     return templates.TemplateResponse("campanhas.html", {"request": request, "user_role": user_role})
+
+
+@app.get("/estruturas-campanha", response_class=HTMLResponse)
+async def estruturas_campanha_page(request: Request):
+    from core.security import decode_token
+    token = request.cookies.get("access_token")
+    if not token:
+        return RedirectResponse(url="/login")
+    payload = decode_token(token)
+    if not payload:
+        return RedirectResponse(url="/login")
+    user_role = payload.get("role")
+    if user_role not in ["admin", "gestao_rv"]:
+        return RedirectResponse(url="/login?error=permission")
+    return templates.TemplateResponse("estruturas_campanha.html", {"request": request, "user_role": user_role})
 
 
 @app.get("/teste-agente", response_class=HTMLResponse)

@@ -2306,10 +2306,18 @@ INSTRUÇÕES IMPORTANTES:
             except Exception as e:
                 print(f"[V2] Erro ao listar materiais: {e}")
 
+        active_campaigns = []
+        if db:
+            try:
+                active_campaigns = self._get_active_campaigns(db)
+            except Exception as e:
+                print(f"[V2] Erro ao buscar campanhas ativas: {e}")
+
         system_prompt = build_system_prompt_v2(
             config=config,
             assessor_data=assessor_data,
             available_materials=available_materials,
+            active_campaigns=active_campaigns,
         )
 
         messages = [{"role": "system", "content": system_prompt}]
@@ -2501,6 +2509,38 @@ INSTRUÇÕES IMPORTANTES:
             "pipeline": "v2",
             "max_iterations_reached": True,
         }
+
+    def _get_active_campaigns(self, db) -> list:
+        try:
+            from database.models import CampaignStructure
+            import json as _json
+            from datetime import datetime as _dt
+
+            now = _dt.utcnow()
+            campaigns = db.query(CampaignStructure).filter(
+                CampaignStructure.is_active == 1,
+                (CampaignStructure.valid_from.is_(None)) | (CampaignStructure.valid_from <= now),
+                (CampaignStructure.valid_until.is_(None)) | (CampaignStructure.valid_until > now),
+            ).all()
+
+            result = []
+            for c in campaigns:
+                entry = {
+                    "name": c.name,
+                    "ticker": c.ticker or "",
+                    "structure_type": c.structure_type,
+                    "campaign_slug": c.campaign_slug,
+                    "key_data": _json.loads(c.key_data) if c.key_data else {},
+                    "valid_until": c.valid_until.strftime("%d/%m/%Y") if c.valid_until else None,
+                }
+                result.append(entry)
+
+            if result:
+                print(f"[V2] {len(result)} campanha(s) ativa(s) injetada(s) no prompt")
+            return result
+        except Exception as e:
+            print(f"[V2] Erro ao buscar campanhas ativas: {e}")
+            return []
 
     def _list_available_materials(self, db) -> List[str]:
         """Lista materiais com PDF disponível para o system prompt V2."""

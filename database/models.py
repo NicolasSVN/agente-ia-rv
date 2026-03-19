@@ -363,6 +363,28 @@ class CampaignDispatch(Base):
     campaign = relationship("Campaign", back_populates="dispatches")
 
 
+class CampaignStructure(Base):
+    __tablename__ = "campaign_structures"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(255), nullable=False, index=True)
+    ticker = Column(String(20), nullable=True, index=True)
+    structure_type = Column(String(100), nullable=False)
+    campaign_slug = Column(String(100), nullable=False, unique=True, index=True)
+    key_data = Column(Text, default="{}")
+    diagram_filename = Column(String(255), nullable=True)
+    material_id = Column(Integer, ForeignKey("materials.id"), nullable=True)
+    valid_from = Column(DateTime(timezone=True), nullable=True)
+    valid_until = Column(DateTime(timezone=True), nullable=True)
+    is_active = Column(Integer, default=1)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    material = relationship("Material", foreign_keys=[material_id])
+    creator = relationship("User", foreign_keys=[created_by])
+
+
 class DocumentType(str, enum.Enum):
     """Tipos de documento na base de conhecimento."""
     PDF = "pdf"

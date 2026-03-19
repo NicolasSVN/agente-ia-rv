@@ -279,28 +279,56 @@ async def _send_diagram_for_slug(phone: str, slug: str, db: Session):
     import os
     from scripts.xpi_derivatives.derivatives_dataset import get_all_structures
 
-    structures = get_all_structures()
-    structure = None
-    for s in structures:
-        if s["slug"] == slug:
-            structure = s
-            break
+    campaign_struct = None
+    try:
+        from database.models import CampaignStructure
+        from datetime import datetime as _dt
+        now = _dt.utcnow()
+        campaign_struct = db.query(CampaignStructure).filter(
+            CampaignStructure.campaign_slug == slug,
+            CampaignStructure.is_active == 1,
+            (CampaignStructure.valid_from.is_(None)) | (CampaignStructure.valid_from <= now),
+            (CampaignStructure.valid_until.is_(None)) | (CampaignStructure.valid_until > now),
+        ).first()
+    except Exception as e:
+        print(f"[DIAGRAM] Erro ao buscar campanha para slug {slug}: {e}")
 
-    if not structure:
-        print(f"[DIAGRAM] Estrutura não encontrada para slug: {slug}")
-        return False
+    if campaign_struct and campaign_struct.diagram_filename:
+        diagram_path = os.path.join("static", "derivatives_diagrams", campaign_struct.diagram_filename)
+        if os.path.exists(diagram_path):
+            from core.config import get_public_domain
+            domain = get_public_domain()
+            diagram_url = f"https://{domain}/derivatives-diagrams/{campaign_struct.diagram_filename}"
+            name = campaign_struct.name
+            caption = f"📊 Diagrama de Payoff - {name}"
+            print(f"[DIAGRAM] Usando diagrama de campanha ativa: {name} ({slug})")
+        else:
+            print(f"[DIAGRAM] Diagrama de campanha não encontrado: {diagram_path}, tentando padrão")
+            campaign_struct = None
 
-    diagram_path = os.path.join("static", "derivatives_diagrams", f"{slug}.png")
-    if not os.path.exists(diagram_path):
-        print(f"[DIAGRAM] Arquivo de diagrama não encontrado: {diagram_path}")
-        return False
+    if not campaign_struct or not (campaign_struct and campaign_struct.diagram_filename):
+        structures = get_all_structures()
+        structure = None
+        for s in structures:
+            if s["slug"] == slug:
+                structure = s
+                break
 
-    from core.config import get_public_domain
-    domain = get_public_domain()
+        if not structure:
+            print(f"[DIAGRAM] Estrutura não encontrada para slug: {slug}")
+            return False
 
-    diagram_url = f"https://{domain}/derivatives-diagrams/{slug}.png"
-    name = structure.get("name", slug)
-    caption = f"📊 Diagrama de Payoff - {name}"
+        diagram_path = os.path.join("static", "derivatives_diagrams", f"{slug}.png")
+        if not os.path.exists(diagram_path):
+            print(f"[DIAGRAM] Arquivo de diagrama não encontrado: {diagram_path}")
+            return False
+
+        from core.config import get_public_domain
+        domain = get_public_domain()
+
+        diagram_url = f"https://{domain}/derivatives-diagrams/{slug}.png"
+        name = structure.get("name", slug)
+        caption = f"📊 Diagrama de Payoff - {name}"
 
     print(f"[DIAGRAM] Enviando diagrama: {name} ({slug}) para {phone}")
     print(f"[DIAGRAM] URL: {diagram_url}")

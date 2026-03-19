@@ -14,7 +14,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from database.database import get_db, SessionLocal
-from database.models import MessageTemplate, Campaign, CampaignDispatch, CampaignStatus, Assessor
+from database.models import MessageTemplate, Campaign, CampaignDispatch, CampaignStatus, Assessor, CampaignStructure
 from api.endpoints.auth import require_role
 from database.models import User
 
@@ -1626,6 +1626,7 @@ async def dispatch_campaign(
                     dispatch.status = "sent"
                     dispatch.sent_at = datetime.utcnow()
                     sent_count += 1
+                    _persist_campaign_message(db, phone, message, campaign.name)
                 else:
                     dispatch.status = "failed"
                     error_code = result.get("error_code", "UNKNOWN")
@@ -1848,6 +1849,7 @@ async def dispatch_campaign_stream(
                                     dispatch.sent_at = datetime.utcnow()
                                     sent_count += 1
                                     status = "sent"
+                                    _persist_campaign_message(db_session, phone, message, campaign.name)
                                     break
                                 else:
                                     error_code = result.get("error_code", "UNKNOWN")
@@ -2242,6 +2244,7 @@ async def dispatch_campaign_from_base(campaign, db: Session):
                                     dispatch.sent_at = datetime.utcnow()
                                     sent_count += 1
                                     status = "sent"
+                                    _persist_campaign_message(db_session, phone, message, campaign.name)
                                     break
                                 else:
                                     error_code = result.get("error_code", "UNKNOWN")
@@ -2407,6 +2410,233 @@ async def list_campaigns(
         }
         for c in campaigns
     ]
+
+
+class CampaignStructureCreate(BaseModel):
+    name: str
+    ticker: Optional[str] = None
+    structure_type: str
+    campaign_slug: str
+    key_data: Optional[dict] = None
+    diagram_filename: Optional[str] = None
+    material_id: Optional[int] = None
+    valid_from: Optional[str] = None
+    valid_until: Optional[str] = None
+
+
+class CampaignStructureUpdate(BaseModel):
+    name: Optional[str] = None
+    ticker: Optional[str] = None
+    structure_type: Optional[str] = None
+    campaign_slug: Optional[str] = None
+    key_data: Optional[dict] = None
+    diagram_filename: Optional[str] = None
+    material_id: Optional[int] = None
+    valid_from: Optional[str] = None
+    valid_until: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
+def _structure_to_dict(s: CampaignStructure) -> dict:
+    import json as _json
+    return {
+        "id": s.id,
+        "name": s.name,
+        "ticker": s.ticker,
+        "structure_type": s.structure_type,
+        "campaign_slug": s.campaign_slug,
+        "key_data": _json.loads(s.key_data) if s.key_data else {},
+        "diagram_filename": s.diagram_filename,
+        "material_id": s.material_id,
+        "valid_from": s.valid_from.isoformat() if s.valid_from else None,
+        "valid_until": s.valid_until.isoformat() if s.valid_until else None,
+        "is_active": s.is_active == 1,
+        "created_at": s.created_at.isoformat() if s.created_at else None,
+        "updated_at": s.updated_at.isoformat() if s.updated_at else None,
+    }
+
+
+@router.get("/structures")
+async def list_campaign_structures(
+    active_only: bool = False,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin_or_gestao())
+):
+    query = db.query(CampaignStructure)
+    if active_only:
+        now = datetime.utcnow()
+        query = query.filter(
+            CampaignStructure.is_active == 1,
+            (CampaignStructure.valid_from.is_(None)) | (CampaignStructure.valid_from <= now),
+            (CampaignStructure.valid_until.is_(None)) | (CampaignStructure.valid_until > now),
+        )
+    structures = query.order_by(CampaignStructure.created_at.desc()).all()
+    return {"structures": [_structure_to_dict(s) for s in structures]}
+
+
+@router.get("/active-structures")
+async def get_active_campaign_structures(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin_or_gestao())
+):
+    now = datetime.utcnow()
+    structures = db.query(CampaignStructure).filter(
+        CampaignStructure.is_active == 1,
+        (CampaignStructure.valid_from.is_(None)) | (CampaignStructure.valid_from <= now),
+        (CampaignStructure.valid_until.is_(None)) | (CampaignStructure.valid_until > now),
+    ).order_by(CampaignStructure.name).all()
+    return {"structures": [_structure_to_dict(s) for s in structures]}
+
+
+@router.get("/derivative-slugs")
+async def list_derivative_slugs(
+    current_user: User = Depends(require_admin_or_gestao())
+):
+    from scripts.xpi_derivatives.derivatives_dataset import get_all_structures
+    structures = get_all_structures()
+    return {
+        "slugs": [
+            {"slug": s["slug"], "name": s["name"], "tab": s["tab"]}
+            for s in structures
+        ]
+    }
+
+
+@router.post("/structures")
+async def create_campaign_structure(
+    data: CampaignStructureCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin_or_gestao())
+):
+    existing = db.query(CampaignStructure).filter(
+        CampaignStructure.campaign_slug == data.campaign_slug
+    ).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Já existe uma estrutura com esse slug")
+
+    structure = CampaignStructure(
+        name=data.name,
+        ticker=data.ticker,
+        structure_type=data.structure_type,
+        campaign_slug=data.campaign_slug,
+        key_data=json.dumps(data.key_data) if data.key_data else "{}",
+        diagram_filename=data.diagram_filename,
+        material_id=data.material_id,
+        valid_from=datetime.fromisoformat(data.valid_from) if data.valid_from else None,
+        valid_until=datetime.fromisoformat(data.valid_until) if data.valid_until else None,
+        is_active=1,
+        created_by=int(current_user.id),
+    )
+    db.add(structure)
+    db.commit()
+    db.refresh(structure)
+    return {"success": True, "structure": _structure_to_dict(structure)}
+
+
+@router.get("/structures/{structure_id}")
+async def get_campaign_structure(
+    structure_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin_or_gestao())
+):
+    structure = db.query(CampaignStructure).filter(CampaignStructure.id == structure_id).first()
+    if not structure:
+        raise HTTPException(status_code=404, detail="Estrutura não encontrada")
+    return _structure_to_dict(structure)
+
+
+@router.put("/structures/{structure_id}")
+async def update_campaign_structure(
+    structure_id: int,
+    data: CampaignStructureUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin_or_gestao())
+):
+    structure = db.query(CampaignStructure).filter(CampaignStructure.id == structure_id).first()
+    if not structure:
+        raise HTTPException(status_code=404, detail="Estrutura não encontrada")
+
+    if data.name is not None:
+        structure.name = data.name
+    if data.ticker is not None:
+        structure.ticker = data.ticker
+    if data.structure_type is not None:
+        structure.structure_type = data.structure_type
+    if data.campaign_slug is not None:
+        existing = db.query(CampaignStructure).filter(
+            CampaignStructure.campaign_slug == data.campaign_slug,
+            CampaignStructure.id != structure_id
+        ).first()
+        if existing:
+            raise HTTPException(status_code=400, detail="Slug já em uso")
+        structure.campaign_slug = data.campaign_slug
+    if data.key_data is not None:
+        structure.key_data = json.dumps(data.key_data)
+    if data.diagram_filename is not None:
+        structure.diagram_filename = data.diagram_filename
+    if data.material_id is not None:
+        structure.material_id = data.material_id
+    if data.valid_from is not None:
+        structure.valid_from = datetime.fromisoformat(data.valid_from) if data.valid_from else None
+    if data.valid_until is not None:
+        structure.valid_until = datetime.fromisoformat(data.valid_until) if data.valid_until else None
+    if data.is_active is not None:
+        structure.is_active = 1 if data.is_active else 0
+
+    db.commit()
+    db.refresh(structure)
+    return {"success": True, "structure": _structure_to_dict(structure)}
+
+
+@router.delete("/structures/{structure_id}")
+async def delete_campaign_structure(
+    structure_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin_or_gestao())
+):
+    structure = db.query(CampaignStructure).filter(CampaignStructure.id == structure_id).first()
+    if not structure:
+        raise HTTPException(status_code=404, detail="Estrutura não encontrada")
+
+    structure.is_active = 0
+    db.commit()
+    return {"success": True, "message": "Estrutura desativada"}
+
+
+@router.post("/structures/{structure_id}/diagram")
+async def upload_campaign_diagram(
+    structure_id: int,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin_or_gestao())
+):
+    structure = db.query(CampaignStructure).filter(CampaignStructure.id == structure_id).first()
+    if not structure:
+        raise HTTPException(status_code=404, detail="Estrutura não encontrada")
+
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="Nome do arquivo inválido")
+
+    import os
+    slug = structure.campaign_slug
+    ext = os.path.splitext(file.filename)[1].lower() or ".png"
+    diagram_name = f"{slug}{ext}"
+    diagram_dir = os.path.join("static", "derivatives_diagrams")
+    os.makedirs(diagram_dir, exist_ok=True)
+    diagram_path = os.path.join(diagram_dir, diagram_name)
+
+    contents = await file.read()
+    with open(diagram_path, "wb") as f:
+        f.write(contents)
+
+    structure.diagram_filename = diagram_name
+    db.commit()
+
+    return {
+        "success": True,
+        "diagram_filename": diagram_name,
+        "message": f"Diagrama salvo em {diagram_path}"
+    }
 
 
 @router.get("/{campaign_id}")
@@ -2643,3 +2873,44 @@ async def debug_campaign(
         "first_assessor_data": grouped[list(grouped.keys())[0]] if grouped else None,
         "sample_message_preview": sample_message[:500] if sample_message else None
     }
+
+
+def _persist_campaign_message(db_session: Session, phone: str, message: str, campaign_name: str = ""):
+    if not phone or not message:
+        return
+    try:
+        from database.models import WhatsAppMessage, MessageDirection, MessageType, SenderType, Conversation
+        clean_phone = ''.join(filter(str.isdigit, phone))
+        if not clean_phone:
+            return
+
+        conversation = db_session.query(Conversation).filter(
+            Conversation.phone == clean_phone
+        ).first()
+        if not conversation:
+            conversation = Conversation(phone=clean_phone)
+            db_session.add(conversation)
+            db_session.flush()
+
+        tag = f"[Campanha: {campaign_name}] " if campaign_name else ""
+        record = WhatsAppMessage(
+            chat_id=clean_phone,
+            phone=clean_phone,
+            direction=MessageDirection.OUTBOUND.value,
+            message_type=MessageType.TEXT.value,
+            from_me=True,
+            body=f"{tag}{message}",
+            ai_response=None,
+            ai_intent="campaign_dispatch",
+            sender_type=SenderType.BOT.value,
+            conversation_id=conversation.id,
+        )
+        db_session.add(record)
+        db_session.commit()
+        print(f"[CAMPAIGN_MSG] Mensagem de campanha salva no histórico de {clean_phone}")
+    except Exception as e:
+        print(f"[CAMPAIGN_MSG] Erro ao salvar mensagem de campanha: {e}")
+        try:
+            db_session.rollback()
+        except Exception:
+            pass
