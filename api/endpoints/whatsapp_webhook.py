@@ -1384,6 +1384,16 @@ async def zapi_webhook(
             "reason": "ticket_open_human_active"
         }
     
+    if conversation and conversation.ticket_status == TicketStatusV2.SOLVED.value:
+        conversation.ticket_status = None
+        db.commit()
+        print(f"[WEBHOOK] Ticket reaberto (era solved, nova mensagem recebida): {phone}")
+        try:
+            sse_manager = get_sse_manager()
+            asyncio.create_task(sse_manager.notify_conversation_update(conversation.id))
+        except Exception:
+            pass
+    
     if message_type == MessageType.TEXT.value:
         if body:
             schedule_task(enqueue_message(
