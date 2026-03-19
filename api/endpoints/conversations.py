@@ -997,6 +997,16 @@ async def send_message(
     
     db.commit()
     
+    try:
+        from services.sse_manager import sse_manager
+        await sse_manager.notify_new_message(conversation_id, {
+            "body": request.message,
+            "sender_type": "human",
+            "from_me": True
+        })
+    except Exception as sse_err:
+        print(f"[SEND_MSG] Erro ao notificar SSE: {sse_err}")
+    
     return {"success": True, "message": "Mensagem enviada com sucesso"}
 
 
@@ -1036,6 +1046,12 @@ async def takeover_conversation(
         raise HTTPException(status_code=400, detail="Ação inválida")
     
     db.commit()
+    
+    try:
+        from services.sse_manager import sse_manager
+        await sse_manager.notify_conversation_update(conversation_id)
+    except Exception as sse_err:
+        print(f"[TAKEOVER] Erro ao notificar SSE: {sse_err}")
     
     return {"success": True, "message": message, "status": conv.status, "conversation_state": conv.conversation_state}
 
@@ -1124,6 +1140,12 @@ async def resolve_conversation(
             print(f"[RESOLVE] Erro ao criar conhecimento: {e}")
     
     db.commit()
+    
+    try:
+        from services.sse_manager import sse_manager
+        await sse_manager.notify_conversation_update(conversation_id)
+    except Exception as sse_err:
+        print(f"[RESOLVE] Erro ao notificar SSE: {sse_err}")
     
     return {
         "success": True,
@@ -1309,6 +1331,12 @@ async def take_ticket(
         notes=f"Ticket assumido por {current_user.username}"
     )
     
+    try:
+        from services.sse_manager import sse_manager
+        await sse_manager.notify_conversation_update(conversation_id)
+    except Exception as sse_err:
+        print(f"[TAKE] Erro ao notificar SSE: {sse_err}")
+    
     return {
         "success": True,
         "message": f"Ticket assumido por {current_user.username}",
@@ -1395,6 +1423,12 @@ async def release_ticket(
         notes=f"Ticket concluído e devolvido ao bot por {current_user.username}"
     )
     
+    try:
+        from services.sse_manager import sse_manager
+        await sse_manager.notify_conversation_update(conversation_id)
+    except Exception as sse_err:
+        print(f"[RELEASE] Erro ao notificar SSE: {sse_err}")
+    
     return {
         "success": True,
         "message": "Ticket concluído e devolvido ao bot",
@@ -1468,6 +1502,12 @@ async def update_ticket_status(
         to_status=conv.ticket_status,
         notes=f"Status alterado de {old_status} para {request.status}"
     )
+    
+    try:
+        from services.sse_manager import sse_manager
+        await sse_manager.notify_conversation_update(conversation_id)
+    except Exception as sse_err:
+        print(f"[STATUS] Erro ao notificar SSE: {sse_err}")
     
     return {
         "success": True,

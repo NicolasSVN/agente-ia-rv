@@ -708,6 +708,14 @@ async def process_text_message(phone: str, message: str, db: Session, message_re
         )
         print(f"[WEBHOOK] V2 Resposta gerada: {response[:100] if response else 'VAZIA'} | iterations={context.get('iterations')} elapsed={context.get('elapsed_ms')}ms")
         
+        if context and context.get("intent") == "error":
+            print(f"[WEBHOOK] Erro interno na IA - suprimindo resposta ao usuário. Erro: {context.get('error', 'desconhecido')}")
+            if message_record:
+                message_record.ai_response = response
+                message_record.ai_intent = "error_suppressed"
+                db.commit()
+            return
+        
         diagram_slugs_from_ai = []
         material_ids_from_ai = []
         
