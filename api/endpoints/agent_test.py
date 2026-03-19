@@ -150,12 +150,21 @@ async def test_agent_message(
         transfer_reason = context.get("transfer_reason") if context else None
 
         tool_calls_for_log = context.get("tool_calls", []) if context else []
-        tools_used = [tc.get("name") for tc in (tool_calls_for_log or [])]
+        tools_used = [
+            {"name": tc.get("name"), "iteration": tc.get("iteration")}
+            for tc in (tool_calls_for_log or [])
+        ]
+        search_result_count = sum(
+            1 for tc in (tool_calls_for_log or [])
+            if tc.get("name") in ("search_knowledge_base", "search_web")
+            and tc.get("result_preview", "").strip()
+            and "erro" not in tc.get("result_preview", "").lower()[:50]
+        )
 
         retrieval_log = RetrievalLog(
             query=message,
             query_type="v2_agentic",
-            result_count=len(tool_calls_for_log) if tool_calls_for_log else 0,
+            result_count=search_result_count,
             threshold_applied="v2_auto",
             human_transfer=is_human_transfer,
             transfer_reason=transfer_reason,
