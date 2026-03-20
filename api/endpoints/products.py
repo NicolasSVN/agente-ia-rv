@@ -2807,7 +2807,12 @@ async def resume_upload(
             if job:
                 job.file_path = restored
                 db.commit()
-                start_from_zero = not (job.last_processed_page and job.last_processed_page > 0)
+                has_content = db.query(ContentBlock).filter(ContentBlock.material_id == material_id).count() > 0
+                if not has_content:
+                    start_from_zero = True
+                    print(f"[RESUME] Material {material_id}: 0 content blocks — forçando reprocessamento do zero")
+                else:
+                    start_from_zero = not (job.last_processed_page and job.last_processed_page > 0)
             else:
                 start_from_zero = True
         else:
