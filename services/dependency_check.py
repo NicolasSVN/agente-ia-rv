@@ -1,9 +1,89 @@
 import logging
 import time
+import asyncio
+from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
 _startup_time = time.time()
+
+_zapi_status_cache: dict = {"status": "unknown", "checked_at": None}
+
+
+async def check_zapi_connectivity() -> dict:
+    import httpx
+    import os
+    from core.config import get_settings
+
+    try:
+        settings = get_settings()
+        instance_id = os.getenv("ZAPI_INSTANCE_ID", "") or settings.ZAPI_INSTANCE_ID
+        token = os.getenv("ZAPI_TOKEN", "") or settings.ZAPI_TOKEN
+        client_token = os.getenv("ZAPI_CLIENT_TOKEN", "") or settings.ZAPI_CLIENT_TOKEN
+
+        if not (instance_id and token and client_token):
+            return {
+                "status": "disconnected",
+                "checked_at": datetime.now(timezone.utc).isoformat(),
+                "detail": "credentials_missing",
+            }
+
+        url = f"https://api.z-api.io/instances/{instance_id}/token/{token}/status"
+        headers = {"Content-Type": "application/json", "Client-Token": client_token}
+
+        async with httpx.AsyncClient() as client:
+            response = await client.get(url, headers=headers, timeout=5.0)
+            data = response.json() if response.content else {}
+
+            if response.status_code == 200 and data.get("connected"):
+                return {
+                    "status": "connected",
+                    "checked_at": datetime.now(timezone.utc).isoformat(),
+                }
+            else:
+                return {
+                    "status": "disconnected",
+                    "checked_at": datetime.now(timezone.utc).isoformat(),
+                    "detail": data.get("error", data.get("status", "not_connected")),
+                }
+
+    except httpx.TimeoutException:
+        return {
+            "status": "timeout",
+            "checked_at": datetime.now(timezone.utc).isoformat(),
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "checked_at": datetime.now(timezone.utc).isoformat(),
+            "detail": str(e),
+        }
+
+
+async def _zapi_health_loop():
+    global _zapi_status_cache
+    try:
+        while True:
+            try:
+                result = await check_zapi_connectivity()
+                _zapi_status_cache = result
+                logger.info(f"[ZAPI-HEALTH] Status atualizado: {result['status']}")
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                _zapi_status_cache = {
+                    "status": "error",
+                    "checked_at": datetime.now(timezone.utc).isoformat(),
+                    "detail": f"loop_error: {e}",
+                }
+                logger.error(f"[ZAPI-HEALTH] Erro no loop: {e}")
+            await asyncio.sleep(300)
+    except asyncio.CancelledError:
+        logger.info("[ZAPI-HEALTH] Loop cancelado")
+
+
+def get_zapi_status_cache() -> dict:
+    return _zapi_status_cache
 
 
 def check_critical_dependencies() -> dict:
@@ -81,21 +161,32 @@ def get_detailed_health() -> dict:
     except Exception as e:
         vector_store_status = f"error: {str(e)}"
 
-    zapi_status = "ok"
+    zapi_configured = False
     try:
         from core.config import get_settings
+        import os
         settings = get_settings()
-        if not settings.ZAPI_INSTANCE_ID or not settings.ZAPI_TOKEN:
-            zapi_status = "not_configured"
-    except Exception as e:
-        zapi_status = f"error: {str(e)}"
+        instance_id = os.getenv("ZAPI_INSTANCE_ID", "") or settings.ZAPI_INSTANCE_ID
+        token = os.getenv("ZAPI_TOKEN", "") or settings.ZAPI_TOKEN
+        client_token = os.getenv("ZAPI_CLIENT_TOKEN", "") or settings.ZAPI_CLIENT_TOKEN
+        zapi_configured = bool(instance_id and token and client_token)
+    except Exception:
+        pass
+
+    cached = get_zapi_status_cache()
+    zapi_connectivity = cached.get("status", "unknown")
+
+    if not zapi_configured:
+        zapi_report = {"configured": False, "connectivity": "unknown"}
+    else:
+        zapi_report = {"configured": True, "connectivity": zapi_connectivity, "checked_at": cached.get("checked_at")}
 
     dep_summary = {
         "database": db_status,
         "vector_store": vector_store_status,
         "pdf_processing": "ok" if deps.get("pymupdf", {}).get("ok") else "error",
         "openai": "ok" if deps.get("openai_key", {}).get("ok") else "not_configured",
-        "zapi": zapi_status,
+        "zapi": zapi_report,
     }
 
     critical_deps = ["database", "pdf_processing", "openai"]
@@ -104,7 +195,9 @@ def get_detailed_health() -> dict:
         for d in critical_deps
     )
 
-    all_ok = all(v == "ok" for v in dep_summary.values())
+    scalar_statuses = {k: v for k, v in dep_summary.items() if isinstance(v, str)}
+    zapi_ok = isinstance(dep_summary.get("zapi"), dict) and dep_summary["zapi"].get("configured") and dep_summary["zapi"].get("connectivity") == "connected"
+    all_ok = all(v == "ok" for v in scalar_statuses.values()) and zapi_ok
 
     if has_critical_failure:
         status = "critical"

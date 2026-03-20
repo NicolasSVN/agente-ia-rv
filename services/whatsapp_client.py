@@ -69,6 +69,64 @@ class ZAPIClient:
         
         return clean
     
+    async def _check_url_file_size(self, url: str, limit_mb: float) -> dict | None:
+        from urllib.parse import urlparse
+        import ipaddress
+
+        parsed = urlparse(url)
+        if parsed.scheme not in ("http", "https"):
+            return None
+
+        try:
+            import socket
+            hostname = parsed.hostname or ""
+            if hostname in ("localhost", "127.0.0.1", "0.0.0.0", "::1", ""):
+                return None
+            try:
+                resolved = socket.getaddrinfo(hostname, None)
+                for _, _, _, _, sockaddr in resolved:
+                    ip = ipaddress.ip_address(sockaddr[0])
+                    if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
+                        return None
+            except (socket.gaierror, ValueError):
+                return None
+        except Exception:
+            return None
+
+        limit_bytes = int(limit_mb * 1024 * 1024)
+        try:
+            async with httpx.AsyncClient() as client:
+                head_resp = await client.head(url, timeout=5.0, follow_redirects=True)
+                if head_resp.status_code < 400:
+                    content_length = head_resp.headers.get("content-length")
+                    if content_length is not None:
+                        size = int(content_length)
+                        if size > limit_bytes:
+                            return {
+                                "success": False,
+                                "error": f"Arquivo excede o limite de {limit_mb}MB ({size / (1024*1024):.1f}MB detectado)",
+                                "error_code": "FILE_TOO_LARGE",
+                            }
+                        return None
+
+                range_resp = await client.get(url, timeout=5.0, follow_redirects=True, headers={"Range": "bytes=0-0"})
+                if range_resp.status_code in (200, 206):
+                    content_range = range_resp.headers.get("content-range", "")
+                    if "/" in content_range:
+                        total_str = content_range.split("/")[-1]
+                        if total_str != "*":
+                            size = int(total_str)
+                            if size > limit_bytes:
+                                return {
+                                    "success": False,
+                                    "error": f"Arquivo excede o limite de {limit_mb}MB ({size / (1024*1024):.1f}MB detectado)",
+                                    "error_code": "FILE_TOO_LARGE",
+                                }
+                            return None
+        except Exception:
+            pass
+        return None
+
     def _parse_response(self, response: httpx.Response, raw_data: dict) -> dict:
         """Processa a resposta da API e retorna formato padronizado."""
         if response.status_code >= 400:
@@ -305,6 +363,11 @@ class ZAPIClient:
             view_once: Se é visualização única
             dedupe_key: Chave de idempotência (opcional)
         """
+        if image_url and not image_url.startswith("data:"):
+            size_error = await self._check_url_file_size(image_url, 5)
+            if size_error:
+                return size_error
+
         normalized_phone = self._normalize_phone(to)
         dedupe_key, idempotent_response, _ = self._ensure_outbox(normalized_phone, "image", dedupe_key)
         if idempotent_response:
@@ -382,6 +445,11 @@ class ZAPIClient:
         """
         Envia um documento para um número de WhatsApp.
         """
+        if document_url and not document_url.startswith("data:"):
+            size_error = await self._check_url_file_size(document_url, 16)
+            if size_error:
+                return size_error
+
         normalized_phone = self._normalize_phone(to)
         dedupe_key, idempotent_response, _ = self._ensure_outbox(normalized_phone, "document", dedupe_key)
         if idempotent_response:

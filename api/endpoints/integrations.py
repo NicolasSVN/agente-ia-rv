@@ -463,56 +463,10 @@ async def save_integration_secrets(
 @router.get("/zapi/health")
 async def zapi_health_check(request: Request):
     """
-    Verifica o status da conexão com a Z-API.
-    Retorna informações sobre a instância, conexão e tokens configurados.
+    Retorna o estado em cache da Z-API (atualizado em background a cada 5 minutos).
+    Nunca faz chamada HTTP direta à Z-API neste endpoint.
     """
-    from services.whatsapp_client import ZAPIClient
-    
-    client = ZAPIClient()
-    
-    config_status = {
-        "instance_id_configured": bool(client.instance_id),
-        "token_configured": bool(client.token),
-        "client_token_configured": bool(client.client_token),
-        "fully_configured": client.is_configured()
-    }
-    
-    if not client.is_configured():
-        missing = []
-        if not client.instance_id:
-            missing.append("ZAPI_INSTANCE_ID")
-        if not client.token:
-            missing.append("ZAPI_TOKEN")
-        if not client.client_token:
-            missing.append("ZAPI_CLIENT_TOKEN")
-        
-        return {
-            "status": "not_configured",
-            "message": f"Configuração incompleta. Faltam: {', '.join(missing)}",
-            "config": config_status,
-            "connected": False,
-            "can_send_messages": False
-        }
-    
-    connection_result = await client.check_connection()
-    
-    if connection_result.get("success"):
-        is_connected = connection_result.get("connected", False)
-        return {
-            "status": "connected" if is_connected else "disconnected",
-            "message": "Instância conectada e pronta para enviar mensagens" if is_connected else "Instância desconectada. Escaneie o QR Code para reconectar.",
-            "config": config_status,
-            "connected": is_connected,
-            "can_send_messages": is_connected,
-            "phone": connection_result.get("phone"),
-            "instance_status": connection_result.get("status")
-        }
-    else:
-        return {
-            "status": "error",
-            "message": f"Erro ao verificar conexão: {connection_result.get('error', 'Erro desconhecido')}",
-            "config": config_status,
-            "connected": False,
-            "can_send_messages": False,
-            "error": connection_result.get("error")
-        }
+    from services.dependency_check import get_zapi_status_cache
+
+    cached = get_zapi_status_cache()
+    return cached
