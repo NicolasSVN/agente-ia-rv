@@ -718,6 +718,9 @@ async def process_text_message(phone: str, message: str, db: Session, message_re
             if message_record:
                 message_record.ai_response = response
                 message_record.ai_intent = "error_suppressed"
+                error_detail = context.get('error', '')
+                if error_detail:
+                    message_record.ai_error_detail = str(error_detail)[:1000]
                 db.commit()
             return
         

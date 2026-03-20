@@ -175,6 +175,7 @@ def _apply_incremental_migrations():
             sent_at TIMESTAMPTZ
         )""",
         "CREATE INDEX IF NOT EXISTS ix_outbox_messages_dedupe_key ON outbox_messages(dedupe_key)",
+        "ALTER TABLE whatsapp_messages ADD COLUMN IF NOT EXISTS ai_error_detail TEXT",
     ]
     db = SessionLocal()
     try:

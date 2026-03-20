@@ -98,6 +98,7 @@ class MessageResponse(BaseModel):
     transcription: Optional[str] = None
     ai_response: Optional[str] = None
     ai_intent: Optional[str] = None
+    ai_error_detail: Optional[str] = None
     message_status: Optional[str] = None
     is_from_campaign: bool = False
     created_at: Optional[datetime] = None
@@ -666,17 +667,22 @@ async def get_bot_health(
     error_type = None
     error_message = None
 
-    if last.ai_response:
-        raw = last.ai_response
-        if "quota" in raw.lower() or "429" in raw:
+    raw = getattr(last, 'ai_error_detail', None) or last.ai_response or ''
+    if raw:
+        raw_lower = raw.lower()
+        if "quota" in raw_lower or "rate_limit" in raw_lower or "429" in raw:
             error_type = "OpenAI — cota esgotada (quota)"
-        elif "timeout" in raw.lower():
+        elif "timeout" in raw_lower or "timed out" in raw_lower:
             error_type = "OpenAI — timeout"
-        elif "api" in raw.lower():
+        elif "context_length" in raw_lower or "maximum context" in raw_lower:
+            error_type = "OpenAI — contexto excedido"
+        elif "connection" in raw_lower:
+            error_type = "Erro de conexão"
+        elif "openai" in raw_lower or "api" in raw_lower:
             error_type = "OpenAI — erro de API"
         else:
             error_type = "Erro interno do bot"
-        error_message = raw[:300] if len(raw) > 300 else raw
+        error_message = raw[:500] if len(raw) > 500 else raw
 
     return {
         "has_errors": True,
@@ -761,6 +767,7 @@ async def get_conversation_messages(
             transcription=msg.transcription,
             ai_response=msg.ai_response,
             ai_intent=msg.ai_intent,
+            ai_error_detail=getattr(msg, 'ai_error_detail', None),
             message_status=msg.message_status,
             is_from_campaign=msg.is_from_campaign or False,
             created_at=msg.created_at

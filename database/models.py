@@ -675,6 +675,7 @@ class WhatsAppMessage(Base):
     transcription = Column(Text, nullable=True)
     ai_response = Column(Text, nullable=True)
     ai_intent = Column(String(100), nullable=True)
+    ai_error_detail = Column(Text, nullable=True)
     ticket_id = Column(Integer, ForeignKey("tickets.id"), nullable=True)
     conversation_ticket_id = Column(Integer, ForeignKey("conversation_tickets.id"), nullable=True)
     is_from_campaign = Column(Boolean, default=False)

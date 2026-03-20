@@ -171,12 +171,17 @@ function ChatBubble({ message, contactName, onContextMenu }) {
   const hasError = message.ai_intent === 'error_suppressed';
   const [errorTooltipOpen, setErrorTooltipOpen] = useState(false);
 
+  const errorDetail = message.ai_error_detail || message.ai_response || '';
   const errorType = (() => {
-    if (!message.ai_response) return 'Erro desconhecido';
-    const raw = message.ai_response.toLowerCase();
-    if (raw.includes('quota') || raw.includes('429')) return 'OpenAI — cota esgotada (quota)';
-    if (raw.includes('timeout')) return 'OpenAI — timeout';
-    if (raw.includes('api')) return 'OpenAI — erro de API';
+    if (!errorDetail) return 'Erro desconhecido';
+    const raw = errorDetail.toLowerCase();
+    if (raw.includes('quota') || raw.includes('rate_limit') || raw.includes('429')) return 'OpenAI — cota esgotada (quota)';
+    if (raw.includes('timeout') || raw.includes('timed out')) return 'OpenAI — timeout';
+    if (raw.includes('connection') || raw.includes('connect')) return 'Erro de conexão';
+    if (raw.includes('context_length') || raw.includes('max_tokens') || raw.includes('maximum context')) return 'OpenAI — contexto excedido';
+    if (raw.includes('invalid_api_key') || raw.includes('authentication')) return 'OpenAI — erro de autenticação';
+    if (raw.includes('server_error') || raw.includes('500') || raw.includes('502') || raw.includes('503')) return 'OpenAI — erro no servidor';
+    if (raw.includes('openai') || raw.includes('api')) return 'OpenAI — erro de API';
     return 'Erro interno do bot';
   })();
 
@@ -277,11 +282,11 @@ function ChatBubble({ message, contactName, onContextMenu }) {
                       <p className="text-sm text-gray-900 font-medium mt-0.5">{message.created_at ? new Date(message.created_at).toLocaleString('pt-BR') : '—'}</p>
                     </div>
                   </div>
-                  {message.ai_response && (
+                  {errorDetail && (
                     <div className="border-t border-gray-100 pt-3">
-                      <p className="text-xs text-gray-500 font-medium uppercase tracking-wide mb-1">Mensagem do erro</p>
+                      <p className="text-xs text-gray-500 font-medium uppercase tracking-wide mb-1">Detalhe do erro</p>
                       <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
-                        <p className="text-xs text-gray-700 font-mono leading-relaxed break-words">{message.ai_response}</p>
+                        <p className="text-xs text-gray-700 font-mono leading-relaxed break-words">{message.ai_error_detail || message.ai_response}</p>
                       </div>
                     </div>
                   )}
