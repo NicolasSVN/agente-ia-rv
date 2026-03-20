@@ -97,6 +97,7 @@ class MessageResponse(BaseModel):
     body: Optional[str] = None
     transcription: Optional[str] = None
     ai_response: Optional[str] = None
+    ai_intent: Optional[str] = None
     is_from_campaign: bool = False
     created_at: Optional[datetime] = None
 
@@ -632,6 +633,59 @@ async def start_new_conversation(
     }
 
 
+@router.get("/bot-health")
+async def get_bot_health(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Retorna status de saúde do bot nas últimas 2 horas."""
+    from datetime import timedelta
+    cutoff = datetime.utcnow() - timedelta(hours=2)
+
+    errors = (
+        db.query(WhatsAppMessage)
+        .filter(
+            WhatsAppMessage.ai_intent == "error_suppressed",
+            WhatsAppMessage.created_at >= cutoff
+        )
+        .order_by(WhatsAppMessage.created_at.desc())
+        .all()
+    )
+
+    if not errors:
+        return {
+            "has_errors": False,
+            "error_count": 0,
+            "last_error_at": None,
+            "last_error_type": None,
+            "last_error_message": None,
+        }
+
+    last = errors[0]
+    error_type = None
+    error_message = None
+
+    if last.ai_response:
+        raw = last.ai_response
+        if "quota" in raw.lower() or "429" in raw:
+            error_type = "OpenAI — cota esgotada (quota)"
+        elif "timeout" in raw.lower():
+            error_type = "OpenAI — timeout"
+        elif "api" in raw.lower():
+            error_type = "OpenAI — erro de API"
+        else:
+            error_type = "Erro interno do bot"
+        error_message = raw[:300] if len(raw) > 300 else raw
+
+    return {
+        "has_errors": True,
+        "error_count": len(errors),
+        "last_error_at": last.created_at.isoformat() if last.created_at else None,
+        "last_error_type": error_type or "Erro desconhecido",
+        "last_error_message": error_message,
+    }
+
+
 @router.get("/{conversation_id}", response_model=ConversationResponse)
 async def get_conversation(
     conversation_id: int,
@@ -705,6 +759,7 @@ async def get_conversation_messages(
             body=msg.body,
             transcription=msg.transcription,
             ai_response=msg.ai_response,
+            ai_intent=msg.ai_intent,
             is_from_campaign=msg.is_from_campaign or False,
             created_at=msg.created_at
         )
@@ -1514,5 +1569,3 @@ async def update_ticket_status(
         "message": f"Status atualizado para {request.status}",
         "ticket_status": conv.ticket_status
     }
-
-

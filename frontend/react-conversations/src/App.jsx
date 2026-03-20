@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Search, Plus, User, Bot, Send, UserCheck, Loader2, MessageCircle, CheckCheck, MoreVertical, Copy, Reply, Trash2, Forward, X, Phone, AlertCircle, Clock, CheckCircle2, ArrowUpCircle, Filter, SlidersHorizontal, Calendar, Building2, Users, Tag, Info, XCircle } from 'lucide-react';
+import { Search, Plus, User, Bot, Send, UserCheck, Loader2, MessageCircle, CheckCheck, MoreVertical, Copy, Reply, Trash2, Forward, X, Phone, AlertCircle, Clock, CheckCircle2, ArrowUpCircle, Filter, SlidersHorizontal, Calendar, Building2, Users, Tag, Info, XCircle, AlertTriangle, ChevronDown, ChevronUp, ExternalLink } from 'lucide-react';
 import { createPortal } from 'react-dom';
 
 const API_BASE = '/api';
@@ -149,6 +149,8 @@ function ChatBubble({ message, contactName, onContextMenu }) {
   const senderName = isOutbound ? senderLabels[message.sender_type] || 'Sistema' : contactName || 'Contato';
   const time = formatTime(message.created_at);
   const content = message.body || message.transcription || '[Mídia]';
+  const hasError = message.ai_intent === 'error_suppressed';
+  const [errorTooltipOpen, setErrorTooltipOpen] = useState(false);
 
   const handleMenuClick = (e) => {
     e.preventDefault();
@@ -198,12 +200,62 @@ function ChatBubble({ message, contactName, onContextMenu }) {
       <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center">
         <User className="w-4 h-4 text-gray-500" />
       </div>
-      <div className="flex flex-col w-full max-w-[320px] leading-relaxed p-4 border border-gray-200 bg-gray-50 rounded-e-xl rounded-es-xl">
-        <div className="flex items-center space-x-2 rtl:space-x-reverse mb-1">
-          <span className="text-sm font-semibold text-gray-900">{senderName}</span>
-          <span className="text-sm text-gray-500">{time}</span>
+      <div>
+        <div className="flex flex-col w-full max-w-[320px] leading-relaxed p-4 border border-gray-200 bg-gray-50 rounded-e-xl rounded-es-xl">
+          <div className="flex items-center space-x-2 rtl:space-x-reverse mb-1">
+            <span className="text-sm font-semibold text-gray-900">{senderName}</span>
+            <span className="text-sm text-gray-500">{time}</span>
+          </div>
+          <p className="text-sm py-2 text-gray-900 whitespace-pre-wrap break-words">{content}</p>
         </div>
-        <p className="text-sm py-2 text-gray-900 whitespace-pre-wrap break-words">{content}</p>
+        {hasError && (
+          <div className="relative mt-1.5">
+            <div
+              onMouseEnter={() => setErrorTooltipOpen(true)}
+              onMouseLeave={() => setErrorTooltipOpen(false)}
+              onClick={() => setErrorTooltipOpen(prev => !prev)}
+              className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-red-500 hover:bg-red-50 transition-colors cursor-pointer select-none"
+            >
+              <AlertTriangle className="w-3.5 h-3.5" />
+              <span className="text-xs text-red-400">Falha no bot</span>
+            </div>
+            {errorTooltipOpen && (
+              <div className="absolute left-0 top-full mt-2 z-50 w-[340px] bg-white border border-red-200 rounded-xl shadow-xl overflow-hidden">
+                <div className="bg-red-50 px-4 py-2.5 border-b border-red-200 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4 text-red-500" />
+                    <span className="text-sm font-semibold text-red-700">Erro na resposta do bot</span>
+                  </div>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setErrorTooltipOpen(false); }}
+                    className="p-1 hover:bg-red-100 rounded"
+                  >
+                    <X className="w-3.5 h-3.5 text-red-400" />
+                  </button>
+                </div>
+                <div className="p-4 space-y-3">
+                  <div className="flex items-start gap-3">
+                    <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center">
+                      <Clock className="w-4 h-4 text-gray-500" />
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">Horário da tentativa</p>
+                      <p className="text-sm text-gray-900 font-medium mt-0.5">{message.created_at ? new Date(message.created_at).toLocaleString('pt-BR') : '—'}</p>
+                    </div>
+                  </div>
+                  {message.ai_response && (
+                    <div className="border-t border-gray-100 pt-3">
+                      <p className="text-xs text-gray-500 font-medium uppercase tracking-wide mb-1">Detalhe do erro</p>
+                      <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
+                        <p className="text-xs text-gray-700 font-mono leading-relaxed break-words">{message.ai_response}</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
       <button 
         onClick={handleMenuClick}
@@ -365,6 +417,87 @@ const CATEGORY_LABELS = {
   'other': 'Outros'
 };
 
+function BotErrorBanner({ botHealth, expanded, onToggleExpand, onDismiss }) {
+  if (!botHealth?.has_errors) return null;
+
+  const lastErrorTime = botHealth.last_error_at
+    ? new Date(botHealth.last_error_at).toLocaleString('pt-BR')
+    : null;
+
+  return (
+    <div className="flex-shrink-0 border-b border-red-200">
+      <div className="bg-red-50 px-4 py-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-red-100 flex items-center justify-center">
+              <XCircle className="w-5 h-5 text-red-500" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-red-800">
+                {botHealth.last_error_type || 'Erro no bot'}
+              </p>
+              <p className="text-xs text-red-600 mt-0.5">
+                Bot não respondeu
+                {botHealth.error_count > 1 && ` · ${botHealth.error_count} mensagens afetadas`}
+                {lastErrorTime && ` · Desde ${lastErrorTime}`}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={onToggleExpand}
+              className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-red-700 bg-red-100 hover:bg-red-200 rounded-lg transition-colors"
+            >
+              {expanded ? 'Menos' : 'Detalhes'}
+              {expanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+            </button>
+            <button
+              onClick={onDismiss}
+              className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-100 rounded-lg transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+        {expanded && (
+          <div className="mt-3 pt-3 border-t border-red-200 space-y-2">
+            {botHealth.last_error_message && (
+              <div className="bg-white rounded-lg p-3 border border-red-200">
+                {lastErrorTime && (
+                  <div className="flex items-center gap-2 mb-2">
+                    <Clock className="w-3.5 h-3.5 text-gray-400" />
+                    <span className="text-xs text-gray-500">{lastErrorTime}</span>
+                  </div>
+                )}
+                <p className="text-xs text-gray-700 font-mono break-words leading-relaxed">
+                  {botHealth.last_error_message}
+                </p>
+              </div>
+            )}
+            {botHealth.error_count > 0 && (
+              <div className="flex items-center gap-2 text-xs text-red-600">
+                <AlertTriangle className="w-3.5 h-3.5" />
+                <span>{botHealth.error_count} mensagem{botHealth.error_count !== 1 ? 'ns' : ''} afetada{botHealth.error_count !== 1 ? 's' : ''} nas últimas 2 horas</span>
+              </div>
+            )}
+            <div className="flex gap-2">
+              <a
+                href="https://platform.openai.com/account/billing"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-red-700 bg-white border border-red-200 hover:bg-red-50 rounded-lg transition-colors"
+              >
+                <ExternalLink className="w-3.5 h-3.5" />
+                Verificar billing OpenAI
+              </a>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function App() {
   const [conversations, setConversations] = useState([]);
   const [currentConversation, setCurrentConversation] = useState(null);
@@ -395,6 +528,9 @@ function App() {
   const [hasMoreHistory, setHasMoreHistory] = useState(true);
   const [lastZapiMessageId, setLastZapiMessageId] = useState(null);
   const [historyExhausted, setHistoryExhausted] = useState(false);
+  const [botHealth, setBotHealth] = useState(null);
+  const [bannerExpanded, setBannerExpanded] = useState(false);
+  const [bannerDismissed, setBannerDismissed] = useState(false);
   const messagesEndRef = useRef(null);
   const messagesContainerRef = useRef(null);
   const eventSourceRef = useRef(null);
@@ -410,6 +546,29 @@ function App() {
       messagesEndRef.current.scrollIntoView({ behavior });
     }
   }, []);
+
+  const fetchBotHealth = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/conversations/bot-health`, { credentials: 'include' });
+      if (res.ok) {
+        const data = await res.json();
+        setBotHealth(prev => {
+          const prevHas = prev?.has_errors;
+          const newHas = data.has_errors;
+          if (prevHas !== newHas) setBannerDismissed(false);
+          return data;
+        });
+      }
+    } catch (err) {
+      console.warn('[BotHealth] Falha ao buscar status do bot:', err);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchBotHealth();
+    const interval = setInterval(fetchBotHealth, 5 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [fetchBotHealth]);
 
   const fetchFilterCounts = useCallback(async () => {
     try {
@@ -1116,6 +1275,14 @@ function App() {
         <div className="flex-1 flex flex-col bg-gray-50 min-h-0">
           {currentConversation ? (
             <>
+              {!bannerDismissed && (
+                <BotErrorBanner
+                  botHealth={botHealth}
+                  expanded={bannerExpanded}
+                  onToggleExpand={() => setBannerExpanded(prev => !prev)}
+                  onDismiss={() => setBannerDismissed(true)}
+                />
+              )}
               <div className="flex-shrink-0 px-6 py-4 bg-white border-b border-gray-200">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-4">
