@@ -499,11 +499,11 @@
 
         function processDocument(materialId, productId) {
             showConfirmModal(
-                'Reprocessar documento',
-                'O documento será reprocessado página por página. Isso pode demorar alguns minutos dependendo do tamanho.',
+                'Processar documento',
+                'O documento será processado página por página. Isso pode demorar alguns minutos dependendo do tamanho.',
                 false,
                 async () => {
-                    setCardProcessing(materialId, true, 'Iniciando reprocessamento...');
+                    setCardProcessing(materialId, true, 'Iniciando processamento...');
                     let processingComplete = false;
                     
                     try {
@@ -582,7 +582,7 @@
                     } catch (error) {
                         console.error('Erro:', error);
                         setCardProcessing(materialId, true, `Erro: ${error.message}`);
-                        toast.error(error.message || 'Erro ao reprocessar documento');
+                        toast.error(error.message || 'Erro ao processar documento');
                         setTimeout(() => loadDocuments(), 3000);
                     }
                 }
