@@ -193,9 +193,13 @@
 
   </nav>
 
-  <!-- Z-API Status -->
-  <div class="px-4 py-2 border-t border-gray-200">
-    <div id="zapi-status-indicator" class="flex items-center gap-2 px-3 py-2 rounded-lg">
+  <!-- Bot + Z-API Status -->
+  <div class="px-4 py-2 border-t border-gray-200 space-y-1">
+    <div id="bot-status-indicator" class="flex items-center gap-2 px-3 py-1.5 rounded-lg" style="display:none;">
+      <span id="bot-dot" class="w-2.5 h-2.5 rounded-full bg-red-500 flex-shrink-0 animate-pulse"></span>
+      <span class="text-xs text-red-600 font-medium sidebar-text" id="bot-label">Bot indisponivel</span>
+    </div>
+    <div id="zapi-status-indicator" class="flex items-center gap-2 px-3 py-1.5 rounded-lg">
       <span id="zapi-dot" class="w-2.5 h-2.5 rounded-full bg-gray-300 flex-shrink-0"></span>
       <span class="text-xs text-gray-500 sidebar-text" id="zapi-label">WhatsApp</span>
     </div>
@@ -399,6 +403,42 @@
 
   fetchZapiHealth();
   setInterval(fetchZapiHealth, 60000);
+
+  // OpenAI/Bot Health Polling
+  var botIndicator = document.getElementById('bot-status-indicator');
+  var botDot = document.getElementById('bot-dot');
+  var botLabel = document.getElementById('bot-label');
+
+  function updateBotStatus(data) {
+    if (!botIndicator) return;
+    if (data && data.status === 'quota_exceeded') {
+      botIndicator.style.display = 'flex';
+      if (botDot) botDot.className = 'w-2.5 h-2.5 rounded-full bg-red-500 flex-shrink-0 animate-pulse';
+      if (botLabel) {
+        botLabel.textContent = 'Bot indisponivel (quota)';
+        botLabel.className = 'text-xs text-red-600 font-medium sidebar-text';
+      }
+    } else if (data && data.status === 'error') {
+      botIndicator.style.display = 'flex';
+      if (botDot) botDot.className = 'w-2.5 h-2.5 rounded-full bg-amber-500 flex-shrink-0';
+      if (botLabel) {
+        botLabel.textContent = 'Bot com falha';
+        botLabel.className = 'text-xs text-amber-600 font-medium sidebar-text';
+      }
+    } else {
+      botIndicator.style.display = 'none';
+    }
+  }
+
+  function fetchBotStatus() {
+    fetch('/api/health/openai-status', { credentials: 'include' })
+      .then(function(res) { return res.ok ? res.json() : null; })
+      .then(function(data) { if (data) updateBotStatus(data); })
+      .catch(function() {});
+  }
+
+  fetchBotStatus();
+  setInterval(fetchBotStatus, 60000);
 })();
 </script>
 

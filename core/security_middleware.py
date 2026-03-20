@@ -8,6 +8,7 @@ import json
 import logging
 import secrets
 import traceback
+import asyncio
 from datetime import datetime
 from collections import defaultdict
 from typing import Set
@@ -127,7 +128,13 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         nonce = secrets.token_urlsafe(16)
         request.state.csp_nonce = nonce
 
-        response = await call_next(request)
+        try:
+            response = await call_next(request)
+        except (RuntimeError, asyncio.CancelledError, ConnectionResetError) as e:
+            if "No response returned" in str(e) or isinstance(e, (asyncio.CancelledError, ConnectionResetError)):
+                security_logger.warning(f"[MIDDLEWARE] Conexão interrompida em {request.url.path}: {type(e).__name__}")
+                return Response(status_code=204)
+            raise
 
         if request.url.path.startswith("/__mockup/"):
             return response
@@ -160,11 +167,25 @@ class GlobalAuthMiddleware(BaseHTTPMiddleware):
         path = request.url.path
 
         if path in PUBLIC_PATHS:
-            return await call_next(request)
+            try:
+                return await call_next(request)
+            except (asyncio.CancelledError, ConnectionResetError):
+                return Response(status_code=204)
+            except RuntimeError as e:
+                if "No response returned" in str(e):
+                    return Response(status_code=204)
+                raise
 
         for prefix in PUBLIC_PREFIXES:
             if path.startswith(prefix):
-                return await call_next(request)
+                try:
+                    return await call_next(request)
+                except (asyncio.CancelledError, ConnectionResetError):
+                    return Response(status_code=204)
+                except RuntimeError as e:
+                    if "No response returned" in str(e):
+                        return Response(status_code=204)
+                    raise
 
         from core.security import decode_token
         token = request.cookies.get("access_token")
@@ -208,7 +229,14 @@ class GlobalAuthMiddleware(BaseHTTPMiddleware):
                         except Exception:
                             pass
 
-                        response = await call_next(request)
+                        try:
+                            response = await call_next(request)
+                        except (asyncio.CancelledError, ConnectionResetError):
+                            return Response(status_code=204)
+                        except RuntimeError as re:
+                            if "No response returned" in str(re):
+                                return Response(status_code=204)
+                            raise
 
                         is_prod = IS_PRODUCTION
                         response.set_cookie(
@@ -220,6 +248,12 @@ class GlobalAuthMiddleware(BaseHTTPMiddleware):
                             max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
                         )
                         return response
+                    except (asyncio.CancelledError, ConnectionResetError):
+                        return Response(status_code=204)
+                    except RuntimeError as re:
+                        if "No response returned" in str(re):
+                            return Response(status_code=204)
+                        raise
                     except Exception as e:
                         security_logger.error(f"Token refresh failed: {e}")
 
@@ -233,7 +267,14 @@ class GlobalAuthMiddleware(BaseHTTPMiddleware):
                 headers={"Location": "/login"}
             )
 
-        return await call_next(request)
+        try:
+            return await call_next(request)
+        except (asyncio.CancelledError, ConnectionResetError):
+            return Response(status_code=204)
+        except RuntimeError as e:
+            if "No response returned" in str(e):
+                return Response(status_code=204)
+            raise
 
 
 def setup_security(app: FastAPI):

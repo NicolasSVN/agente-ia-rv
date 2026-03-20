@@ -654,13 +654,30 @@ async def get_bot_health(
         .all()
     )
 
-    if not errors:
+    from services.dependency_check import get_openai_status_cache
+    openai_status = get_openai_status_cache()
+    is_quota_down = openai_status.get("status") == "quota_exceeded"
+
+    if not errors and not is_quota_down:
         return {
             "has_errors": False,
             "error_count": 0,
             "last_error_at": None,
             "last_error_type": None,
             "last_error_message": None,
+            "is_critical": False,
+            "critical_type": None,
+        }
+
+    if not errors and is_quota_down:
+        return {
+            "has_errors": True,
+            "error_count": 0,
+            "last_error_at": openai_status.get("triggered_at"),
+            "last_error_type": "OpenAI — cota esgotada (quota)",
+            "last_error_message": openai_status.get("error_detail", "Créditos OpenAI esgotados"),
+            "is_critical": True,
+            "critical_type": "quota_exceeded",
         }
 
     last = errors[0]
@@ -684,12 +701,17 @@ async def get_bot_health(
             error_type = "Erro interno do bot"
         error_message = raw[:500] if len(raw) > 500 else raw
 
+    is_critical = is_quota_down
+    critical_type = "quota_exceeded" if is_critical else None
+
     return {
         "has_errors": True,
         "error_count": len(errors),
         "last_error_at": last.created_at.isoformat() if last.created_at else None,
         "last_error_type": error_type or "Erro desconhecido",
         "last_error_message": error_message,
+        "is_critical": is_critical,
+        "critical_type": critical_type,
     }
 
 

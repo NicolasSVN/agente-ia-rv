@@ -9,6 +9,8 @@ _startup_time = time.time()
 
 _zapi_status_cache: dict = {"status": "unknown", "checked_at": None}
 
+_openai_status_cache: dict = {"status": "ok", "checked_at": None, "acknowledged_by": None}
+
 
 async def check_zapi_connectivity() -> dict:
     import httpx
@@ -84,6 +86,81 @@ async def _zapi_health_loop():
 
 def get_zapi_status_cache() -> dict:
     return _zapi_status_cache
+
+
+def set_openai_quota_exceeded(error_detail: str = ""):
+    global _openai_status_cache
+    if _openai_status_cache.get("status") == "quota_exceeded":
+        return
+    _openai_status_cache = {
+        "status": "quota_exceeded",
+        "checked_at": datetime.now(timezone.utc).isoformat(),
+        "error_detail": error_detail[:500] if error_detail else "",
+        "triggered_at": datetime.now(timezone.utc).isoformat(),
+        "acknowledged_by": None,
+    }
+    logger.critical(f"[OPENAI-HEALTH] Status marcado como quota_exceeded: {error_detail[:200]}")
+
+
+def acknowledge_openai_status(username: str = "admin"):
+    global _openai_status_cache
+    _openai_status_cache = {
+        "status": "ok",
+        "checked_at": datetime.now(timezone.utc).isoformat(),
+        "acknowledged_by": username,
+    }
+    logger.info(f"[OPENAI-HEALTH] Status reconhecido manualmente por {username}")
+
+
+def get_openai_status_cache() -> dict:
+    return _openai_status_cache
+
+
+async def check_openai_availability() -> dict:
+    try:
+        from openai import OpenAI
+        from core.config import get_settings
+        s = get_settings()
+        if not s.OPENAI_API_KEY:
+            return {"status": "not_configured", "checked_at": datetime.now(timezone.utc).isoformat()}
+
+        client = OpenAI(api_key=s.OPENAI_API_KEY)
+        import asyncio
+        result = await asyncio.to_thread(lambda: client.models.list())
+        return {"status": "ok", "checked_at": datetime.now(timezone.utc).isoformat()}
+    except Exception as e:
+        error_str = str(e).lower()
+        if "429" in str(e) or "quota" in error_str or "rate_limit" in error_str:
+            return {"status": "quota_exceeded", "checked_at": datetime.now(timezone.utc).isoformat(), "error": str(e)[:300]}
+        return {"status": "error", "checked_at": datetime.now(timezone.utc).isoformat(), "error": str(e)[:300]}
+
+
+async def _openai_health_loop():
+    global _openai_status_cache
+    try:
+        while True:
+            await asyncio.sleep(120)
+            try:
+                if _openai_status_cache.get("status") != "quota_exceeded":
+                    continue
+
+                result = await check_openai_availability()
+                if result["status"] == "ok":
+                    _openai_status_cache = {
+                        "status": "ok",
+                        "checked_at": result["checked_at"],
+                        "recovered_automatically": True,
+                    }
+                    logger.info("[OPENAI-HEALTH] Créditos OpenAI recuperados automaticamente!")
+                else:
+                    _openai_status_cache["checked_at"] = result["checked_at"]
+                    logger.warning(f"[OPENAI-HEALTH] Ainda com problema: {result.get('status')}")
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                logger.error(f"[OPENAI-HEALTH] Erro no loop: {e}")
+    except asyncio.CancelledError:
+        logger.info("[OPENAI-HEALTH] Loop cancelado")
 
 
 def check_critical_dependencies() -> dict:

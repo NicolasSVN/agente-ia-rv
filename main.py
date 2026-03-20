@@ -34,9 +34,12 @@ async def lifespan(app: FastAPI):
     token_cleanup_task = asyncio.create_task(revoked_tokens_cleanup_scheduler())
     background_tasks.append(token_cleanup_task)
 
-    from services.dependency_check import _zapi_health_loop
+    from services.dependency_check import _zapi_health_loop, _openai_health_loop
     zapi_health_task = asyncio.create_task(_zapi_health_loop())
     background_tasks.append(zapi_health_task)
+
+    openai_health_task = asyncio.create_task(_openai_health_loop())
+    background_tasks.append(openai_health_task)
 
     yield
     

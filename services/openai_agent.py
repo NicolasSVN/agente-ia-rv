@@ -2368,10 +2368,17 @@ INSTRUÇÕES IMPORTANTES:
 
             except Exception as e:
                 print(f"[V2] Erro na chamada OpenAI (iteração {iterations}): {e}")
+                error_str = str(e)
+                if "429" in error_str or "quota" in error_str.lower() or "rate_limit" in error_str.lower():
+                    try:
+                        from services.dependency_check import set_openai_quota_exceeded
+                        set_openai_quota_exceeded(error_str)
+                    except Exception:
+                        pass
                 return (
                     "Desculpe, não foi possível processar sua mensagem no momento.",
                     False,
-                    {"intent": "error", "error": str(e), "identified_assessor": assessor_data}
+                    {"intent": "error", "error": error_str, "identified_assessor": assessor_data}
                 )
 
             choice = response.choices[0]
@@ -2483,6 +2490,13 @@ INSTRUÇÕES IMPORTANTES:
             ai_response = final_response.choices[0].message.content or ""
         except Exception as e:
             print(f"[V2] Erro na resposta final após max iterations: {e}")
+            error_str = str(e)
+            if "429" in error_str or "quota" in error_str.lower() or "rate_limit" in error_str.lower():
+                try:
+                    from services.dependency_check import set_openai_quota_exceeded
+                    set_openai_quota_exceeded(error_str)
+                except Exception:
+                    pass
             ai_response = "Desculpe, tive um problema ao processar sua pergunta. Pode tentar novamente?"
 
         action_tool_calls = [

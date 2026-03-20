@@ -456,27 +456,31 @@ const CATEGORY_LABELS = {
   'other': 'Outros'
 };
 
-function BotErrorBanner({ botHealth, expanded, onToggleExpand, onDismiss }) {
+function BotErrorBanner({ botHealth, expanded, onToggleExpand, onDismiss, onAcknowledge, acknowledging }) {
   if (!botHealth?.has_errors) return null;
 
+  const isCritical = botHealth.is_critical;
   const lastErrorTime = botHealth.last_error_at
     ? new Date(botHealth.last_error_at).toLocaleString('pt-BR')
     : null;
 
+  const bgColor = isCritical ? 'bg-red-100' : 'bg-red-50';
+  const borderColor = isCritical ? 'border-red-300' : 'border-red-200';
+
   return (
-    <div className="flex-shrink-0 border-b border-red-200">
-      <div className="bg-red-50 px-4 py-3">
+    <div className={`flex-shrink-0 border-b ${borderColor}`}>
+      <div className={`${bgColor} px-4 py-3`}>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-red-100 flex items-center justify-center">
-              <XCircle className="w-5 h-5 text-red-500" />
+            <div className={`flex-shrink-0 w-8 h-8 rounded-lg ${isCritical ? 'bg-red-200 animate-pulse' : 'bg-red-100'} flex items-center justify-center`}>
+              <XCircle className={`w-5 h-5 ${isCritical ? 'text-red-600' : 'text-red-500'}`} />
             </div>
             <div>
-              <p className="text-sm font-semibold text-red-800">
-                {botHealth.last_error_type || 'Erro no bot'}
+              <p className={`text-sm font-semibold ${isCritical ? 'text-red-900' : 'text-red-800'}`}>
+                {isCritical ? 'ALERTA CRITICO: ' : ''}{botHealth.last_error_type || 'Erro no bot'}
               </p>
               <p className="text-xs text-red-600 mt-0.5">
-                Bot não respondeu
+                {isCritical ? 'Bot completamente inoperante' : 'Bot nao respondeu'}
                 {botHealth.error_count > 1 && ` · ${botHealth.error_count} mensagens afetadas`}
                 {lastErrorTime && ` · Desde ${lastErrorTime}`}
               </p>
@@ -490,12 +494,14 @@ function BotErrorBanner({ botHealth, expanded, onToggleExpand, onDismiss }) {
               {expanded ? 'Menos' : 'Detalhes'}
               {expanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
             </button>
-            <button
-              onClick={onDismiss}
-              className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-100 rounded-lg transition-colors"
-            >
-              <X className="w-4 h-4" />
-            </button>
+            {!isCritical && (
+              <button
+                onClick={onDismiss}
+                className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-100 rounded-lg transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
           </div>
         </div>
         {expanded && (
@@ -529,6 +535,16 @@ function BotErrorBanner({ botHealth, expanded, onToggleExpand, onDismiss }) {
                 <ExternalLink className="w-3.5 h-3.5" />
                 Verificar billing OpenAI
               </a>
+              {isCritical && (
+                <button
+                  onClick={onAcknowledge}
+                  disabled={acknowledging}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-red-600 hover:bg-red-700 disabled:opacity-50 rounded-lg transition-colors"
+                >
+                  {acknowledging ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
+                  Reconhecer alerta
+                </button>
+              )}
             </div>
           </div>
         )}
@@ -633,6 +649,7 @@ function App() {
   const [botHealth, setBotHealth] = useState(null);
   const [bannerExpanded, setBannerExpanded] = useState(false);
   const [bannerDismissed, setBannerDismissed] = useState(false);
+  const [acknowledging, setAcknowledging] = useState(false);
   const [zapiHealth, setZapiHealth] = useState(null);
   const [zapiExpanded, setZapiExpanded] = useState(false);
   const [zapiDismissed, setZapiDismissed] = useState(false);
@@ -674,9 +691,31 @@ function App() {
 
   useEffect(() => {
     fetchBotHealth();
-    const interval = setInterval(fetchBotHealth, 5 * 60 * 1000);
+    const interval = setInterval(fetchBotHealth, 60 * 1000);
     return () => clearInterval(interval);
   }, [fetchBotHealth]);
+
+  const handleAcknowledge = useCallback(async () => {
+    setAcknowledging(true);
+    try {
+      const res = await fetch(`${API_BASE}/health/openai-acknowledge`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+      if (res.ok) {
+        showToast('Alerta reconhecido com sucesso', 'success');
+        setBannerDismissed(true);
+        fetchBotHealth();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        showToast(data.detail || 'Erro ao reconhecer alerta', 'error');
+      }
+    } catch (err) {
+      showToast('Erro ao reconhecer alerta', 'error');
+    } finally {
+      setAcknowledging(false);
+    }
+  }, [fetchBotHealth, showToast]);
 
   const fetchZapiHealth = useCallback(async () => {
     try {
@@ -1404,12 +1443,14 @@ function App() {
         <div className="flex-1 flex flex-col bg-gray-50 min-h-0">
           {currentConversation ? (
             <>
-              {!bannerDismissed && (
+              {(!bannerDismissed || botHealth?.is_critical) && (
                 <BotErrorBanner
                   botHealth={botHealth}
                   expanded={bannerExpanded}
                   onToggleExpand={() => setBannerExpanded(prev => !prev)}
                   onDismiss={() => setBannerDismissed(true)}
+                  onAcknowledge={handleAcknowledge}
+                  acknowledging={acknowledging}
                 />
               )}
               {!zapiDismissed && (
