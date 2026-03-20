@@ -60,13 +60,15 @@ function ChatBubble({ message, contactName, showError = false }: {
         </div>
         {hasError && showError && (
           <div className="relative mt-1.5">
-            <button
+            <div
+              onMouseEnter={() => setTooltipOpen(true)}
+              onMouseLeave={() => setTooltipOpen(false)}
               onClick={() => setTooltipOpen(!tooltipOpen)}
-              className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-red-50 border border-red-200 text-red-600 hover:bg-red-100 transition-colors cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-red-500 hover:bg-red-50 transition-colors cursor-pointer"
             >
               <AlertTriangle className="w-3.5 h-3.5" />
-              <span className="text-xs font-medium">Bot não respondeu — ver erro</span>
-            </button>
+              <span className="text-xs text-red-400">Falha no bot</span>
+            </div>
             {tooltipOpen && (
               <div className="absolute left-0 top-full mt-2 z-50 w-[340px] bg-white border border-red-200 rounded-xl shadow-xl p-0 overflow-hidden">
                 <div className="bg-red-50 px-4 py-2.5 border-b border-red-200 flex items-center justify-between">
