@@ -86,6 +86,10 @@ ALLOWED_ORIGINS = "https://agente-ia-rv-svn.replit.app"
 localPort = 5000
 externalPort = 80
 
+[[ports]]
+localPort = 23636
+externalPort = 3000
+
 [postMerge]
 path = "scripts/post-merge.sh"
 timeoutMs = 120000
