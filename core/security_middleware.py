@@ -71,6 +71,7 @@ PUBLIC_PREFIXES = (
     "/agente",
     "/busca-web",
     "/fontes-confiaveis",
+    "/__mockup/",
 )
 
 
@@ -127,6 +128,9 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         request.state.csp_nonce = nonce
 
         response = await call_next(request)
+
+        if request.url.path.startswith("/__mockup/"):
+            return response
 
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"

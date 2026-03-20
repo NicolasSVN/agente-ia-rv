@@ -541,11 +541,33 @@ async def log_all_requests(request: Request, call_next):
 templates = Jinja2Templates(directory="frontend/templates")
 templates.env.auto_reload = True
 
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
+import httpx
 
 @app.get("/favicon.ico", include_in_schema=False)
 async def favicon():
     return FileResponse("frontend/static/favicon.ico")
+
+@app.api_route("/__mockup/{path:path}", methods=["GET", "HEAD", "OPTIONS"], include_in_schema=False)
+async def mockup_proxy(request: Request, path: str):
+    """Proxy reverso para o servidor de mockup (dev only)."""
+    target_url = f"http://localhost:23636/__mockup/{path}"
+    if request.url.query:
+        target_url += f"?{request.url.query}"
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.request(
+                method=request.method,
+                url=target_url,
+                headers={k: v for k, v in request.headers.items() if k.lower() not in ("host", "content-length")},
+            )
+            return Response(
+                content=resp.content,
+                status_code=resp.status_code,
+                headers=dict(resp.headers),
+            )
+    except Exception:
+        return Response(content=b"Mockup server unavailable", status_code=503)
 
 # Monta arquivos estáticos
 app.mount("/static", StaticFiles(directory="frontend/static"), name="static")
