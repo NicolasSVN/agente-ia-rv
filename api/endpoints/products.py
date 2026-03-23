@@ -1870,17 +1870,50 @@ async def list_all_materials(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Lista todos os materiais do sistema."""
+    """Lista todos os materiais do sistema com status de processamento da fila."""
     if current_user.role not in ["admin", "gestao_rv", "broker"]:
         raise HTTPException(status_code=403, detail="Acesso negado")
-    
+
+    from sqlalchemy import func as sqlfunc
+
     materials = db.query(Material).options(
         joinedload(Material.product)
     ).order_by(Material.created_at.desc()).all()
-    
+
+    material_ids = [m.id for m in materials]
+
+    active_queue_items = db.query(PersistentQueueItem).filter(
+        PersistentQueueItem.material_id.in_(material_ids),
+        PersistentQueueItem.status.in_(["queued", "processing"])
+    ).all() if material_ids else []
+
+    queue_by_material = {}
+    for qi in sorted(active_queue_items, key=lambda x: x.created_at or datetime.min):
+        queue_by_material[qi.material_id] = qi
+
+    block_counts = dict(
+        db.query(ContentBlock.material_id, sqlfunc.count(ContentBlock.id))
+        .filter(ContentBlock.material_id.in_(material_ids))
+        .group_by(ContentBlock.material_id)
+        .all()
+    ) if material_ids else {}
+
     result = []
     for m in materials:
-        blocks_count = db.query(ContentBlock).filter(ContentBlock.material_id == m.id).count()
+        blocks_count = block_counts.get(m.id, 0)
+        qi = queue_by_material.get(m.id)
+
+        if qi:
+            effective_status = qi.status
+            queue_current_page = qi.current_page or 0
+            queue_total_pages = qi.total_pages or 0
+            queue_progress = qi.progress or 0
+        else:
+            effective_status = m.processing_status or "pending"
+            queue_current_page = 0
+            queue_total_pages = 0
+            queue_progress = 0
+
         result.append({
             "id": m.id,
             "name": m.name,
@@ -1892,9 +1925,14 @@ async def list_all_materials(
             "valid_from": m.valid_from.isoformat() if m.valid_from else None,
             "valid_until": m.valid_until.isoformat() if m.valid_until else None,
             "indexed": blocks_count > 0,
-            "blocks_count": blocks_count
+            "blocks_count": blocks_count,
+            "processing_status": effective_status,
+            "processing_error": m.processing_error,
+            "queue_current_page": queue_current_page,
+            "queue_total_pages": queue_total_pages,
+            "queue_progress": queue_progress,
         })
-    
+
     return {"materials": result, "total": len(result)}
 
 
@@ -2669,6 +2707,123 @@ def _restore_pdf_from_db(db, material_id: int) -> str:
         f.write(mf.file_data)
     print(f"[RESTORE] PDF restaurado do banco para {restored_path} (material_id={material_id}, {mf.file_size} bytes)")
     return restored_path
+
+
+class BatchQueueResumeRequest(BaseModel):
+    material_ids: List[int]
+
+
+@router.post("/materials/batch-queue-resume")
+async def batch_queue_resume(
+    payload: BatchQueueResumeRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Enfileira múltiplos materiais pendentes para processamento em background.
+    Retorna imediatamente. Materiais já na fila são ignorados silenciosamente.
+    """
+    from database.models import DocumentProcessingJob, ProcessingJobStatus
+    from services.upload_queue import UploadQueue, UploadQueueItem
+
+    if current_user.role not in ["admin", "gestao_rv", "broker"]:
+        raise HTTPException(status_code=403, detail="Acesso negado")
+
+    if not payload.material_ids:
+        raise HTTPException(status_code=400, detail="Nenhum material_id fornecido")
+
+    if len(payload.material_ids) > 100:
+        raise HTTPException(status_code=400, detail="Máximo de 100 materiais por lote")
+
+    already_queued_ids = set(
+        row[0] for row in db.query(PersistentQueueItem.material_id).filter(
+            PersistentQueueItem.material_id.in_(payload.material_ids),
+            PersistentQueueItem.status.in_(["queued", "processing"])
+        ).all()
+    )
+
+    materials = db.query(Material).filter(
+        Material.id.in_(payload.material_ids)
+    ).options(joinedload(Material.product)).all()
+    materials_by_id = {m.id: m for m in materials}
+
+    upload_queue = UploadQueue.get_instance()
+    queued = []
+    skipped = []
+    errors = []
+
+    for material_id in payload.material_ids:
+        material = materials_by_id.get(material_id)
+        if not material:
+            errors.append({"material_id": material_id, "reason": "Material não encontrado"})
+            continue
+
+        if material_id in already_queued_ids:
+            skipped.append({"material_id": material_id, "reason": "Já está na fila"})
+            continue
+
+        job = db.query(DocumentProcessingJob).filter(
+            DocumentProcessingJob.material_id == material_id
+        ).order_by(DocumentProcessingJob.created_at.desc()).first()
+
+        file_path = None
+        if job and job.file_path and os.path.exists(job.file_path):
+            file_path = job.file_path
+        elif material.source_file_path and os.path.exists(material.source_file_path):
+            file_path = material.source_file_path
+
+        if not file_path:
+            restored = _restore_pdf_from_db(db, material_id)
+            if restored:
+                file_path = restored
+            else:
+                errors.append({"material_id": material_id, "reason": "Arquivo PDF não encontrado"})
+                continue
+
+        if job and job.status == ProcessingJobStatus.COMPLETED.value:
+            if job.last_processed_page and job.total_pages and job.last_processed_page >= job.total_pages:
+                skipped.append({"material_id": material_id, "reason": "Já processado completamente"})
+                continue
+
+        existing_job_id = job.id if job else None
+        resume_from = job.last_processed_page if job and job.last_processed_page else 0
+
+        upload_id = str(uuid.uuid4())
+        queue_item = UploadQueueItem(
+            upload_id=upload_id,
+            file_path=file_path,
+            filename=material.source_filename or material.name,
+            material_id=material.id,
+            name=material.name,
+            user_id=current_user.id,
+            material_type=material.material_type or "outro",
+            is_resume=True,
+            resume_from_page=resume_from,
+            existing_job_id=existing_job_id,
+        )
+
+        try:
+            material.processing_status = "queued"
+            db.commit()
+            upload_queue.add(queue_item)
+            queued.append({"material_id": material_id, "upload_id": upload_id})
+        except Exception as enqueue_err:
+            db.rollback()
+            try:
+                db.refresh(material)
+                material.processing_status = "pending"
+                db.commit()
+            except Exception:
+                db.rollback()
+            errors.append({"material_id": material_id, "reason": f"Erro ao enfileirar: {str(enqueue_err)[:80]}"})
+
+    return {
+        "queued": queued,
+        "skipped": skipped,
+        "errors": errors,
+        "total_queued": len(queued),
+        "message": f"{len(queued)} documento(s) adicionado(s) à fila de processamento",
+    }
 
 
 @router.post("/materials/{material_id}/queue-resume")

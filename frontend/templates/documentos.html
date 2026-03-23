@@ -330,26 +330,97 @@
     <script nonce="{{ request.state.csp_nonce }}">
         let allDocuments = [];
         let selectedIds = new Set();
-        let batchProcessing = false;
+        let pollingTimer = null;
+
+        const ACTIVE_STATUSES = new Set(['queued', 'processing']);
+
         const searchInput = document.getElementById('searchInput');
         const categoryFilter = document.getElementById('categoryFilter');
-
         searchInput.addEventListener('input', filterDocuments);
         categoryFilter.addEventListener('change', filterDocuments);
 
         async function loadDocuments() {
             try {
-                const response = await fetch('/api/products/materials/all', {
-                    credentials: 'include'
-                });
+                const response = await fetch('/api/products/materials/all', { credentials: 'include' });
                 if (!response.ok) throw new Error('Erro ao carregar documentos');
                 const data = await response.json();
                 allDocuments = data.materials || [];
                 updateCounters();
                 renderDocuments();
+                managePolling();
             } catch (error) {
-                console.error('Erro:', error);
+                console.error('Erro ao carregar documentos:', error);
             }
+        }
+
+        function managePolling() {
+            const hasActive = allDocuments.some(d => ACTIVE_STATUSES.has(d.processing_status));
+            if (hasActive && !pollingTimer) {
+                pollingTimer = setInterval(loadDocuments, 8000);
+            } else if (!hasActive && pollingTimer) {
+                clearInterval(pollingTimer);
+                pollingTimer = null;
+            }
+        }
+
+        async function queueDocuments(materialIds) {
+            if (!materialIds || materialIds.length === 0) return;
+
+            try {
+                const response = await fetch('/api/products/materials/batch-queue-resume', {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ material_ids: materialIds }),
+                });
+
+                if (!response.ok) {
+                    const err = await response.json().catch(() => ({}));
+                    throw new Error(err.detail || 'Erro ao enfileirar documentos');
+                }
+
+                const result = await response.json();
+
+                if (result.total_queued > 0) {
+                    toast.success(result.message);
+                }
+                if (result.skipped && result.skipped.length > 0 && result.total_queued === 0) {
+                    toast.info('Todos os documentos selecionados já estão na fila ou foram processados.');
+                }
+                if (result.errors && result.errors.length > 0) {
+                    const msgs = result.errors.map(e => e.reason);
+                    const unique = [...new Set(msgs)];
+                    toast.error(`${result.errors.length} documento(s) com erro: ${unique.join(', ')}`);
+                }
+
+                selectedIds.clear();
+                await loadDocuments();
+
+            } catch (error) {
+                console.error('Erro ao enfileirar:', error);
+                toast.error(error.message || 'Erro ao enfileirar documentos');
+            }
+        }
+
+        function processSelected() {
+            const ids = Array.from(selectedIds);
+            if (ids.length === 0) return;
+
+            showConfirmModal(
+                'Processar documentos',
+                `${ids.length} documento${ids.length !== 1 ? 's' : ''} ser${ids.length !== 1 ? 'ão' : 'á'} adicionado${ids.length !== 1 ? 's' : ''} à fila e processado${ids.length !== 1 ? 's' : ''} em background. Você pode fechar esta aba.`,
+                false,
+                () => queueDocuments(ids)
+            );
+        }
+
+        function processDocument(materialId) {
+            showConfirmModal(
+                'Processar documento',
+                'O documento será adicionado à fila e processado em background. Você pode acompanhar o progresso nesta tela.',
+                false,
+                () => queueDocuments([materialId])
+            );
         }
 
         function updateCounters() {
@@ -358,9 +429,8 @@
             const pending = allDocuments.filter(d => !d.indexed).length;
             const thisMonth = allDocuments.filter(d => {
                 if (!d.created_at) return false;
-                const created = new Date(d.created_at);
-                const now = new Date();
-                return created.getMonth() === now.getMonth() && created.getFullYear() === now.getFullYear();
+                const c = new Date(d.created_at), n = new Date();
+                return c.getMonth() === n.getMonth() && c.getFullYear() === n.getFullYear();
             }).length;
 
             const cards = document.querySelectorAll('.card .text-3xl');
@@ -379,9 +449,7 @@
             }
         }
 
-        function filterDocuments() {
-            renderDocuments();
-        }
+        function filterDocuments() { renderDocuments(); }
 
         function formatDate(dateStr) {
             if (!dateStr) return '-';
@@ -404,6 +472,7 @@
             } else {
                 bar.classList.remove('visible');
             }
+
             const btnProcessPending = document.getElementById('btnProcessPending');
             if (btnProcessPending) {
                 if (selectedIds.size > 0) {
@@ -416,41 +485,45 @@
                     btnProcessPending.classList.remove('bg-amber-600', 'hover:bg-amber-700', 'cursor-pointer');
                 }
             }
+
             const headerCb = document.getElementById('selectAllCb');
             if (headerCb) {
-                const pendingVisible = getFilteredDocs().filter(d => !d.indexed);
-                const selectedPending = pendingVisible.filter(d => selectedIds.has(Number(d.id)));
-                headerCb.checked = pendingVisible.length > 0 && selectedPending.length === pendingVisible.length;
-                headerCb.indeterminate = selectedPending.length > 0 && selectedPending.length < pendingVisible.length;
+                const selectablePending = getFilteredDocs().filter(
+                    d => !d.indexed && !ACTIVE_STATUSES.has(d.processing_status)
+                );
+                const selectedCount = selectablePending.filter(d => selectedIds.has(Number(d.id))).length;
+                headerCb.checked = selectablePending.length > 0 && selectedCount === selectablePending.length;
+                headerCb.indeterminate = selectedCount > 0 && selectedCount < selectablePending.length;
             }
         }
 
         function toggleSelect(id) {
             id = Number(id);
-            if (selectedIds.has(id)) {
-                selectedIds.delete(id);
-            } else {
-                selectedIds.add(id);
-            }
+            if (selectedIds.has(id)) selectedIds.delete(id);
+            else selectedIds.add(id);
             updateSelectionBar();
             const cb = document.querySelector(`.doc-checkbox[data-id="${id}"]`);
             if (cb) cb.checked = selectedIds.has(id);
         }
 
         function toggleSelectAll() {
-            const pendingVisible = getFilteredDocs().filter(d => !d.indexed);
-            const allSelected = pendingVisible.length > 0 && pendingVisible.every(d => selectedIds.has(Number(d.id)));
+            const selectablePending = getFilteredDocs().filter(
+                d => !d.indexed && !ACTIVE_STATUSES.has(d.processing_status)
+            );
+            const allSelected = selectablePending.length > 0 &&
+                selectablePending.every(d => selectedIds.has(Number(d.id)));
+
             if (allSelected) {
-                pendingVisible.forEach(d => selectedIds.delete(Number(d.id)));
+                selectablePending.forEach(d => selectedIds.delete(Number(d.id)));
             } else {
-                pendingVisible.forEach(d => selectedIds.add(Number(d.id)));
+                selectablePending.forEach(d => selectedIds.add(Number(d.id)));
             }
             renderDocuments();
             updateSelectionBar();
         }
 
         function selectAllPending() {
-            const pendingDocs = allDocuments.filter(d => !d.indexed);
+            const pendingDocs = allDocuments.filter(d => !d.indexed && !ACTIVE_STATUSES.has(d.processing_status));
             pendingDocs.forEach(d => selectedIds.add(Number(d.id)));
             renderDocuments();
             updateSelectionBar();
@@ -467,6 +540,7 @@
             const searchTerm = searchInput.value.toLowerCase();
             const category = categoryFilter.value;
             let filtered = allDocuments;
+
             if (searchTerm) {
                 filtered = filtered.filter(d =>
                     (d.name || '').toLowerCase().includes(searchTerm) ||
@@ -476,13 +550,60 @@
             if (category) {
                 filtered = filtered.filter(d => d.material_type === category);
             }
+
+            const statusOrder = { processing: 0, queued: 1, pending: 2, failed: 3, success: 4 };
             filtered = [...filtered].sort((a, b) => {
                 if (a.indexed !== b.indexed) return a.indexed ? 1 : -1;
-                const dateA = new Date(a.created_at || 0);
-                const dateB = new Date(b.created_at || 0);
-                return dateB - dateA;
+                const sa = statusOrder[a.processing_status] ?? 5;
+                const sb = statusOrder[b.processing_status] ?? 5;
+                if (sa !== sb) return sa - sb;
+                return new Date(b.created_at || 0) - new Date(a.created_at || 0);
             });
             return filtered;
+        }
+
+        function renderStatusCell(doc) {
+            const ps = doc.processing_status;
+
+            if (doc.indexed) {
+                return '<span class="px-2.5 py-1 bg-green-100 text-green-700 text-xs font-medium rounded-full">Indexado</span>';
+            }
+
+            if (ps === 'queued') {
+                return `
+                    <span class="px-2.5 py-1 bg-blue-100 text-blue-700 text-xs font-medium rounded-full flex items-center gap-1">
+                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                        </svg>
+                        Enfileirado
+                    </span>`;
+            }
+
+            if (ps === 'processing') {
+                const cur = doc.queue_current_page || 0;
+                const total = doc.queue_total_pages || 0;
+                const label = total > 0 ? 'P\u00e1g ' + cur + '/' + total : 'Processando...';
+                return `
+                    <span class="px-2.5 py-1 bg-amber-100 text-amber-700 text-xs font-medium rounded-full flex items-center gap-1">
+                        <svg class="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/>
+                        </svg>
+                        ${escapeHtml(label)}
+                    </span>`;
+            }
+
+            if (ps === 'failed') {
+                const errMsg = doc.processing_error
+                    ? escapeHtml(doc.processing_error.substring(0, 40)) + (doc.processing_error.length > 40 ? '\u2026' : '')
+                    : 'Erro';
+                return `
+                    <span class="px-2.5 py-1 bg-red-100 text-red-700 text-xs font-medium rounded-full" title="${escapeHtml(doc.processing_error || '')}">
+                        \u2715 ${errMsg}
+                    </span>`;
+            }
+
+            return '<span class="px-2.5 py-1 bg-amber-100 text-amber-700 text-xs font-medium rounded-full">Pendente</span>';
         }
 
         function renderDocuments() {
@@ -518,67 +639,85 @@
                         </tr>
                     </thead>
                     <tbody>
-                        ${filtered.map(doc => `
-                            <tr data-id="${doc.id}" id="doc-row-${doc.id}">
-                                <td>
-                                    ${!doc.indexed
-                                        ? `<input type="checkbox" class="doc-checkbox" data-id="${doc.id}" data-pending="true" data-action="toggle-select" ${selectedIds.has(Number(doc.id)) ? 'checked' : ''}>`
-                                        : `<input type="checkbox" class="doc-checkbox" disabled>`
-                                    }
-                                </td>
+                        ${filtered.map(doc => {
+                            const isActive = ACTIVE_STATUSES.has(doc.processing_status);
+                            const isSelectable = !doc.indexed && !isActive;
+                            const isChecked = selectedIds.has(Number(doc.id));
+
+                            const checkboxHtml = isSelectable
+                                ? `<input type="checkbox" class="doc-checkbox" data-id="${doc.id}" data-action="toggle-select" ${isChecked ? 'checked' : ''}>`
+                                : `<input type="checkbox" class="doc-checkbox" disabled>`;
+
+                            const iconBg = doc.indexed ? 'bg-green-50' : (isActive ? 'bg-blue-50' : 'bg-red-50');
+                            const iconClr = doc.indexed ? 'text-green-500' : (isActive ? 'text-blue-400' : 'text-red-500');
+
+                            const processBtn = (!doc.indexed && !isActive) ? `
+                                <button data-action="process" data-material-id="${doc.id}" data-product-id="${doc.product_id}"
+                                    class="px-3 py-1.5 bg-amber-100 hover:bg-amber-200 text-amber-800 text-xs font-medium rounded-lg flex items-center gap-1.5 transition-colors"
+                                    title="Processar documento">
+                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                                    </svg>
+                                    Processar
+                                </button>` : '';
+
+                            const deleteBtn = isActive
+                                ? `<button disabled class="px-3 py-1.5 bg-gray-50 text-gray-300 text-xs font-medium rounded-lg flex items-center gap-1.5 cursor-not-allowed" title="Aguarde o processamento">
+                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                                    </svg>
+                                    Excluir
+                                </button>`
+                                : `<button data-action="delete" data-material-id="${doc.id}" data-product-id="${doc.product_id}"
+                                    class="px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-600 text-xs font-medium rounded-lg flex items-center gap-1.5 transition-colors"
+                                    title="Excluir documento">
+                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                                    </svg>
+                                    Excluir
+                                </button>`;
+
+                            const rowClass = doc.processing_status === 'processing' ? 'row-processing' :
+                                doc.processing_status === 'queued' ? 'bg-blue-50/40' :
+                                doc.indexed ? 'row-success' : '';
+
+                            return `
+                            <tr data-id="${doc.id}" id="doc-row-${doc.id}" class="${rowClass}">
+                                <td>${checkboxHtml}</td>
                                 <td>
                                     <div class="flex items-center gap-3">
-                                        <div class="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${doc.indexed ? 'bg-green-50' : 'bg-red-50'}">
-                                            <svg class="w-4 h-4 ${doc.indexed ? 'text-green-500' : 'text-red-500'}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <div class="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${iconBg}">
+                                            <svg class="w-4 h-4 ${iconClr}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
                                             </svg>
                                         </div>
                                         <div class="min-w-0">
                                             <p class="font-medium text-gray-900 truncate" title="${escapeHtml(doc.name)}">${escapeHtml(doc.name)}</p>
-                                            <p class="text-xs text-gray-400 process-status-text" id="status-text-${doc.id}"></p>
                                         </div>
                                     </div>
                                 </td>
-                                <td class="text-gray-500 text-sm">${escapeHtml(doc.product_name) || '<span class="text-gray-300">—</span>'}</td>
+                                <td class="text-gray-500 text-sm">${escapeHtml(doc.product_name) || '<span class="text-gray-300">\u2014</span>'}</td>
                                 <td class="text-gray-500 text-sm">${escapeHtml(doc.material_type) || 'Documento'}</td>
                                 <td class="text-gray-500 text-sm whitespace-nowrap">${formatDate(doc.created_at)}</td>
-                                <td>
-                                    <div class="status-cell" id="status-cell-${doc.id}">
-                                        ${doc.indexed
-                                            ? '<span class="px-2.5 py-1 bg-green-100 text-green-700 text-xs font-medium rounded-full">Indexado</span>'
-                                            : `<span class="px-2.5 py-1 bg-amber-100 text-amber-700 text-xs font-medium rounded-full">Pendente</span>
-                                               ${doc.processing_error ? `<span class="text-red-500 text-xs truncate max-w-[120px] inline-block" title="${escapeHtml(doc.processing_error)}">${escapeHtml(doc.processing_error.substring(0, 30))}${doc.processing_error.length > 30 ? '...' : ''}</span>` : ''}`
-                                        }
-                                    </div>
-                                </td>
+                                <td><div class="status-cell">${renderStatusCell(doc)}</div></td>
                                 <td class="text-right" style="padding-right:20px;">
                                     <div class="flex items-center justify-end gap-2">
-                                        <button data-action="view" data-material-id="${doc.id}" class="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-600 text-xs font-medium rounded-lg flex items-center gap-1.5 transition-colors" title="Visualizar PDF">
+                                        <button data-action="view" data-material-id="${doc.id}"
+                                            class="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-600 text-xs font-medium rounded-lg flex items-center gap-1.5 transition-colors"
+                                            title="Visualizar PDF">
                                             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
                                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
                                             </svg>
                                             Ver
                                         </button>
-                                        ${!doc.indexed ? `
-                                            <button data-action="process" data-material-id="${doc.id}" data-product-id="${doc.product_id}" class="process-btn px-3 py-1.5 bg-amber-100 hover:bg-amber-200 text-amber-800 text-xs font-medium rounded-lg flex items-center gap-1.5 transition-colors" title="Processar documento">
-                                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
-                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                                                </svg>
-                                                Processar
-                                            </button>
-                                        ` : ''}
-                                        <button data-action="delete" data-material-id="${doc.id}" data-product-id="${doc.product_id}" class="px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-600 text-xs font-medium rounded-lg flex items-center gap-1.5 transition-colors" title="Excluir documento">
-                                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
-                                            </svg>
-                                            Excluir
-                                        </button>
+                                        ${processBtn}
+                                        ${deleteBtn}
                                     </div>
                                 </td>
-                            </tr>
-                        `).join('')}
+                            </tr>`;
+                        }).join('')}
                     </tbody>
                 </table>
                 </div>
@@ -607,221 +746,7 @@
             const action = pendingAction;
             document.getElementById('confirmModal').classList.remove('active');
             pendingAction = null;
-            if (action) {
-                await action();
-            }
-        }
-
-        function setRowProcessing(materialId, status, message = '') {
-            const row = document.getElementById(`doc-row-${materialId}`);
-            if (!row) return;
-            const statusCell = document.getElementById(`status-cell-${materialId}`);
-            const statusText = document.getElementById(`status-text-${materialId}`);
-            const processBtn = row.querySelector('.process-btn');
-
-            row.classList.remove('row-processing', 'row-success', 'row-error');
-
-            if (status === 'processing') {
-                row.classList.add('row-processing');
-                if (statusCell) {
-                    statusCell.innerHTML = `
-                        <svg class="w-4 h-4 animate-spin text-amber-600" fill="none" viewBox="0 0 24 24">
-                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                        </svg>
-                        <span class="text-xs text-amber-700 font-medium">Processando...</span>
-                    `;
-                }
-                if (statusText && message) statusText.textContent = message;
-                if (processBtn) {
-                    processBtn.disabled = true;
-                    processBtn.classList.add('opacity-50', 'cursor-not-allowed');
-                }
-            } else if (status === 'success') {
-                row.classList.add('row-success');
-                if (statusCell) {
-                    statusCell.innerHTML = `
-                        <svg class="w-4 h-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
-                        </svg>
-                        <span class="text-xs text-green-700 font-medium">Concluído</span>
-                    `;
-                }
-                if (statusText) statusText.textContent = 'Processamento concluído com sucesso';
-            } else if (status === 'error') {
-                row.classList.add('row-error');
-                if (statusCell) {
-                    statusCell.innerHTML = `
-                        <svg class="w-4 h-4 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-                        </svg>
-                        <span class="text-xs text-red-600 font-medium">Erro</span>
-                    `;
-                }
-                if (statusText) statusText.textContent = message || 'Erro no processamento';
-                if (processBtn) {
-                    processBtn.disabled = false;
-                    processBtn.classList.remove('opacity-50', 'cursor-not-allowed');
-                }
-            }
-        }
-
-        async function streamProcessDocument(materialId) {
-            setRowProcessing(materialId, 'processing', 'Iniciando processamento...');
-
-            try {
-                const response = await fetch(`/api/products/materials/${materialId}/resume-upload`, {
-                    method: 'POST',
-                    credentials: 'include'
-                });
-
-                if (!response.ok) {
-                    const errorData = await response.json().catch(() => ({}));
-                    let errorMsg = errorData.detail || 'Erro ao iniciar processamento';
-                    if (errorMsg.includes('status:')) {
-                        errorMsg = 'Este documento não pode ser processado no momento. Tente fazer um novo upload.';
-                    } else if (errorMsg.includes('Nenhum job')) {
-                        errorMsg = 'Nenhum processamento anterior encontrado. Faça um novo upload do documento.';
-                    } else if (errorMsg.includes('não encontrado')) {
-                        errorMsg = 'Arquivo original não encontrado. Faça um novo upload do documento.';
-                    }
-                    throw new Error(errorMsg);
-                }
-
-                const reader = response.body.getReader();
-                const decoder = new TextDecoder();
-                let buffer = '';
-                let processingComplete = false;
-
-                while (true) {
-                    const { done, value } = await reader.read();
-                    if (done) break;
-
-                    buffer += decoder.decode(value, { stream: true });
-                    const events = buffer.split('\n\n');
-                    buffer = events.pop();
-
-                    for (const event of events) {
-                        const lines = event.split('\n');
-                        let dataLine = '';
-                        for (const line of lines) {
-                            if (line.startsWith('data: ')) {
-                                dataLine += line.substring(6);
-                            }
-                        }
-                        if (dataLine) {
-                            try {
-                                const data = JSON.parse(dataLine);
-                                if (data.type === 'progress') {
-                                    setRowProcessing(materialId, 'processing', `Página ${data.current}/${data.total} (${data.percent}%)`);
-                                } else if (data.type === 'log' || data.type === 'start') {
-                                    setRowProcessing(materialId, 'processing', data.message);
-                                } else if (data.type === 'complete') {
-                                    processingComplete = true;
-                                    setRowProcessing(materialId, 'success');
-                                } else if (data.type === 'error') {
-                                    throw new Error(data.message);
-                                }
-                            } catch (parseErr) {
-                                if (parseErr.message && !parseErr.message.includes('JSON')) {
-                                    throw parseErr;
-                                }
-                            }
-                        }
-                    }
-                }
-
-                if (!processingComplete) {
-                    setRowProcessing(materialId, 'success');
-                }
-                return true;
-            } catch (error) {
-                console.error('Erro:', error);
-                setRowProcessing(materialId, 'error', error.message);
-                return false;
-            }
-        }
-
-        function processDocument(materialId, productId) {
-            showConfirmModal(
-                'Processar documento',
-                'O documento será processado página por página. Isso pode demorar alguns minutos dependendo do tamanho.',
-                false,
-                async () => {
-                    await streamProcessDocument(materialId);
-                    setTimeout(() => loadDocuments(), 2000);
-                }
-            );
-        }
-
-        function processSelected() {
-            const count = selectedIds.size;
-            if (count === 0 || batchProcessing) return;
-
-            showConfirmModal(
-                'Processar selecionados',
-                `${count} documento${count !== 1 ? 's' : ''} será${count !== 1 ? 'ão' : ''} processado${count !== 1 ? 's' : ''} sequencialmente. Isso pode demorar vários minutos.`,
-                false,
-                async () => {
-                    batchProcessing = true;
-                    const ids = Array.from(selectedIds);
-                    const btn = document.getElementById('btnProcessPending');
-                    let completed = 0;
-                    let failed = 0;
-
-                    btn.disabled = true;
-                    btn.classList.add('bg-gray-300', 'cursor-not-allowed');
-                    btn.classList.remove('bg-amber-600', 'hover:bg-amber-700', 'cursor-pointer');
-                    btn.innerHTML = `
-                        <svg class="w-4 h-4 animate-spin flex-shrink-0" fill="none" viewBox="0 0 24 24">
-                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                        </svg>
-                        Processando 0/${ids.length}...
-                    `;
-
-                    for (let i = 0; i < ids.length; i++) {
-                        const id = ids[i];
-                        btn.innerHTML = `
-                            <svg class="w-4 h-4 animate-spin flex-shrink-0" fill="none" viewBox="0 0 24 24">
-                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                            </svg>
-                            Processando ${i + 1}/${ids.length}...
-                        `;
-
-                        const row = document.getElementById(`doc-row-${id}`);
-                        if (row) row.scrollIntoView({ behavior: 'smooth', block: 'center' });
-
-                        const success = await streamProcessDocument(id);
-                        if (success) {
-                            completed++;
-                            selectedIds.delete(id);
-                        } else {
-                            failed++;
-                        }
-                    }
-
-                    batchProcessing = false;
-                    btn.disabled = false;
-                    btn.innerHTML = `
-                        <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                        </svg>
-                        Processar pendentes
-                    `;
-
-                    if (failed === 0) {
-                        toast.success(`${completed} documento${completed !== 1 ? 's' : ''} processado${completed !== 1 ? 's' : ''} com sucesso!`);
-                    } else {
-                        toast.warning(`Processamento concluído: ${completed} sucesso, ${failed} erro${failed !== 1 ? 's' : ''}`);
-                    }
-
-                    updateSelectionBar();
-                    setTimeout(() => loadDocuments(), 2000);
-                }
-            );
+            if (action) await action();
         }
 
         function deleteSelected() {
@@ -845,20 +770,13 @@
                                 method: 'DELETE',
                                 credentials: 'include'
                             });
-                            if (response.ok) {
-                                deleted++;
-                                selectedIds.delete(id);
-                            } else {
-                                errors++;
-                            }
-                        } catch (e) {
-                            errors++;
-                        }
+                            if (response.ok) { deleted++; selectedIds.delete(id); }
+                            else errors++;
+                        } catch (e) { errors++; }
                     }
 
                     if (deleted > 0) toast.success(`${deleted} documento${deleted !== 1 ? 's' : ''} excluído${deleted !== 1 ? 's' : ''}`);
                     if (errors > 0) toast.error(`${errors} documento${errors !== 1 ? 's' : ''} não puderam ser excluídos`);
-
                     updateSelectionBar();
                     loadDocuments();
                 }
@@ -892,7 +810,6 @@
         document.getElementById('confirmModal').addEventListener('click', function(e) {
             if (e.target === this) closeConfirmModal();
         });
-
         document.getElementById('btn-cancel-modal').addEventListener('click', function() { closeConfirmModal(); });
         document.getElementById('confirmBtn').addEventListener('click', function() { confirmAction(); });
 
@@ -902,15 +819,12 @@
             const action = target.dataset.action;
             const materialId = parseInt(target.dataset.materialId);
             const productId = parseInt(target.dataset.productId);
-            if (action === 'process') {
-                processDocument(materialId, productId);
-            } else if (action === 'delete') {
-                deleteDocument(materialId, productId);
-            } else if (action === 'view') {
-                window.open(`/api/products/materials/${materialId}/pdf`, '_blank');
-            } else if (action === 'toggle-all') {
-                toggleSelectAll();
-            } else if (action === 'toggle-select') {
+
+            if (action === 'process') processDocument(materialId);
+            else if (action === 'delete') deleteDocument(materialId, productId);
+            else if (action === 'view') window.open(`/api/products/materials/${materialId}/pdf`, '_blank');
+            else if (action === 'toggle-all') toggleSelectAll();
+            else if (action === 'toggle-select') {
                 const docId = parseInt(target.dataset.id);
                 toggleSelect(docId);
             }
@@ -919,11 +833,9 @@
         document.getElementById('btnProcessPending').addEventListener('click', function() {
             processSelected();
         });
-
         document.getElementById('btnDeleteSelected').addEventListener('click', function() {
             deleteSelected();
         });
-
         document.getElementById('btnClearSelection').addEventListener('click', function() {
             clearSelection();
         });

@@ -1,0 +1,791 @@
+# #44 — Processamento Background Persistente: Instruções de Implementação
+
+**Arquivos alterados:** `api/endpoints/products.py`, `frontend/templates/documentos.html`  
+**Arquivos lidos (sem alteração):** `services/upload_queue.py`, `database/models.py`  
+**Nenhuma dependência nova. Nenhuma migração de banco necessária.**
+
+---
+
+## Contexto rápido
+
+O backend já possui toda a infraestrutura: `UploadQueue` (singleton com worker thread), tabela `upload_queue_items` (persistência da fila), campo `processing_status` em `materials`, e endpoint `POST /materials/{id}/queue-resume` que enfileira e retorna imediatamente.
+
+O problema é que o frontend nunca usou nada disso. `processSelected()` chama `streamProcessDocument()`, que abre um SSE via `resume-upload` e orquestra toda a fila dentro do JavaScript do browser. F5 mata tudo.
+
+As mudanças abaixo conectam o frontend à infraestrutura que já existe.
+
+---
+
+## Parte 1 — `api/endpoints/products.py`
+
+### Alteração 1.1 — Enriquecer `GET /materials/all`
+
+**Por quê:** O endpoint hoje não retorna `processing_status`, `processing_error` nem estado da fila. O frontend de polling precisa desses campos para renderizar status sem depender de variáveis locais JS.
+
+**Localização:** linha 1868 — substitua a função `list_all_materials` inteira.
+
+```python
+@router.get("/materials/all")
+async def list_all_materials(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Lista todos os materiais do sistema com status de processamento da fila."""
+    if current_user.role not in ["admin", "gestao_rv", "broker"]:
+        raise HTTPException(status_code=403, detail="Acesso negado")
+
+    materials = db.query(Material).options(
+        joinedload(Material.product)
+    ).order_by(Material.created_at.desc()).all()
+
+    material_ids = [m.id for m in materials]
+
+    # Busca itens ativos na fila em lote (evita N queries)
+    active_queue_items = db.query(PersistentQueueItem).filter(
+        PersistentQueueItem.material_id.in_(material_ids),
+        PersistentQueueItem.status.in_(["queued", "processing"])
+    ).all()
+    # Se o mesmo material tiver >1 item na fila (improvável), prevalece o mais recente
+    queue_by_material = {}
+    for qi in sorted(active_queue_items, key=lambda x: x.created_at or datetime.min):
+        queue_by_material[qi.material_id] = qi
+
+    # Conta blocos em lote
+    from sqlalchemy import func as sqlfunc
+    block_counts = dict(
+        db.query(ContentBlock.material_id, sqlfunc.count(ContentBlock.id))
+        .filter(ContentBlock.material_id.in_(material_ids))
+        .group_by(ContentBlock.material_id)
+        .all()
+    )
+
+    result = []
+    for m in materials:
+        blocks_count = block_counts.get(m.id, 0)
+        qi = queue_by_material.get(m.id)
+
+        # Se há item ativo na fila, o status da fila prevalece sobre o campo do material
+        if qi:
+            effective_status = qi.status          # "queued" | "processing"
+            queue_current_page = qi.current_page or 0
+            queue_total_pages  = qi.total_pages  or 0
+            queue_progress     = qi.progress     or 0
+        else:
+            effective_status   = m.processing_status or "pending"
+            queue_current_page = 0
+            queue_total_pages  = 0
+            queue_progress     = 0
+
+        result.append({
+            "id":                m.id,
+            "name":              m.name,
+            "material_type":     m.material_type,
+            "product_id":        m.product_id,
+            "product_name":      m.product.name   if m.product else None,
+            "product_ticker":    m.product.ticker if m.product else None,
+            "created_at":        m.created_at.isoformat() if m.created_at else None,
+            "valid_from":        m.valid_from.isoformat() if m.valid_from else None,
+            "valid_until":       m.valid_until.isoformat() if m.valid_until else None,
+            "indexed":           blocks_count > 0,
+            "blocks_count":      blocks_count,
+            # Campos novos — consumidos pelo polling do frontend
+            "processing_status": effective_status,
+            "processing_error":  m.processing_error,
+            "queue_current_page": queue_current_page,
+            "queue_total_pages":  queue_total_pages,
+            "queue_progress":     queue_progress,
+        })
+
+    return {"materials": result, "total": len(result)}
+```
+
+---
+
+### Alteração 1.2 — Novo endpoint `POST /materials/batch-queue-resume`
+
+**Por quê:** O frontend precisa enfileirar N documentos de uma vez e receber resposta imediata. Hoje só existe o endpoint individual `queue-resume`.
+
+**Localização:** Insira **logo antes** da linha onde começa `@router.post("/materials/{material_id}/resume-upload")` (linha ~2751 no arquivo original).
+
+Adicione também o modelo Pydantic antes do endpoint — ele pode ir no topo do arquivo junto aos outros `BaseModel`, ou inline antes da função como abaixo:
+
+```python
+class BatchQueueResumeRequest(BaseModel):
+    material_ids: List[int]
+
+
+@router.post("/materials/batch-queue-resume")
+async def batch_queue_resume(
+    payload: BatchQueueResumeRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Enfileira múltiplos materiais pendentes para processamento em background.
+    Retorna imediatamente. Materiais já na fila são ignorados silenciosamente.
+    """
+    from database.models import DocumentProcessingJob, ProcessingJobStatus
+    from services.upload_queue import UploadQueue, UploadQueueItem
+
+    if current_user.role not in ["admin", "gestao_rv", "broker"]:
+        raise HTTPException(status_code=403, detail="Acesso negado")
+
+    if not payload.material_ids:
+        raise HTTPException(status_code=400, detail="Nenhum material_id fornecido")
+
+    if len(payload.material_ids) > 100:
+        raise HTTPException(status_code=400, detail="Máximo de 100 materiais por lote")
+
+    # Quais já estão na fila — não duplicar
+    already_queued_ids = set(
+        row[0] for row in db.query(PersistentQueueItem.material_id).filter(
+            PersistentQueueItem.material_id.in_(payload.material_ids),
+            PersistentQueueItem.status.in_(["queued", "processing"])
+        ).all()
+    )
+
+    materials = db.query(Material).filter(
+        Material.id.in_(payload.material_ids)
+    ).options(joinedload(Material.product)).all()
+    materials_by_id = {m.id: m for m in materials}
+
+    upload_queue = UploadQueue.get_instance()
+    queued  = []
+    skipped = []
+    errors  = []
+
+    for material_id in payload.material_ids:
+        material = materials_by_id.get(material_id)
+        if not material:
+            errors.append({"material_id": material_id, "reason": "Material não encontrado"})
+            continue
+
+        if material_id in already_queued_ids:
+            skipped.append({"material_id": material_id, "reason": "Já está na fila"})
+            continue
+
+        # Resolve caminho do PDF (mesma lógica do queue-resume individual)
+        job = db.query(DocumentProcessingJob).filter(
+            DocumentProcessingJob.material_id == material_id
+        ).order_by(DocumentProcessingJob.created_at.desc()).first()
+
+        file_path = None
+        if job and job.file_path and os.path.exists(job.file_path):
+            file_path = job.file_path
+        elif material.source_file_path and os.path.exists(material.source_file_path):
+            file_path = material.source_file_path
+
+        if not file_path:
+            restored = _restore_pdf_from_db(db, material_id)
+            if restored:
+                file_path = restored
+            else:
+                errors.append({"material_id": material_id, "reason": "Arquivo PDF não encontrado"})
+                continue
+
+        # Não reenfileira o que já foi completamente processado
+        if job and job.status == ProcessingJobStatus.COMPLETED.value:
+            if job.last_processed_page and job.total_pages and job.last_processed_page >= job.total_pages:
+                skipped.append({"material_id": material_id, "reason": "Já processado completamente"})
+                continue
+
+        existing_job_id = job.id if job else None
+        resume_from     = job.last_processed_page if job and job.last_processed_page else 0
+
+        upload_id  = str(uuid.uuid4())
+        queue_item = UploadQueueItem(
+            upload_id        = upload_id,
+            file_path        = file_path,
+            filename         = material.source_filename or material.name,
+            material_id      = material.id,
+            name             = material.name,
+            user_id          = current_user.id,
+            material_type    = material.material_type or "outro",
+            is_resume        = True,
+            resume_from_page = resume_from,
+            existing_job_id  = existing_job_id,
+        )
+
+        material.processing_status = "queued"
+        upload_queue.add(queue_item)
+        queued.append({"material_id": material_id, "upload_id": upload_id})
+
+    db.commit()
+
+    return {
+        "queued":        queued,
+        "skipped":       skipped,
+        "errors":        errors,
+        "total_queued":  len(queued),
+        "message":       f"{len(queued)} documento(s) adicionado(s) à fila de processamento",
+    }
+```
+
+> **Atenção à ordem das rotas no FastAPI:** `/materials/batch-queue-resume` deve ser declarado **antes** de `/materials/{material_id}/resume-upload` para não ser capturado pelo path parameter. No arquivo atual isso já é verdade se você inserir logo antes de `resume-upload`.
+
+---
+
+## Parte 2 — `frontend/templates/documentos.html`
+
+Substitua o bloco `<script>` inteiro (da linha 337 até `</script>` antes de `</body>`) pelo bloco abaixo. A estrutura HTML não muda — só o JavaScript.
+
+As mudanças em relação ao código atual:
+
+| O que era | O que passa a ser |
+|---|---|
+| `streamProcessDocument()` abre SSE e bloqueia | `queueDocuments(ids[])` chama `batch-queue-resume` e retorna na hora |
+| Loop `for` sequencial no browser | Polling `setInterval` a cada 5s consultando o banco |
+| Status renderizado por variáveis JS locais | Status renderizado de `doc.processing_status` vindo da API |
+| Checkbox do cabeçalho selecionava todos os visíveis | Seleciona apenas pendentes + não bloqueia os em fila/processando |
+| Botão "Ver" com `onclick` inline (bloqueado por CSP) | Botão "Ver" via event delegation no `#docGrid` |
+| Documentos em fila/processando podiam ser re-processados e excluídos | Checkbox e botões desabilitados para esses status |
+
+```html
+<script nonce="{{ request.state.csp_nonce }}">
+    // ─── Estado global ────────────────────────────────────────────────────────
+    let allDocuments  = [];
+    let selectedIds   = new Set();
+    let pollingTimer  = null;
+
+    // Status que indicam processamento ativo no servidor
+    const ACTIVE_STATUSES = new Set(['queued', 'processing']);
+
+    const searchInput    = document.getElementById('searchInput');
+    const categoryFilter = document.getElementById('categoryFilter');
+    searchInput.addEventListener('input',    filterDocuments);
+    categoryFilter.addEventListener('change', filterDocuments);
+
+    // ─── Carregamento e polling ───────────────────────────────────────────────
+
+    async function loadDocuments() {
+        try {
+            const response = await fetch('/api/products/materials/all', { credentials: 'include' });
+            if (!response.ok) throw new Error('Erro ao carregar documentos');
+            const data = await response.json();
+            allDocuments = data.materials || [];
+            updateCounters();
+            renderDocuments();
+            managePolling();
+        } catch (error) {
+            console.error('Erro ao carregar documentos:', error);
+        }
+    }
+
+    /**
+     * Inicia o polling se houver documentos ativos; para quando não houver mais.
+     * Chamado após cada loadDocuments() para auto-gerenciar o intervalo.
+     */
+    function managePolling() {
+        const hasActive = allDocuments.some(d => ACTIVE_STATUSES.has(d.processing_status));
+        if (hasActive && !pollingTimer) {
+            pollingTimer = setInterval(loadDocuments, 5000);
+        } else if (!hasActive && pollingTimer) {
+            clearInterval(pollingTimer);
+            pollingTimer = null;
+        }
+    }
+
+    // ─── Enfileiramento via backend ───────────────────────────────────────────
+
+    /**
+     * Enfileira uma lista de material_ids via batch-queue-resume.
+     * Retorna imediatamente; o progresso chega via polling.
+     */
+    async function queueDocuments(materialIds) {
+        if (!materialIds || materialIds.length === 0) return;
+
+        try {
+            const response = await fetch('/api/products/materials/batch-queue-resume', {
+                method: 'POST',
+                credentials: 'include',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ material_ids: materialIds }),
+            });
+
+            if (!response.ok) {
+                const err = await response.json().catch(() => ({}));
+                throw new Error(err.detail || 'Erro ao enfileirar documentos');
+            }
+
+            const result = await response.json();
+
+            if (result.total_queued > 0) {
+                toast.success(result.message);
+            }
+            if (result.errors && result.errors.length > 0) {
+                const msgs = result.errors.map(e => e.reason);
+                const unique = [...new Set(msgs)];
+                toast.error(`${result.errors.length} documento(s) com erro: ${unique.join(', ')}`);
+            }
+
+            // Limpa seleção e inicia polling imediatamente
+            selectedIds.clear();
+            await loadDocuments();
+
+        } catch (error) {
+            console.error('Erro ao enfileirar:', error);
+            toast.error(error.message || 'Erro ao enfileirar documentos');
+        }
+    }
+
+    // ─── Ações do usuário ────────────────────────────────────────────────────
+
+    function processSelected() {
+        const ids = Array.from(selectedIds);
+        if (ids.length === 0) return;
+
+        showConfirmModal(
+            'Processar documentos',
+            `${ids.length} documento${ids.length !== 1 ? 's' : ''} ser${ids.length !== 1 ? 'ão' : 'á'} adicionado${ids.length !== 1 ? 's' : ''} à fila e processado${ids.length !== 1 ? 's' : ''} em background. Você pode fechar esta aba.`,
+            false,
+            () => queueDocuments(ids)
+        );
+    }
+
+    function processDocument(materialId) {
+        showConfirmModal(
+            'Processar documento',
+            'O documento será adicionado à fila e processado em background. Você pode acompanhar o progresso nesta tela.',
+            false,
+            () => queueDocuments([materialId])
+        );
+    }
+
+    function deleteSelected() {
+        const count = selectedIds.size;
+        if (count === 0) return;
+
+        showConfirmModal(
+            'Excluir selecionados',
+            `Tem certeza que deseja excluir ${count} documento${count !== 1 ? 's' : ''}? Esta ação não pode ser desfeita.`,
+            true,
+            async () => {
+                const ids = Array.from(selectedIds);
+                let deleted = 0;
+                let errors  = 0;
+
+                for (const id of ids) {
+                    const doc = allDocuments.find(d => d.id === id);
+                    if (!doc) continue;
+                    try {
+                        const response = await fetch(`/api/products/${doc.product_id}/materials/${id}`, {
+                            method: 'DELETE',
+                            credentials: 'include'
+                        });
+                        if (response.ok) { deleted++; selectedIds.delete(id); }
+                        else errors++;
+                    } catch (e) { errors++; }
+                }
+
+                if (deleted > 0) toast.success(`${deleted} documento${deleted !== 1 ? 's' : ''} excluído${deleted !== 1 ? 's' : ''}`);
+                if (errors  > 0) toast.error(`${errors} documento${errors !== 1 ? 's' : ''} não puderam ser excluídos`);
+                updateSelectionBar();
+                loadDocuments();
+            }
+        );
+    }
+
+    function deleteDocument(materialId, productId) {
+        showConfirmModal(
+            'Excluir documento',
+            'Tem certeza que deseja excluir este documento? Esta ação não pode ser desfeita.',
+            true,
+            async () => {
+                try {
+                    const response = await fetch(`/api/products/${productId}/materials/${materialId}`, {
+                        method: 'DELETE',
+                        credentials: 'include'
+                    });
+                    if (!response.ok) throw new Error('Erro ao excluir');
+                    toast.success('Documento excluído com sucesso!');
+                    selectedIds.delete(materialId);
+                    updateSelectionBar();
+                    loadDocuments();
+                } catch (error) {
+                    console.error('Erro:', error);
+                    toast.error('Erro ao excluir documento');
+                }
+            }
+        );
+    }
+
+    function selectAllPending() {
+        // Seleciona todos os pendentes (não indexados e não em fila ativa)
+        const pendingDocs = allDocuments.filter(d => !d.indexed && !ACTIVE_STATUSES.has(d.processing_status));
+        pendingDocs.forEach(d => selectedIds.add(Number(d.id)));
+        renderDocuments();
+        updateSelectionBar();
+        document.getElementById('docGrid').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    function clearSelection() {
+        selectedIds.clear();
+        updateSelectionBar();
+        document.querySelectorAll('.doc-checkbox').forEach(cb => cb.checked = false);
+    }
+
+    // ─── Seleção por checkbox ─────────────────────────────────────────────────
+
+    function toggleSelect(id) {
+        id = Number(id);
+        if (selectedIds.has(id)) selectedIds.delete(id);
+        else                      selectedIds.add(id);
+        updateSelectionBar();
+        const cb = document.querySelector(`.doc-checkbox[data-id="${id}"]`);
+        if (cb) cb.checked = selectedIds.has(id);
+    }
+
+    function toggleSelectAll() {
+        // Apenas pendentes que NÃO estão em fila/processando são selecionáveis
+        const selectablePending = getFilteredDocs().filter(
+            d => !d.indexed && !ACTIVE_STATUSES.has(d.processing_status)
+        );
+        const allSelected = selectablePending.length > 0 &&
+            selectablePending.every(d => selectedIds.has(Number(d.id)));
+
+        if (allSelected) {
+            selectablePending.forEach(d => selectedIds.delete(Number(d.id)));
+        } else {
+            selectablePending.forEach(d => selectedIds.add(Number(d.id)));
+        }
+        renderDocuments();
+        updateSelectionBar();
+    }
+
+    function updateSelectionBar() {
+        const bar   = document.getElementById('selectionBar');
+        const count = document.getElementById('selectionCount');
+
+        if (selectedIds.size > 0) {
+            bar.classList.add('visible');
+            count.textContent = `${selectedIds.size} selecionado${selectedIds.size !== 1 ? 's' : ''}`;
+        } else {
+            bar.classList.remove('visible');
+        }
+
+        // Atualiza estado do checkbox do cabeçalho
+        const headerCb = document.getElementById('selectAllCb');
+        if (headerCb) {
+            const selectablePending = getFilteredDocs().filter(
+                d => !d.indexed && !ACTIVE_STATUSES.has(d.processing_status)
+            );
+            const selectedCount = selectablePending.filter(d => selectedIds.has(Number(d.id))).length;
+            headerCb.checked       = selectablePending.length > 0 && selectedCount === selectablePending.length;
+            headerCb.indeterminate = selectedCount > 0 && selectedCount < selectablePending.length;
+        }
+    }
+
+    // ─── Filtro e ordenação ───────────────────────────────────────────────────
+
+    function filterDocuments() { renderDocuments(); }
+
+    function getFilteredDocs() {
+        const searchTerm = searchInput.value.toLowerCase();
+        const category   = categoryFilter.value;
+        let filtered     = allDocuments;
+
+        if (searchTerm) {
+            filtered = filtered.filter(d =>
+                (d.name         || '').toLowerCase().includes(searchTerm) ||
+                (d.product_name || '').toLowerCase().includes(searchTerm)
+            );
+        }
+        if (category) {
+            filtered = filtered.filter(d => d.material_type === category);
+        }
+
+        // Ordem: processando/fila primeiro, depois pendentes, depois indexados
+        const statusOrder = { processing: 0, queued: 1, pending: 2, failed: 3, success: 4 };
+        filtered = [...filtered].sort((a, b) => {
+            if (a.indexed !== b.indexed) return a.indexed ? 1 : -1;
+            const sa = statusOrder[a.processing_status] ?? 5;
+            const sb = statusOrder[b.processing_status] ?? 5;
+            if (sa !== sb) return sa - sb;
+            return new Date(b.created_at || 0) - new Date(a.created_at || 0);
+        });
+        return filtered;
+    }
+
+    // ─── Contadores do topo ───────────────────────────────────────────────────
+
+    function updateCounters() {
+        const total    = allDocuments.length;
+        const indexed  = allDocuments.filter(d => d.indexed).length;
+        const pending  = allDocuments.filter(d => !d.indexed).length;
+        const thisMonth = allDocuments.filter(d => {
+            if (!d.created_at) return false;
+            const c = new Date(d.created_at), n = new Date();
+            return c.getMonth() === n.getMonth() && c.getFullYear() === n.getFullYear();
+        }).length;
+
+        const cards = document.querySelectorAll('.card .text-3xl');
+        if (cards[0]) cards[0].textContent = total;
+        if (cards[1]) cards[1].textContent = indexed;
+        if (cards[2]) cards[2].textContent = pending;
+        if (cards[3]) cards[3].textContent = thisMonth;
+
+        const pendingAlert = document.getElementById('pendingAlert');
+        const pendingCount = document.getElementById('pendingCount');
+        if (pending > 0) {
+            pendingAlert.classList.remove('hidden');
+            pendingCount.textContent = `${pending} documento${pending !== 1 ? 's' : ''} pendente${pending !== 1 ? 's' : ''}`;
+        } else {
+            pendingAlert.classList.add('hidden');
+        }
+    }
+
+    // ─── Renderização da tabela ───────────────────────────────────────────────
+
+    function formatDate(dateStr) {
+        if (!dateStr) return '-';
+        return new Date(dateStr).toLocaleDateString('pt-BR');
+    }
+
+    function escapeHtml(str) {
+        if (!str) return '';
+        const div = document.createElement('div');
+        div.appendChild(document.createTextNode(str));
+        return div.innerHTML;
+    }
+
+    /**
+     * Retorna o HTML do badge de status e da linha de progresso
+     * a partir dos campos que agora vêm da API.
+     */
+    function renderStatusCell(doc) {
+        const ps = doc.processing_status;
+
+        if (doc.indexed) {
+            return '<span class="px-2.5 py-1 bg-green-100 text-green-700 text-xs font-medium rounded-full">Indexado</span>';
+        }
+
+        if (ps === 'queued') {
+            return `
+                <span class="px-2.5 py-1 bg-blue-100 text-blue-700 text-xs font-medium rounded-full flex items-center gap-1">
+                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                    </svg>
+                    Enfileirado
+                </span>`;
+        }
+
+        if (ps === 'processing') {
+            const cur   = doc.queue_current_page || 0;
+            const total = doc.queue_total_pages  || 0;
+            const label = total > 0 ? `Pág ${cur}/${total}` : 'Processando...';
+            return `
+                <span class="px-2.5 py-1 bg-amber-100 text-amber-700 text-xs font-medium rounded-full flex items-center gap-1">
+                    <svg class="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/>
+                    </svg>
+                    ${escapeHtml(label)}
+                </span>`;
+        }
+
+        if (ps === 'failed') {
+            const errMsg = doc.processing_error
+                ? escapeHtml(doc.processing_error.substring(0, 40)) + (doc.processing_error.length > 40 ? '…' : '')
+                : 'Erro';
+            return `
+                <span class="px-2.5 py-1 bg-red-100 text-red-700 text-xs font-medium rounded-full" title="${escapeHtml(doc.processing_error || '')}">
+                    ✕ ${errMsg}
+                </span>`;
+        }
+
+        // pending / success sem blocos / outros
+        return '<span class="px-2.5 py-1 bg-amber-100 text-amber-700 text-xs font-medium rounded-full">Pendente</span>';
+    }
+
+    function renderDocuments() {
+        const container = document.getElementById('docGrid');
+        const filtered  = getFilteredDocs();
+
+        if (filtered.length === 0) {
+            container.innerHTML = `
+                <div class="empty-state">
+                    <svg class="w-16 h-16 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                    </svg>
+                    <h3 class="text-lg font-semibold text-gray-700 mb-2">Nenhum documento encontrado</h3>
+                    <p class="text-gray-500 mb-4">Faça upload de documentos para começar a construir sua base de conhecimento.</p>
+                    <a href="/base-conhecimento/upload" class="btn btn-primary">Fazer Upload</a>
+                </div>`;
+            return;
+        }
+
+        container.innerHTML = `
+            <div class="doc-table-wrapper">
+            <table class="doc-table">
+                <thead>
+                    <tr>
+                        <th><input type="checkbox" class="doc-checkbox" id="selectAllCb" onclick="toggleSelectAll()" title="Selecionar todos os pendentes"></th>
+                        <th>Documento</th>
+                        <th>Produto</th>
+                        <th>Tipo</th>
+                        <th>Data</th>
+                        <th>Status</th>
+                        <th class="text-right" style="padding-right:20px;">Ações</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${filtered.map(doc => {
+                        const isActive     = ACTIVE_STATUSES.has(doc.processing_status);
+                        const isSelectable = !doc.indexed && !isActive;
+                        const isChecked    = selectedIds.has(Number(doc.id));
+
+                        // Checkbox da linha
+                        const checkboxHtml = isSelectable
+                            ? `<input type="checkbox" class="doc-checkbox" data-id="${doc.id}"
+                                    ${isChecked ? 'checked' : ''} onclick="toggleSelect(${doc.id})">`
+                            : `<input type="checkbox" class="doc-checkbox" disabled>`;
+
+                        // Ícone do documento
+                        const iconBg  = doc.indexed ? 'bg-green-50' : (isActive ? 'bg-blue-50' : 'bg-red-50');
+                        const iconClr = doc.indexed ? 'text-green-500' : (isActive ? 'text-blue-400' : 'text-red-500');
+
+                        // Botão "Processar" — oculto se ativo, se já indexado ou se status "queued"/"processing"
+                        const processBtn = (!doc.indexed && !isActive) ? `
+                            <button data-action="process" data-material-id="${doc.id}" data-product-id="${doc.product_id}"
+                                class="px-3 py-1.5 bg-amber-100 hover:bg-amber-200 text-amber-800 text-xs font-medium rounded-lg flex items-center gap-1.5 transition-colors"
+                                title="Processar documento">
+                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                                </svg>
+                                Processar
+                            </button>` : '';
+
+                        // Botão "Excluir" — desabilitado se ativo na fila
+                        const deleteBtn = isActive
+                            ? `<button disabled class="px-3 py-1.5 bg-gray-50 text-gray-300 text-xs font-medium rounded-lg flex items-center gap-1.5 cursor-not-allowed" title="Aguarde o processamento">
+                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                                </svg>
+                                Excluir
+                            </button>`
+                            : `<button data-action="delete" data-material-id="${doc.id}" data-product-id="${doc.product_id}"
+                                class="px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-600 text-xs font-medium rounded-lg flex items-center gap-1.5 transition-colors"
+                                title="Excluir documento">
+                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                                </svg>
+                                Excluir
+                            </button>`;
+
+                        return `
+                        <tr data-id="${doc.id}" id="doc-row-${doc.id}" class="${
+                            doc.processing_status === 'processing' ? 'row-processing' :
+                            doc.processing_status === 'queued'     ? 'bg-blue-50/40'  :
+                            doc.indexed                            ? 'row-success'     : ''}">
+                            <td>${checkboxHtml}</td>
+                            <td>
+                                <div class="flex items-center gap-3">
+                                    <div class="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${iconBg}">
+                                        <svg class="w-4 h-4 ${iconClr}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                                        </svg>
+                                    </div>
+                                    <div class="min-w-0">
+                                        <p class="font-medium text-gray-900 truncate" title="${escapeHtml(doc.name)}">${escapeHtml(doc.name)}</p>
+                                        <p class="text-xs text-gray-400"></p>
+                                    </div>
+                                </div>
+                            </td>
+                            <td class="text-gray-500 text-sm">${escapeHtml(doc.product_name) || '<span class="text-gray-300">—</span>'}</td>
+                            <td class="text-gray-500 text-sm">${escapeHtml(doc.material_type) || 'Documento'}</td>
+                            <td class="text-gray-500 text-sm whitespace-nowrap">${formatDate(doc.created_at)}</td>
+                            <td><div class="status-cell">${renderStatusCell(doc)}</div></td>
+                            <td class="text-right" style="padding-right:20px;">
+                                <div class="flex items-center justify-end gap-2">
+                                    <button data-action="view" data-material-id="${doc.id}"
+                                        class="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-600 text-xs font-medium rounded-lg flex items-center gap-1.5 transition-colors"
+                                        title="Visualizar PDF">
+                                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                                        </svg>
+                                        Ver
+                                    </button>
+                                    ${processBtn}
+                                    ${deleteBtn}
+                                </div>
+                            </td>
+                        </tr>`;
+                    }).join('')}
+                </tbody>
+            </table>
+            </div>`;
+
+        updateSelectionBar();
+    }
+
+    // ─── Modal de confirmação ─────────────────────────────────────────────────
+
+    let pendingAction = null;
+
+    function showConfirmModal(title, message, isDanger, callback) {
+        document.getElementById('confirmTitle').textContent   = title;
+        document.getElementById('confirmMessage').textContent = message;
+        const btn = document.getElementById('confirmBtn');
+        btn.className  = isDanger ? 'btn btn-danger' : 'btn btn-confirm';
+        btn.textContent = isDanger ? 'Excluir' : 'Confirmar';
+        pendingAction  = callback;
+        document.getElementById('confirmModal').classList.add('active');
+    }
+
+    function closeConfirmModal() {
+        document.getElementById('confirmModal').classList.remove('active');
+        pendingAction = null;
+    }
+
+    async function confirmAction() {
+        const action = pendingAction;
+        document.getElementById('confirmModal').classList.remove('active');
+        pendingAction = null;
+        if (action) await action();
+    }
+
+    // ─── Event delegation (resolve CSP — sem onclick inline em innerHTML) ─────
+
+    document.getElementById('confirmModal').addEventListener('click', function(e) {
+        if (e.target === this) closeConfirmModal();
+    });
+    document.getElementById('btn-cancel-modal').addEventListener('click', closeConfirmModal);
+    document.getElementById('confirmBtn').addEventListener('click', confirmAction);
+
+    document.querySelector('#docGrid').addEventListener('click', function(e) {
+        const target = e.target.closest('[data-action]');
+        if (!target) return;
+        const action     = target.dataset.action;
+        const materialId = parseInt(target.dataset.materialId);
+        const productId  = parseInt(target.dataset.productId);
+
+        if      (action === 'view')    window.open(`/api/products/materials/${materialId}/pdf`, '_blank');
+        else if (action === 'process') processDocument(materialId);
+        else if (action === 'delete')  deleteDocument(materialId, productId);
+    });
+
+    // ─── Init ─────────────────────────────────────────────────────────────────
+    loadDocuments();
+</script>
+```
+
+---
+
+## Checklist de aplicação
+
+- [ ] **`products.py` — Alteração 1.1:** Substituir função `list_all_materials` (linha 1868)
+- [ ] **`products.py` — Alteração 1.2:** Inserir `BatchQueueResumeRequest` + `batch_queue_resume` antes de `resume-upload` (~linha 2751)
+- [ ] **`documentos.html`:** Substituir o bloco `<script>` inteiro (linha 337 até `</script>` antes de `</body>`)
+- [ ] Verificar que nenhuma outra tela chama `streamProcessDocument` — se chamar, manter o SSE; a mudança aqui é só na tela Documentos
+- [ ] Deploy e teste: processar 2–3 documentos → dar F5 → confirmar que o status persiste e o polling retoma
+
+---
+
+## O que NÃO muda
+
+- O endpoint SSE `resume-upload` não é tocado — mantido para compatibilidade
+- A tela SmartUpload não é alterada
+- Nenhuma migração de banco — todos os campos (`processing_status`, `upload_queue_items`, etc.) já existem
+- Nenhuma dependência nova no `requirements.txt`
