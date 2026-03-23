@@ -835,6 +835,7 @@ class UploadQueue:
             if mat:
                 if verify_count > 0:
                     mat.processing_status = ProcessingStatus.SUCCESS.value
+                    mat.processing_error = None
                     db.commit()
                     print(f"[UPLOAD_WORKER] Material {item.material_id} marcado como success ({verify_count} blocos), product_id={mat.product_id}")
                 else:

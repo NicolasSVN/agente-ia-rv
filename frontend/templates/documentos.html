@@ -594,13 +594,10 @@
             }
 
             if (ps === 'failed') {
-                const errMsg = doc.processing_error
-                    ? escapeHtml(doc.processing_error.substring(0, 40)) + (doc.processing_error.length > 40 ? '\u2026' : '')
-                    : 'Erro';
-                return `
-                    <span class="px-2.5 py-1 bg-red-100 text-red-700 text-xs font-medium rounded-full" title="${escapeHtml(doc.processing_error || '')}">
-                        \u2715 ${errMsg}
-                    </span>`;
+                return `<span class="px-2.5 py-1 bg-red-100 text-red-700 text-xs font-medium rounded-full">Erro</span>` +
+                    (doc.processing_error
+                        ? ` <span class="text-red-500 text-xs truncate max-w-[120px] inline-block align-middle" title="${escapeHtml(doc.processing_error)}">${escapeHtml(doc.processing_error.substring(0, 30))}${doc.processing_error.length > 30 ? '...' : ''}</span>`
+                        : '');
             }
 
             return '<span class="px-2.5 py-1 bg-amber-100 text-amber-700 text-xs font-medium rounded-full">Pendente</span>';
