@@ -691,7 +691,7 @@ function App() {
 
   useEffect(() => {
     fetchBotHealth();
-    const interval = setInterval(fetchBotHealth, 60 * 1000);
+    const interval = setInterval(fetchBotHealth, 5 * 60 * 1000);
     return () => clearInterval(interval);
   }, [fetchBotHealth]);
 
