@@ -265,11 +265,12 @@
                         <div class="flex-1">
                             <h3 class="font-semibold text-amber-800" id="pendingCount">Documentos pendentes</h3>
                         </div>
-                        <button onclick="selectAllPending()" class="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white text-sm font-medium rounded-lg transition-colors flex items-center gap-2 flex-shrink-0">
+                        <button onclick="processSelected()" id="btnProcessPending" disabled class="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white text-sm font-medium rounded-lg transition-colors flex items-center gap-2 flex-shrink-0 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-amber-600">
                             <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/>
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
                             </svg>
-                            Selecionar pendentes
+                            Processar pendentes
                         </button>
                     </div>
                 </div>
@@ -404,17 +405,22 @@
         function updateSelectionBar() {
             const bar = document.getElementById('selectionBar');
             const count = document.getElementById('selectionCount');
+            const btnProcessPending = document.getElementById('btnProcessPending');
             if (selectedIds.size > 0) {
                 bar.classList.add('visible');
                 count.textContent = `${selectedIds.size} selecionado${selectedIds.size !== 1 ? 's' : ''}`;
             } else {
                 bar.classList.remove('visible');
             }
+            if (btnProcessPending) {
+                btnProcessPending.disabled = selectedIds.size === 0;
+            }
             const headerCb = document.getElementById('selectAllCb');
             if (headerCb) {
                 const pendingVisible = getFilteredDocs().filter(d => !d.indexed);
-                headerCb.checked = pendingVisible.length > 0 && pendingVisible.every(d => selectedIds.has(d.id));
-                headerCb.indeterminate = pendingVisible.some(d => selectedIds.has(d.id)) && !headerCb.checked;
+                const selectedPending = pendingVisible.filter(d => selectedIds.has(d.id));
+                headerCb.checked = pendingVisible.length > 0 && selectedPending.length === pendingVisible.length;
+                headerCb.indeterminate = selectedPending.length > 0 && selectedPending.length < pendingVisible.length;
             }
         }
 

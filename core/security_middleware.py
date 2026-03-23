@@ -304,25 +304,35 @@ def setup_security(app: FastAPI):
 
     @app.exception_handler(SQLAlchemyError)
     async def sqlalchemy_exception_handler(request: Request, exc: SQLAlchemyError):
-        security_logger.error(f"Database error on {request.url.path}: {type(exc).__name__}")
+        error_id = f"DB-{int(time.time())}"
+        error_type = type(exc).__name__
+        security_logger.error(f"Database error [{error_id}] on {request.url.path}: {error_type}: {str(exc)[:200]}")
         return JSONResponse(
             status_code=500,
-            content={"detail": "Erro interno do servidor. Tente novamente."}
+            content={
+                "detail": f"Erro de banco de dados ao processar a requisição ({error_type}). Tente novamente.",
+                "error_id": error_id
+            }
         )
 
     @app.exception_handler(Exception)
     async def global_exception_handler(request: Request, exc: Exception):
         error_id = f"ERR-{int(time.time())}"
+        error_type = type(exc).__name__
+        error_msg = str(exc)[:200] if str(exc) else "Erro desconhecido"
         security_logger.error(
             f"Unhandled exception [{error_id}] on {request.url.path}: "
-            f"{type(exc).__name__}: {str(exc)[:200]}"
+            f"{error_type}: {error_msg}"
         )
         if not IS_PRODUCTION:
             traceback.print_exc()
+        safe_detail = f"Falha ao processar a requisição: {error_type}"
+        if error_msg and "password" not in error_msg.lower() and "token" not in error_msg.lower() and "secret" not in error_msg.lower():
+            safe_detail = f"Falha ao processar a requisição: {error_msg}"
         return JSONResponse(
             status_code=500,
             content={
-                "detail": "Ocorreu um erro interno. Por favor, tente novamente.",
+                "detail": safe_detail,
                 "error_id": error_id
             }
         )

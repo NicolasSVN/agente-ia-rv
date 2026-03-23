@@ -1635,7 +1635,7 @@ async def reprocess_review_item(
         raise HTTPException(status_code=404, detail="Bloco ou material não encontrado")
     
     material = block.material
-    if not material.file_path:
+    if not material.source_file_path:
         raise HTTPException(status_code=400, detail="Material não possui arquivo PDF associado")
     
     page_num = int(block.source_page) if block.source_page else 1
@@ -1646,7 +1646,7 @@ async def reprocess_review_item(
         page_num=page_num,
         block_id=block.id,
         pending_item_id=item.id,
-        file_path=material.file_path,
+        file_path=material.source_file_path,
         user_id=current_user.id
     )
     
@@ -2694,8 +2694,6 @@ async def queue_resume_upload(
         file_path = job.file_path
     elif material.source_file_path and os.path.exists(material.source_file_path):
         file_path = material.source_file_path
-    elif material.file_path and os.path.exists(material.file_path):
-        file_path = material.file_path
 
     if not file_path:
         restored = _restore_pdf_from_db(db, material_id)
@@ -2792,12 +2790,12 @@ async def resume_upload(
         
         if job.file_path and os.path.exists(job.file_path):
             file_path_to_use = job.file_path
-        elif material.file_path and os.path.exists(material.file_path):
-            file_path_to_use = material.file_path
+        elif material.source_file_path and os.path.exists(material.source_file_path):
+            file_path_to_use = material.source_file_path
             start_from_zero = True
     else:
-        if material.file_path and os.path.exists(material.file_path):
-            file_path_to_use = material.file_path
+        if material.source_file_path and os.path.exists(material.source_file_path):
+            file_path_to_use = material.source_file_path
             start_from_zero = True
     
     if not file_path_to_use:

@@ -12,6 +12,7 @@ Foque em boas práticas de segurança.
 Prefiro um design de UI limpo e minimalista.
 Garanta que todos os textos voltados ao usuário estejam em português gramaticalmente correto com acentuação adequada.
 CRÍTICO: NUNCA perca funcionalidades existentes ao fazer mudanças. Sempre verifique se as funcionalidades implementadas anteriormente permanecem intactas. Antes de modificar qualquer componente, revise quais funcionalidades existem e garanta que sejam preservadas. Chame o architect para validar mudanças de UX.
+GUIDELINE DE ERROS: Mensagens de erro genéricas ("Ocorreu um erro interno") NUNCA devem ser a resposta final ao usuário. O middleware deve incluir o tipo do erro e, quando seguro, a mensagem real. Filtrar dados sensíveis (password, token, secret). O modelo SQLAlchemy usa `source_file_path` (não `file_path`) para o caminho do arquivo do material.
 
 ## System Architecture
 The application is built using FastAPI with a modular architecture.
