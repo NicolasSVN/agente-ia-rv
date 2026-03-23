@@ -265,7 +265,7 @@
                         <div class="flex-1">
                             <h3 class="font-semibold text-amber-800" id="pendingCount">Documentos pendentes</h3>
                         </div>
-                        <button onclick="processSelected()" id="btnProcessPending" disabled class="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white text-sm font-medium rounded-lg transition-colors flex items-center gap-2 flex-shrink-0 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-amber-600">
+                        <button onclick="processSelected()" id="btnProcessPending" class="px-4 py-2 text-white text-sm font-medium rounded-lg transition-colors flex items-center gap-2 flex-shrink-0 bg-gray-300 cursor-not-allowed" disabled>
                             <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
@@ -413,18 +413,27 @@
                 bar.classList.remove('visible');
             }
             if (btnProcessPending) {
-                btnProcessPending.disabled = selectedIds.size === 0;
+                if (selectedIds.size > 0) {
+                    btnProcessPending.disabled = false;
+                    btnProcessPending.classList.remove('bg-gray-300', 'cursor-not-allowed');
+                    btnProcessPending.classList.add('bg-amber-600', 'hover:bg-amber-700', 'cursor-pointer');
+                } else {
+                    btnProcessPending.disabled = true;
+                    btnProcessPending.classList.add('bg-gray-300', 'cursor-not-allowed');
+                    btnProcessPending.classList.remove('bg-amber-600', 'hover:bg-amber-700', 'cursor-pointer');
+                }
             }
             const headerCb = document.getElementById('selectAllCb');
             if (headerCb) {
                 const pendingVisible = getFilteredDocs().filter(d => !d.indexed);
-                const selectedPending = pendingVisible.filter(d => selectedIds.has(d.id));
+                const selectedPending = pendingVisible.filter(d => selectedIds.has(Number(d.id)));
                 headerCb.checked = pendingVisible.length > 0 && selectedPending.length === pendingVisible.length;
                 headerCb.indeterminate = selectedPending.length > 0 && selectedPending.length < pendingVisible.length;
             }
         }
 
         function toggleSelect(id) {
+            id = Number(id);
             if (selectedIds.has(id)) {
                 selectedIds.delete(id);
             } else {
@@ -437,21 +446,19 @@
 
         function toggleSelectAll() {
             const pendingVisible = getFilteredDocs().filter(d => !d.indexed);
-            const allSelected = pendingVisible.every(d => selectedIds.has(d.id));
+            const allSelected = pendingVisible.length > 0 && pendingVisible.every(d => selectedIds.has(Number(d.id)));
             if (allSelected) {
-                pendingVisible.forEach(d => selectedIds.delete(d.id));
+                pendingVisible.forEach(d => selectedIds.delete(Number(d.id)));
             } else {
-                pendingVisible.forEach(d => selectedIds.add(d.id));
+                pendingVisible.forEach(d => selectedIds.add(Number(d.id)));
             }
+            renderDocuments();
             updateSelectionBar();
-            document.querySelectorAll('.doc-checkbox[data-pending="true"]').forEach(cb => {
-                cb.checked = selectedIds.has(parseInt(cb.dataset.id));
-            });
         }
 
         function selectAllPending() {
             const pendingDocs = allDocuments.filter(d => !d.indexed);
-            pendingDocs.forEach(d => selectedIds.add(d.id));
+            pendingDocs.forEach(d => selectedIds.add(Number(d.id)));
             renderDocuments();
             updateSelectionBar();
             document.getElementById('docGrid').scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -476,6 +483,12 @@
             if (category) {
                 filtered = filtered.filter(d => d.material_type === category);
             }
+            filtered = [...filtered].sort((a, b) => {
+                if (a.indexed !== b.indexed) return a.indexed ? 1 : -1;
+                const dateA = new Date(a.created_at || 0);
+                const dateB = new Date(b.created_at || 0);
+                return dateB - dateA;
+            });
             return filtered;
         }
 
@@ -516,7 +529,7 @@
                             <tr data-id="${doc.id}" id="doc-row-${doc.id}">
                                 <td>
                                     ${!doc.indexed
-                                        ? `<input type="checkbox" class="doc-checkbox" data-id="${doc.id}" data-pending="true" ${selectedIds.has(doc.id) ? 'checked' : ''} onclick="toggleSelect(${doc.id})">`
+                                        ? `<input type="checkbox" class="doc-checkbox" data-id="${doc.id}" data-pending="true" ${selectedIds.has(Number(doc.id)) ? 'checked' : ''} onclick="toggleSelect(${doc.id})">`
                                         : `<input type="checkbox" class="doc-checkbox" disabled>`
                                     }
                                 </td>
@@ -547,8 +560,15 @@
                                 </td>
                                 <td class="text-right" style="padding-right:20px;">
                                     <div class="flex items-center justify-end gap-2">
+                                        <button onclick="window.open('/api/products/materials/${doc.id}/pdf', '_blank')" class="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-600 text-xs font-medium rounded-lg flex items-center gap-1.5 transition-colors" title="Visualizar PDF">
+                                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                                            </svg>
+                                            Ver
+                                        </button>
                                         ${!doc.indexed ? `
-                                            <button data-action="process" data-material-id="${doc.id}" data-product-id="${doc.product_id}" class="process-btn px-3 py-1.5 bg-amber-100 hover:bg-amber-200 text-amber-800 text-xs font-medium rounded-lg flex items-center gap-1.5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed" title="Processar documento">
+                                            <button data-action="process" data-material-id="${doc.id}" data-product-id="${doc.product_id}" class="process-btn px-3 py-1.5 bg-amber-100 hover:bg-amber-200 text-amber-800 text-xs font-medium rounded-lg flex items-center gap-1.5 transition-colors" title="Processar documento">
                                                 <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
                                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
