@@ -745,7 +745,7 @@ async def delete_material(
         raise HTTPException(status_code=403, detail="Acesso negado")
     
     material = db.query(Material).options(
-        joinedload(Material.content_blocks)
+        joinedload(Material.blocks)
     ).filter(
         Material.id == material_id,
         Material.product_id == product_id
@@ -755,9 +755,9 @@ async def delete_material(
         raise HTTPException(status_code=404, detail="Material não encontrado")
 
     vector_store = VectorStore()
-    for block in material.content_blocks:
+    for block in material.blocks:
         vector_store.delete_document(f"product_block_{block.id}")
-    print(f"[DELETE] Material '{material.name}': {len(material.content_blocks)} embeddings removidos do vector store")
+    print(f"[DELETE] Material '{material.name}': {len(material.blocks)} embeddings removidos do vector store")
 
     db.query(PersistentQueueItem).filter(
         PersistentQueueItem.material_id == material_id
