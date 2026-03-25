@@ -22,8 +22,6 @@ function ConfirmDialog({ open, onClose, onConfirm, title, message, confirmText, 
     }
   }, [open]);
 
-  if (!open) return null;
-
   return createPortal(
     <AnimatePresence>
       {open && (
