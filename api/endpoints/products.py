@@ -22,7 +22,7 @@ from database.database import get_db
 from database.models import (
     User, Product, Material, ContentBlock, BlockVersion, 
     WhatsAppScript, PendingReviewItem, DocumentProcessingJob,
-    ProductStatus, MaterialType, ContentBlockType, 
+    DocumentPageResult, ProductStatus, MaterialType, ContentBlockType, 
     ContentBlockStatus, ContentSourceType, PersistentQueueItem,
     IngestionLog, MaterialFile
 )
@@ -614,40 +614,54 @@ async def delete_product(
 
     product_name = product.name
 
-    # Coletar IDs ANTES de qualquer delete
     block_ids = [block.id for mat in product.materials for block in mat.blocks]
     material_ids = [mat.id for mat in product.materials]
 
-    # Deletar tabelas sem cascade ORM — ordem importa:
-    # PendingReviewItem antes de ContentBlock (FK block_id → content_blocks.id)
+    print(f"[DELETE PRODUCT] Iniciando exclusão de '{product_name}' (id={product_id}) por {current_user.username} — {len(material_ids)} materiais, {len(block_ids)} blocos")
+
     if block_ids:
-        db.query(PendingReviewItem).filter(
+        n = db.query(PendingReviewItem).filter(
             PendingReviewItem.block_id.in_(block_ids)
         ).delete(synchronize_session=False)
+        print(f"[DELETE PRODUCT] {n} pending_reviews removidos")
 
     if material_ids:
-        db.query(PersistentQueueItem).filter(
+        n = db.query(PersistentQueueItem).filter(
             PersistentQueueItem.material_id.in_(material_ids)
         ).delete(synchronize_session=False)
-        db.query(IngestionLog).filter(
+        print(f"[DELETE PRODUCT] {n} queue_items removidos")
+
+        n = db.query(IngestionLog).filter(
             IngestionLog.material_id.in_(material_ids)
         ).delete(synchronize_session=False)
-        db.query(DocumentProcessingJob).filter(
+        print(f"[DELETE PRODUCT] {n} ingestion_logs removidos")
+
+        job_ids = [
+            j.id for j in db.query(DocumentProcessingJob.id).filter(
+                DocumentProcessingJob.material_id.in_(material_ids)
+            ).all()
+        ]
+        if job_ids:
+            n = db.query(DocumentPageResult).filter(
+                DocumentPageResult.job_id.in_(job_ids)
+            ).delete(synchronize_session=False)
+            print(f"[DELETE PRODUCT] {n} page_results removidos")
+
+        n = db.query(DocumentProcessingJob).filter(
             DocumentProcessingJob.material_id.in_(material_ids)
         ).delete(synchronize_session=False)
+        print(f"[DELETE PRODUCT] {n} processing_jobs removidos")
 
-    # Delete principal com cascata ORM (materials → blocks → versions)
     db.delete(product)
     db.commit()
+    print(f"[DELETE PRODUCT] Produto '{product_name}' deletado do banco")
 
-    # Vector store APÓS commit bem-sucedido
-    # Falha aqui não reverte o DB — use /admin/cleanup-orphan-embeddings para recuperar
     vector_store = VectorStore()
     removed = 0
     for bid in block_ids:
         if vector_store.delete_document(f"product_block_{bid}"):
             removed += 1
-    print(f"[DELETE] Produto '{product_name}': {removed}/{len(block_ids)} embeddings removidos do vector store")
+    print(f"[DELETE PRODUCT] {removed}/{len(block_ids)} embeddings removidos do vector store")
 
     return {"success": True}
 
@@ -754,20 +768,37 @@ async def delete_material(
     if not material:
         raise HTTPException(status_code=404, detail="Material não encontrado")
 
+    print(f"[DELETE MATERIAL] Iniciando exclusão de '{material.name}' (id={material_id}, product_id={product_id}) por {current_user.username} — {len(material.blocks)} blocos")
+
     vector_store = VectorStore()
     for block in material.blocks:
         vector_store.delete_document(f"product_block_{block.id}")
-    print(f"[DELETE] Material '{material.name}': {len(material.blocks)} embeddings removidos do vector store")
+    print(f"[DELETE MATERIAL] {len(material.blocks)} embeddings removidos do vector store")
 
-    db.query(PersistentQueueItem).filter(
+    n = db.query(PersistentQueueItem).filter(
         PersistentQueueItem.material_id == material_id
     ).delete()
-    db.query(DocumentProcessingJob).filter(
+    print(f"[DELETE MATERIAL] {n} queue_items removidos")
+
+    job_ids = [
+        j.id for j in db.query(DocumentProcessingJob.id).filter(
+            DocumentProcessingJob.material_id == material_id
+        ).all()
+    ]
+    if job_ids:
+        n = db.query(DocumentPageResult).filter(
+            DocumentPageResult.job_id.in_(job_ids)
+        ).delete(synchronize_session=False)
+        print(f"[DELETE MATERIAL] {n} page_results removidos")
+
+    n = db.query(DocumentProcessingJob).filter(
         DocumentProcessingJob.material_id == material_id
     ).delete()
+    print(f"[DELETE MATERIAL] {n} processing_jobs removidos")
 
     db.delete(material)
     db.commit()
+    print(f"[DELETE MATERIAL] Material '{material.name}' deletado do banco")
     return {"success": True}
 
 
