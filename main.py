@@ -569,19 +569,31 @@ async def cache_control_middleware(request: Request, call_next):
     return response
 
 
+_QUIET_PATHS = {
+    "/api/integrations/zapi/health",
+    "/api/conversations/bot-health",
+    "/api/health/openai-status",
+    "/api/auth/sse-token",
+}
+
 @app.middleware("http")
 async def log_all_requests(request: Request, call_next):
     import time, sys
+    path = request.url.path
+    quiet = path in _QUIET_PATHS
     start = time.time()
-    sys.stdout.write(
-        f"[ACCESS] {request.method} {request.url.path} "
-        f"from {request.client.host if request.client else 'unknown'}\n"
-    )
-    sys.stdout.flush()
+    if not quiet:
+        sys.stdout.write(
+            f"[ACCESS] {request.method} {path} "
+            f"from {request.client.host if request.client else 'unknown'}\n"
+        )
+        sys.stdout.flush()
     response = await call_next(request)
     duration = (time.time() - start) * 1000
+    if quiet and response.status_code < 400:
+        return response
     output = sys.stderr if response.status_code >= 400 else sys.stdout
-    output.write(f"[ACCESS] → {response.status_code} ({duration:.0f}ms) {request.method} {request.url.path}\n")
+    output.write(f"[ACCESS] → {response.status_code} ({duration:.0f}ms) {request.method} {path}\n")
     output.flush()
     return response
 

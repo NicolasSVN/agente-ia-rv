@@ -734,7 +734,7 @@ function App() {
 
   useEffect(() => {
     fetchZapiHealth();
-    const interval = setInterval(fetchZapiHealth, 60 * 1000);
+    const interval = setInterval(fetchZapiHealth, 5 * 60 * 1000);
     return () => clearInterval(interval);
   }, [fetchZapiHealth]);
 
