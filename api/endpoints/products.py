@@ -3964,3 +3964,100 @@ async def backfill_material_files(
         "errors": errors,
         "total_candidates": len(materials_without_mf)
     }
+
+
+@router.post("/admin/backfill-product-data")
+async def backfill_product_data(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Backfill completo: preenche tickers em produtos, publica materiais travados em rascunho,
+    e atualiza product_ticker nos embeddings correspondentes.
+    """
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Apenas administradores podem executar")
+
+    import json
+    import re
+    from sqlalchemy import text
+
+    ticker_pattern = re.compile(r'\b([A-Z]{4})([3-9]|1[0-3])\b')
+    results = {"tickers_filled": 0, "materials_published": 0, "embeddings_updated": 0, "details": []}
+
+    products_no_ticker = db.query(Product).filter(
+        (Product.ticker.is_(None)) | (Product.ticker == ''),
+        Product.status == 'ativo'
+    ).all()
+
+    for product in products_no_ticker:
+        ticker_found = None
+
+        match = ticker_pattern.search((product.name or "").upper())
+        if match:
+            ticker_found = f"{match.group(1)}{match.group(2)}"
+
+        if not ticker_found:
+            materials = db.query(Material).filter(
+                Material.product_id == product.id,
+                Material.extracted_metadata.isnot(None)
+            ).all()
+            for mat in materials:
+                try:
+                    meta = json.loads(mat.extracted_metadata)
+                    t = (meta.get("ticker") or "").strip().upper()
+                    if t and len(t) >= 4:
+                        ticker_found = t
+                        break
+                except (json.JSONDecodeError, TypeError):
+                    continue
+
+        if ticker_found:
+            product.ticker = ticker_found
+            db.commit()
+            results["tickers_filled"] += 1
+            results["details"].append(f"Product '{product.name}' (id={product.id}) → ticker={ticker_found}")
+
+            updated = db.execute(text(
+                "UPDATE document_embeddings SET product_ticker = :ticker "
+                "WHERE product_name = :pname AND (product_ticker IS NULL OR product_ticker = '')"
+            ), {"ticker": ticker_found, "pname": product.name})
+            db.commit()
+            if updated.rowcount > 0:
+                results["embeddings_updated"] += updated.rowcount
+                results["details"].append(f"  → {updated.rowcount} embeddings atualizados com ticker={ticker_found}")
+
+    materials_rascunho = db.query(Material).filter(
+        Material.publish_status.in_([None, 'rascunho'])
+    ).all()
+
+    for mat in materials_rascunho:
+        pending_count = db.query(ContentBlock).filter(
+            ContentBlock.material_id == mat.id,
+            ContentBlock.status == ContentBlockStatus.PENDING_REVIEW.value
+        ).count()
+
+        total_blocks = db.query(ContentBlock).filter(
+            ContentBlock.material_id == mat.id
+        ).count()
+
+        if pending_count == 0 and total_blocks > 0:
+            mat.publish_status = "publicado"
+            db.commit()
+            results["materials_published"] += 1
+            results["details"].append(f"Material '{mat.name}' (id={mat.id}) publicado ({total_blocks} blocos)")
+
+            product = db.query(Product).filter(Product.id == mat.product_id).first()
+            if product:
+                updated = db.execute(text(
+                    "UPDATE document_embeddings SET publish_status = 'publicado' "
+                    "WHERE material_id = :mid AND publish_status = 'rascunho'"
+                ), {"mid": mat.id})
+                db.commit()
+                if updated.rowcount > 0:
+                    results["embeddings_updated"] += updated.rowcount
+
+    print(f"[BACKFILL] Tickers: {results['tickers_filled']}, Publicados: {results['materials_published']}, "
+          f"Embeddings: {results['embeddings_updated']}")
+
+    return {"success": True, **results}

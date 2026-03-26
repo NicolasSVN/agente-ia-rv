@@ -124,6 +124,145 @@ class ExtractedTokens:
     all_tokens: List[str] = field(default_factory=list)
 
 
+class EntityResolver:
+    """
+    Camada 0: Resolve termos da query para product_ids via tabela products.
+    Busca relacional (não vetorial), independente de product_ticker nos embeddings.
+    """
+
+    AMBIGUOUS_TERMS = {
+        'xp', 'cdi', 'ibov', 'selic', 'ipca', 'igpm', 'igp-m',
+        'di', 'pre', 'pos', 'coe', 'lci', 'lca', 'cdb', 'cri', 'cra',
+        'fii', 'fidc', 'fiagro', 'etf', 'bdr',
+    }
+
+    @classmethod
+    def resolve(cls, query: str, db=None) -> List[Dict[str, Any]]:
+        """
+        Resolve termos da query para produtos no banco.
+        Returns: lista de {product_id, name, ticker, confidence}
+        """
+        if not db:
+            from database.database import SessionLocal
+            db = SessionLocal()
+            should_close = True
+        else:
+            should_close = False
+
+        try:
+            from database.models import Product
+            import json
+
+            terms = cls._extract_search_terms(query)
+            if not terms:
+                return []
+
+            results = []
+            seen_ids = set()
+
+            for term in terms:
+                term_lower = term.lower().strip()
+                if len(term_lower) < 3:
+                    continue
+                if term_lower in cls.AMBIGUOUS_TERMS:
+                    continue
+
+                matches = cls._find_products(term, db, Product)
+                for match in matches:
+                    if match['product_id'] not in seen_ids:
+                        seen_ids.add(match['product_id'])
+                        results.append(match)
+
+            return results
+        except Exception as e:
+            print(f"[EntityResolver] Erro: {e}")
+            return []
+        finally:
+            if should_close:
+                db.close()
+
+    @classmethod
+    def _extract_search_terms(cls, query: str) -> List[str]:
+        ticker_pat = re.compile(r'\b([A-Z]{4}\d{1,2})\b', re.IGNORECASE)
+        tickers = ticker_pat.findall(query)
+
+        cleaned = ticker_pat.sub('', query)
+        cleaned = re.sub(r'\b(o|a|os|as|de|da|do|das|dos|em|na|no|para|por|com|'
+                         r'me|fala|fale|sobre|quero|saber|qual|quais|que|'
+                         r'informações|informacoes|info|como|está|esta|vai)\b',
+                         '', cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(r'\s+', ' ', cleaned).strip()
+
+        terms = [t.upper() for t in tickers]
+        if cleaned and len(cleaned) >= 3:
+            terms.append(cleaned)
+
+        return terms
+
+    @classmethod
+    def _find_products(cls, term: str, db, Product) -> List[Dict[str, Any]]:
+        import json
+        results = []
+
+        product = db.query(Product).filter(
+            Product.ticker.ilike(term),
+            Product.status == 'ativo'
+        ).first()
+        if product:
+            results.append({
+                'product_id': product.id,
+                'name': product.name,
+                'ticker': product.ticker,
+                'confidence': 1.0,
+                'match_type': 'ticker_exact'
+            })
+            return results
+
+        name_matches = db.query(Product).filter(
+            Product.name.ilike(f"%{term}%"),
+            Product.status == 'ativo'
+        ).limit(5).all()
+        for p in name_matches:
+            name_upper = (p.name or '').upper()
+            term_upper = term.upper()
+            if term_upper == name_upper or term_upper in name_upper.split():
+                conf = 0.9
+            elif len(term) >= 5:
+                conf = 0.85
+            else:
+                conf = 0.6
+            results.append({
+                'product_id': p.id,
+                'name': p.name,
+                'ticker': p.ticker,
+                'confidence': conf,
+                'match_type': 'name_ilike'
+            })
+
+        if not results:
+            all_products = db.query(Product).filter(
+                Product.status == 'ativo'
+            ).all()
+            term_upper = term.upper()
+            for p in all_products:
+                try:
+                    aliases = json.loads(p.name_aliases or "[]")
+                except (json.JSONDecodeError, TypeError):
+                    aliases = []
+                for alias in aliases:
+                    if term_upper in alias.upper() or alias.upper() in term_upper:
+                        results.append({
+                            'product_id': p.id,
+                            'name': p.name,
+                            'ticker': p.ticker,
+                            'confidence': 0.8,
+                            'match_type': 'alias_match'
+                        })
+                        break
+
+        return results
+
+
 class TokenExtractor:
     """
     Extrai tokens inteligentes de uma query.
@@ -1067,6 +1206,24 @@ class EnhancedSearch:
         
         all_results = []
         seen_ids = set()
+
+        # CAMADA 0: ENTITY RESOLVER — busca relacional na tabela products
+        try:
+            resolved_products = EntityResolver.resolve(query, db=db)
+            if resolved_products:
+                high_confidence = [p for p in resolved_products if p['confidence'] >= 0.8]
+                if high_confidence:
+                    product_ids = [p['product_id'] for p in high_confidence]
+                    entity_results = self.vector_store.search_by_product_ids(product_ids, max_per_product=5)
+                    for r in entity_results:
+                        doc_id = r.get('metadata', {}).get('block_id', r.get('content', '')[:50])
+                        if doc_id not in seen_ids:
+                            seen_ids.add(doc_id)
+                            all_results.append(r)
+                    resolved_names = [p['name'] for p in high_confidence]
+                    print(f"[EnhancedSearch] Layer 0 EntityResolver: {len(entity_results)} blocos de {resolved_names}")
+        except Exception as e:
+            print(f"[EnhancedSearch] Layer 0 EntityResolver erro (não-bloqueante): {e}")
 
         # BUSCA MULTI-ENTIDADE PARA QUERIES COMPARATIVAS
         # Para "compare MANA11 com LIFE11": busca separada por entidade,

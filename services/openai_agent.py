@@ -3,6 +3,7 @@ Agente de IA usando a API da OpenAI.
 Gera respostas contextualizadas para perguntas dos usuários.
 Carrega configurações do banco de dados em tempo real.
 """
+
 import re
 import json
 import random
@@ -21,17 +22,17 @@ settings = get_settings()
 
 class OpenAIAgent:
     """Agente de IA para gerar respostas usando GPT."""
-    
+
     def __init__(self):
         self.client = None
         if settings.OPENAI_API_KEY:
             self.client = OpenAI(api_key=settings.OPENAI_API_KEY)
-    
+
     def _get_config_from_db(self):
         """Carrega configuração do agente do banco de dados."""
         from database.database import SessionLocal
         from database.crud import get_agent_config
-        
+
         db = SessionLocal()
         try:
             config = get_agent_config(db)
@@ -41,36 +42,35 @@ class OpenAIAgent:
                     "restrictions": config.restrictions or "",
                     "model": config.model,
                     "temperature": float(config.temperature),
-                    "max_tokens": config.max_tokens
+                    "max_tokens": config.max_tokens,
                 }
         finally:
             db.close()
-        
+
         return None
-    
+
     async def _classify_intent_with_ai(
-        self, 
-        user_message: str, 
-        original_ticker: str, 
-        suggested_tickers: List[str]
+        self, user_message: str, original_ticker: str, suggested_tickers: List[str]
     ) -> Dict[str, Any]:
         """
         Usa GPT para interpretar a intenção do usuário após uma sugestão de ticker.
-        
+
         Args:
             user_message: Resposta do usuário à sugestão
             original_ticker: Ticker que o usuário perguntou originalmente
             suggested_tickers: Lista de tickers sugeridos pelo assistente
-            
+
         Returns:
             Dict com 'intent' (CONFIRMA_ORIGINAL, ACEITA_SUGESTAO, NEGA_TODOS, NOVA_PERGUNTA)
             e 'ticker' (o ticker escolhido, se aplicável)
         """
         if not self.client:
             return {"intent": "NOVA_PERGUNTA", "ticker": None}
-        
-        suggestions_str = ", ".join(suggested_tickers) if suggested_tickers else "nenhum"
-        
+
+        suggestions_str = (
+            ", ".join(suggested_tickers) if suggested_tickers else "nenhum"
+        )
+
         prompt = f"""Analise a intenção do usuário no contexto de uma conversa sobre fundos/ativos financeiros.
 
 CONTEXTO:
@@ -103,60 +103,72 @@ Se NEGA_TODOS ou NOVA_PERGUNTA, ticker deve ser null."""
             response = self.client.chat.completions.create(
                 model="gpt-4o",
                 messages=[
-                    {"role": "system", "content": "Você é um classificador de intenções. Responda apenas em JSON válido."},
-                    {"role": "user", "content": prompt}
+                    {
+                        "role": "system",
+                        "content": "Você é um classificador de intenções. Responda apenas em JSON válido.",
+                    },
+                    {"role": "user", "content": prompt},
                 ],
                 temperature=0.1,
                 max_tokens=150,
-                response_format={"type": "json_object"}
+                response_format={"type": "json_object"},
             )
             try:
                 if response.usage:
                     cost_tracker.track_openai_chat(
-                        model='gpt-4o',
+                        model="gpt-4o",
                         prompt_tokens=response.usage.prompt_tokens,
                         completion_tokens=response.usage.completion_tokens,
                         total_tokens=response.usage.total_tokens,
-                        operation='intent_classification'
+                        operation="intent_classification",
                     )
             except Exception:
                 pass
-            
+
             result_text = response.choices[0].message.content.strip()
             if result_text.startswith("```"):
-                result_text = re.sub(r'^```(?:json)?\n?', '', result_text)
-                result_text = re.sub(r'\n?```$', '', result_text)
-            
+                result_text = re.sub(r"^```(?:json)?\n?", "", result_text)
+                result_text = re.sub(r"\n?```$", "", result_text)
+
             result = json.loads(result_text)
-            
-            valid_intents = ['CONFIRMA_ORIGINAL', 'ACEITA_SUGESTAO', 'NEGA_TODOS', 'NOVA_PERGUNTA']
-            if result.get('intent') not in valid_intents:
-                print(f"[OpenAI] Intent inválido: {result.get('intent')}, usando fallback")
+
+            valid_intents = [
+                "CONFIRMA_ORIGINAL",
+                "ACEITA_SUGESTAO",
+                "NEGA_TODOS",
+                "NOVA_PERGUNTA",
+            ]
+            if result.get("intent") not in valid_intents:
+                print(
+                    f"[OpenAI] Intent inválido: {result.get('intent')}, usando fallback"
+                )
                 return {"intent": "NOVA_PERGUNTA", "ticker": None}
-            
+
             print(f"[OpenAI] Classificação de intenção: {result}")
             return result
-            
+
         except json.JSONDecodeError as e:
             print(f"[OpenAI] Erro ao parsear JSON: {e}")
             return {"intent": "NOVA_PERGUNTA", "ticker": None}
         except Exception as e:
             print(f"[OpenAI] Erro ao classificar intenção: {e}")
             return {"intent": "NOVA_PERGUNTA", "ticker": None}
-    
+
     def _search_assessor_by_name(self, name: str) -> Optional[Dict[str, Any]]:
         """Busca assessor pelo nome na base de dados."""
         from database.database import SessionLocal
         from database.models import Assessor
         from sqlalchemy import func
         import json
-        
+
         db = SessionLocal()
         try:
-            assessor = db.query(Assessor).filter(
-                func.lower(Assessor.nome).contains(name.lower())
-            ).first()
-            
+            assessor = (
+                db.query(Assessor)
+                .filter(func.lower(Assessor.nome).contains(name.lower()))
+                .first()
+            )
+
             if assessor:
                 custom = {}
                 if assessor.custom_fields:
@@ -164,7 +176,7 @@ Se NEGA_TODOS ou NOVA_PERGUNTA, ticker deve ser null."""
                         custom = json.loads(assessor.custom_fields)
                     except:
                         pass
-                
+
                 return {
                     "id": assessor.id,
                     "nome": assessor.nome,
@@ -172,37 +184,41 @@ Se NEGA_TODOS ou NOVA_PERGUNTA, ticker deve ser null."""
                     "unidade": assessor.unidade,
                     "equipe": assessor.equipe,
                     "broker": assessor.broker_responsavel,
-                    "campos_customizados": custom
+                    "campos_customizados": custom,
                 }
         except Exception as e:
             print(f"[OpenAI] Erro ao buscar assessor: {e}")
         finally:
             db.close()
-        
+
         return None
-    
+
     def _search_assessor_by_phone(self, phone: str) -> Optional[Dict[str, Any]]:
         """Busca assessor pelo telefone na base de dados."""
         from database.database import SessionLocal
         from database.models import Assessor
         from sqlalchemy import or_
         import json
-        
-        clean_phone = re.sub(r'\D', '', phone)
+
+        clean_phone = re.sub(r"\D", "", phone)
         if not clean_phone or len(clean_phone) < 8:
             return None
-        
+
         last_digits = clean_phone[-9:] if len(clean_phone) >= 9 else clean_phone
-        
+
         db = SessionLocal()
         try:
-            assessor = db.query(Assessor).filter(
-                or_(
-                    Assessor.telefone_whatsapp.contains(last_digits),
-                    Assessor.telefone_whatsapp.contains(clean_phone)
+            assessor = (
+                db.query(Assessor)
+                .filter(
+                    or_(
+                        Assessor.telefone_whatsapp.contains(last_digits),
+                        Assessor.telefone_whatsapp.contains(clean_phone),
+                    )
                 )
-            ).first()
-            
+                .first()
+            )
+
             if assessor:
                 custom = {}
                 if assessor.custom_fields:
@@ -210,7 +226,7 @@ Se NEGA_TODOS ou NOVA_PERGUNTA, ticker deve ser null."""
                         custom = json.loads(assessor.custom_fields)
                     except:
                         pass
-                
+
                 return {
                     "id": assessor.id,
                     "nome": assessor.nome,
@@ -218,26 +234,39 @@ Se NEGA_TODOS ou NOVA_PERGUNTA, ticker deve ser null."""
                     "unidade": assessor.unidade,
                     "equipe": assessor.equipe,
                     "broker": assessor.broker_responsavel,
-                    "campos_customizados": custom
+                    "campos_customizados": custom,
                 }
         except Exception as e:
             print(f"[OpenAI] Erro ao buscar assessor por telefone: {e}")
         finally:
             db.close()
-        
+
         return None
-    
+
     def _extract_name_from_message(self, message: str) -> Optional[str]:
         """Extrai nome do usuário da mensagem se ele se identificar."""
         patterns = [
-            r'(?:sou|me chamo|meu nome[eé]?)\s+(?:o|a)?\s*([A-Za-zÀ-ÿ]+(?:\s+[A-Za-zÀ-ÿ]+)*)',
-            r'(?:aqui|aqui é|aqui e)\s+(?:o|a)?\s*([A-Za-zÀ-ÿ]+(?:\s+[A-Za-zÀ-ÿ]+)*)',
-            r'(?:oi|olá|ola),?\s+(?:sou|aqui é|aqui e)?\s*(?:o|a)?\s*([A-Za-zÀ-ÿ]+(?:\s+[A-Za-zÀ-ÿ]+)*)',
-            r'eu sou\s+(?:o|a)?\s*([A-Za-zÀ-ÿ]+(?:\s+[A-Za-zÀ-ÿ]+)*)',
+            r"(?:sou|me chamo|meu nome[eé]?)\s+(?:o|a)?\s*([A-Za-zÀ-ÿ]+(?:\s+[A-Za-zÀ-ÿ]+)*)",
+            r"(?:aqui|aqui é|aqui e)\s+(?:o|a)?\s*([A-Za-zÀ-ÿ]+(?:\s+[A-Za-zÀ-ÿ]+)*)",
+            r"(?:oi|olá|ola),?\s+(?:sou|aqui é|aqui e)?\s*(?:o|a)?\s*([A-Za-zÀ-ÿ]+(?:\s+[A-Za-zÀ-ÿ]+)*)",
+            r"eu sou\s+(?:o|a)?\s*([A-Za-zÀ-ÿ]+(?:\s+[A-Za-zÀ-ÿ]+)*)",
         ]
-        
-        stop_words = ['sou', 'aqui', 'oi', 'ola', 'olá', 'sabe', 'me', 'dizer', 'qual', 'quem', 'meu', 'minha']
-        
+
+        stop_words = [
+            "sou",
+            "aqui",
+            "oi",
+            "ola",
+            "olá",
+            "sabe",
+            "me",
+            "dizer",
+            "qual",
+            "quem",
+            "meu",
+            "minha",
+        ]
+
         for pattern in patterns:
             match = re.search(pattern, message, re.IGNORECASE)
             if match:
@@ -249,18 +278,16 @@ Se NEGA_TODOS ou NOVA_PERGUNTA, ticker deve ser null."""
                         break
                     if len(word) > 1:
                         cleaned_words.append(word.capitalize())
-                
+
                 if cleaned_words:
-                    name = ' '.join(cleaned_words[:3])
+                    name = " ".join(cleaned_words[:3])
                     if len(name) > 2:
                         return name
-        
+
         return None
-    
+
     async def analyze_escalation(
-        self,
-        conversation_history: List[Dict[str, str]],
-        last_user_message: str
+        self, conversation_history: List[Dict[str, str]], last_user_message: str
     ) -> Dict[str, Any]:
         """
         Analisa a conversa antes de escalar para humano.
@@ -271,14 +298,14 @@ Se NEGA_TODOS ou NOVA_PERGUNTA, ticker deve ser null."""
                 "category": "other",
                 "reason_detail": "Análise não disponível",
                 "summary": last_user_message[:200],
-                "topic": "Não categorizado"
+                "topic": "Não categorizado",
             }
-        
+
         history_text = ""
         for msg in conversation_history[-10:]:
             role = "Assessor" if msg.get("role") == "user" else "Bot"
             history_text += f"{role}: {msg.get('content', '')}\n"
-        
+
         prompt = f"""Analise esta conversa de WhatsApp entre um assessor financeiro e o bot Stevan (assistente de Renda Variável).
 O bot não conseguiu resolver sozinho e vai transferir para atendimento humano.
 
@@ -324,32 +351,32 @@ Responda em JSON:
                 model="gpt-4o",
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.3,
-                max_tokens=500
+                max_tokens=500,
             )
             try:
                 if response.usage:
                     cost_tracker.track_openai_chat(
-                        model='gpt-4o',
+                        model="gpt-4o",
                         prompt_tokens=response.usage.prompt_tokens,
                         completion_tokens=response.usage.completion_tokens,
                         total_tokens=response.usage.total_tokens,
-                        operation='conversation_analysis'
+                        operation="conversation_analysis",
                     )
             except Exception:
                 pass
-            
+
             content = response.choices[0].message.content.strip()
             if content.startswith("```"):
                 content = content.split("```")[1]
                 if content.startswith("json"):
                     content = content[4:]
-            
+
             result = json.loads(content)
             return {
                 "category": result.get("category", "other"),
                 "reason_detail": result.get("reason_detail", ""),
                 "summary": result.get("summary", last_user_message[:200]),
-                "topic": result.get("topic", "Outro")
+                "topic": result.get("topic", "Outro"),
             }
         except Exception as e:
             print(f"[OpenAI] Erro ao analisar escalação: {e}")
@@ -357,33 +384,33 @@ Responda em JSON:
                 "category": "other",
                 "reason_detail": str(e),
                 "summary": last_user_message[:200],
-                "topic": "Outro"
+                "topic": "Outro",
             }
-    
+
     def _build_assessor_context(self, assessor: Dict[str, Any]) -> str:
         """Constrói contexto com dados do assessor identificado."""
         context = f"""
 --- DADOS DO ASSESSOR IDENTIFICADO ---
-Nome: {assessor.get('nome', 'N/A')}
-Broker Responsável: {assessor.get('broker', 'N/A')}
-Equipe: {assessor.get('equipe', 'N/A')}
-Unidade: {assessor.get('unidade', 'N/A')}
-Telefone: {assessor.get('telefone', 'N/A')}
+Nome: {assessor.get("nome", "N/A")}
+Broker Responsável: {assessor.get("broker", "N/A")}
+Equipe: {assessor.get("equipe", "N/A")}
+Unidade: {assessor.get("unidade", "N/A")}
+Telefone: {assessor.get("telefone", "N/A")}
 """
-        if assessor.get('campos_customizados'):
+        if assessor.get("campos_customizados"):
             context += "\nCampos Adicionais:\n"
-            for key, value in assessor['campos_customizados'].items():
+            for key, value in assessor["campos_customizados"].items():
                 context += f"- {key}: {value}\n"
-        
+
         context += "\nVocê pode usar essas informações para responder perguntas como 'quem é meu broker?', 'qual minha equipe?', etc.\n"
-        
+
         return context
-    
+
     def _classify_message(self, message: str) -> Tuple[str, List[str]]:
         """
         Classifica a mensagem em uma das categorias e extrai produtos se houver.
         Retorna tupla (categoria, lista_de_produtos).
-        
+
         Categorias:
         - SAUDACAO: Cumprimentos e mensagens iniciais (oi, bom dia, etc)
         - DOCUMENTAL: Perguntas que precisam consultar base de conhecimento
@@ -392,7 +419,7 @@ Telefone: {assessor.get('telefone', 'N/A')}
         """
         if not self.client:
             return ("ESCOPO", [])
-        
+
         try:
             response = self.client.chat.completions.create(
                 model="gpt-4o",
@@ -472,25 +499,25 @@ Exemplos:
 "produto pra cliente conservador?" -> {"categoria": "ESCOPO", "produtos": ["COMITE"]}
 "conta uma piada" -> {"categoria": "FORA_ESCOPO", "produtos": []}
 
-Retorne APENAS o JSON."""
+Retorne APENAS o JSON.""",
                     },
-                    {"role": "user", "content": message}
+                    {"role": "user", "content": message},
                 ],
                 max_tokens=150,
-                temperature=0
+                temperature=0,
             )
             try:
                 if response.usage:
                     cost_tracker.track_openai_chat(
-                        model='gpt-4o',
+                        model="gpt-4o",
                         prompt_tokens=response.usage.prompt_tokens,
                         completion_tokens=response.usage.completion_tokens,
                         total_tokens=response.usage.total_tokens,
-                        operation='escalation_analysis'
+                        operation="escalation_analysis",
                     )
             except Exception:
                 pass
-            
+
             result = response.choices[0].message.content.strip()
             if result.startswith("{"):
                 data = json.loads(result)
@@ -502,181 +529,203 @@ Retorne APENAS o JSON."""
         except Exception as e:
             print(f"[OpenAI] Erro ao classificar mensagem: {e}")
             return ("ESCOPO", [])
-    
-    def _extract_entities_from_history(self, conversation_history: Optional[List[dict]]) -> List[str]:
+
+    def _extract_entities_from_history(
+        self, conversation_history: Optional[List[dict]]
+    ) -> List[str]:
         """
         Extrai entidades (produtos, tickers, fundos) mencionados ao longo de toda a conversa.
         Analisa todas as mensagens do usuário no histórico e extrai termos relevantes.
         Itera do mais recente para o mais antigo para garantir ordem de recência.
-        
+
         Returns:
             Lista de entidades únicas, ordenadas por recência (mais recente primeiro)
         """
         if not conversation_history:
             return []
-        
+
         entities = []
-        
-        fii_pattern = re.compile(r'\b[A-Z]{4}11\b', re.IGNORECASE)
-        
+
+        fii_pattern = re.compile(r"\b[A-Z]{4}11\b", re.IGNORECASE)
+
         product_keywords = [
-            r'\b(TG\s*(?:CORE|RI|RENDA))\b',
-            r'\b(KNIP|KNCR|MXRF|HGLG|XPLG|VISC|BTLG|HABT|BCFF|RVBI)\d*\b',
-            r'\b(Fundo\s+[A-Za-zÀ-ÿ]+(?:\s+[A-Za-zÀ-ÿ]+)*)\b',
-            r'\b(Estratégia\s+[A-Za-zÀ-ÿ]+(?:\s+[A-Za-zÀ-ÿ]+)*)\b',
-            r'\b(Carteira\s+[A-Za-zÀ-ÿ]+(?:\s+[A-Za-zÀ-ÿ]+)*)\b',
+            r"\b(TG\s*(?:CORE|RI|RENDA))\b",
+            r"\b(KNIP|KNCR|MXRF|HGLG|XPLG|VISC|BTLG|HABT|BCFF|RVBI)\d*\b",
+            r"\b(Fundo\s+[A-Za-zÀ-ÿ]+(?:\s+[A-Za-zÀ-ÿ]+)*)\b",
+            r"\b(Estratégia\s+[A-Za-zÀ-ÿ]+(?:\s+[A-Za-zÀ-ÿ]+)*)\b",
+            r"\b(Carteira\s+[A-Za-zÀ-ÿ]+(?:\s+[A-Za-zÀ-ÿ]+)*)\b",
         ]
-        
+
         for msg in reversed(conversation_history):
-            if msg.get('role') != 'user':
+            if msg.get("role") != "user":
                 continue
-            
-            content = msg.get('content', '')
-            
+
+            content = msg.get("content", "")
+
             tickers = fii_pattern.findall(content)
             for ticker in tickers:
                 ticker_upper = ticker.upper()
                 if ticker_upper not in entities:
                     entities.append(ticker_upper)
-            
+
             for pattern in product_keywords:
                 matches = re.findall(pattern, content, re.IGNORECASE)
                 for match in matches:
                     entity = match.upper().strip()
-                    entity = re.sub(r'\s+', ' ', entity)
+                    entity = re.sub(r"\s+", " ", entity)
                     if entity not in entities:
                         entities.append(entity)
-        
-        print(f"[OpenAI] Entidades extraídas do histórico (recentes primeiro): {entities}")
+
+        print(
+            f"[OpenAI] Entidades extraídas do histórico (recentes primeiro): {entities}"
+        )
         return entities
-    
-    def _extract_suggestion_context(self, conversation_history: List[dict]) -> Optional[Dict[str, Any]]:
+
+    def _extract_suggestion_context(
+        self, conversation_history: List[dict]
+    ) -> Optional[Dict[str, Any]]:
         """
         Extrai o contexto de sugestão do histórico: ticker original e sugestões oferecidas.
-        
+
         Returns:
             Dict com 'original_ticker', 'suggested_tickers', 'has_suggestion' ou None
         """
         if not conversation_history:
             return None
-        
+
         original_ticker = None
         suggested_tickers = []
         assistant_message_with_suggestion = None
         user_message_before_suggestion = None
-        
+
         for i, hist in enumerate(reversed(conversation_history[-10:])):
-            if hist.get('role') == 'assistant':
-                content = hist.get('content', '')
+            if hist.get("role") == "assistant":
+                content = hist.get("content", "")
                 content_lower = content.lower()
-                if 'você quis dizer' in content_lower or 'não encontrei' in content_lower:
+                if (
+                    "você quis dizer" in content_lower
+                    or "não encontrei" in content_lower
+                ):
                     assistant_message_with_suggestion = content
                     real_idx = len(conversation_history) - 1 - i
                     if real_idx > 0:
                         prev_msg = conversation_history[real_idx - 1]
-                        if prev_msg.get('role') == 'user':
-                            user_message_before_suggestion = prev_msg.get('content', '')
+                        if prev_msg.get("role") == "user":
+                            user_message_before_suggestion = prev_msg.get("content", "")
                     break
-        
+
         if not assistant_message_with_suggestion:
             return None
-        
+
         if user_message_before_suggestion:
-            ticker_pattern = re.compile(r'\b([A-Z]{4,6}11|[A-Z]{4,8}(?:PR)?)\b', re.IGNORECASE)
+            ticker_pattern = re.compile(
+                r"\b([A-Z]{4,6}11|[A-Z]{4,8}(?:PR)?)\b", re.IGNORECASE
+            )
             matches = ticker_pattern.findall(user_message_before_suggestion)
             if matches:
                 original_ticker = matches[0].upper()
-        
+
         if not original_ticker:
             nao_encontrei_match = re.search(
-                r'não encontrei\s+(?:o\s+)?([A-Z]{4,8}(?:11|PR)?)',
+                r"não encontrei\s+(?:o\s+)?([A-Z]{4,8}(?:11|PR)?)",
                 assistant_message_with_suggestion,
-                re.IGNORECASE
+                re.IGNORECASE,
             )
             if nao_encontrei_match:
                 original_ticker = nao_encontrei_match.group(1).upper()
-        
+
         quis_dizer_match = re.search(
-            r'quis dizer\s+([^?]+)\?',
-            assistant_message_with_suggestion,
-            re.IGNORECASE
+            r"quis dizer\s+([^?]+)\?", assistant_message_with_suggestion, re.IGNORECASE
         )
-        
+
         if quis_dizer_match:
             suggestions_text = quis_dizer_match.group(1)
-            items = re.split(r',\s*|\s+ou\s+', suggestions_text)
+            items = re.split(r",\s*|\s+ou\s+", suggestions_text)
             for item in items:
                 cleaned = item.strip().upper()
-                cleaned = re.sub(r'^(O|A|OS|AS)\s+', '', cleaned)
+                cleaned = re.sub(r"^(O|A|OS|AS)\s+", "", cleaned)
                 if cleaned and len(cleaned) >= 4 and cleaned != original_ticker:
                     suggested_tickers.append(cleaned)
-        
+
         if not suggested_tickers:
-            ticker_pattern = re.compile(r'\b([A-Z]{4,6}11|[A-Z]{4,8}PR?)\b', re.IGNORECASE)
-            all_tickers = [t.upper() for t in ticker_pattern.findall(assistant_message_with_suggestion)]
+            ticker_pattern = re.compile(
+                r"\b([A-Z]{4,6}11|[A-Z]{4,8}PR?)\b", re.IGNORECASE
+            )
+            all_tickers = [
+                t.upper()
+                for t in ticker_pattern.findall(assistant_message_with_suggestion)
+            ]
             seen = set()
             for t in all_tickers:
                 if t not in seen and t != original_ticker:
                     seen.add(t)
                     suggested_tickers.append(t)
-        
+
         return {
-            'original_ticker': original_ticker,
-            'suggested_tickers': suggested_tickers,
-            'has_suggestion': True
+            "original_ticker": original_ticker,
+            "suggested_tickers": suggested_tickers,
+            "has_suggestion": True,
         }
-    
-    async def _detect_ticker_confirmation_async(self, message: str, conversation_history: Optional[List[dict]] = None) -> Optional[str]:
+
+    async def _detect_ticker_confirmation_async(
+        self, message: str, conversation_history: Optional[List[dict]] = None
+    ) -> Optional[str]:
         """
         Detecta se o usuário está confirmando/negando um ticker usando IA para interpretar.
-        
+
         Args:
             message: Mensagem atual do usuário
             conversation_history: Histórico da conversa
-            
+
         Returns:
-            Ticker confirmado, "DENIAL" se negou todos, 
+            Ticker confirmado, "DENIAL" se negou todos,
             "DENIAL:TICKER" se quer o ticker original, ou None
         """
         if not conversation_history:
             return None
-        
+
         context = self._extract_suggestion_context(conversation_history)
-        if not context or not context.get('has_suggestion'):
+        if not context or not context.get("has_suggestion"):
             return None
-        
-        original_ticker = context.get('original_ticker')
-        suggested_tickers = context.get('suggested_tickers', [])
-        
+
+        original_ticker = context.get("original_ticker")
+        suggested_tickers = context.get("suggested_tickers", [])
+
         if not original_ticker and not suggested_tickers:
             return None
-        
-        print(f"[OpenAI] Contexto de sugestão - Original: {original_ticker}, Sugestões: {suggested_tickers}")
-        
+
+        print(
+            f"[OpenAI] Contexto de sugestão - Original: {original_ticker}, Sugestões: {suggested_tickers}"
+        )
+
         msg_lower = message.lower().strip()
         for ticker in suggested_tickers:
             if ticker.lower() in msg_lower or msg_lower == ticker.lower():
                 print(f"[OpenAI] Ticker mencionado diretamente: {ticker}")
                 return ticker
-        
+
         classification = await self._classify_intent_with_ai(
             user_message=message,
             original_ticker=original_ticker or "desconhecido",
-            suggested_tickers=suggested_tickers
+            suggested_tickers=suggested_tickers,
         )
-        
-        intent = classification.get('intent', 'NOVA_PERGUNTA')
-        ticker = classification.get('ticker')
-        
-        if intent == 'CONFIRMA_ORIGINAL':
-            if original_ticker and re.match(r'^[A-Z]{4,5}11$', original_ticker):
-                print(f"[OpenAI] Usuário confirma ticker original FII: {original_ticker} - buscando no FundsExplorer")
+
+        intent = classification.get("intent", "NOVA_PERGUNTA")
+        ticker = classification.get("ticker")
+
+        if intent == "CONFIRMA_ORIGINAL":
+            if original_ticker and re.match(r"^[A-Z]{4,5}11$", original_ticker):
+                print(
+                    f"[OpenAI] Usuário confirma ticker original FII: {original_ticker} - buscando no FundsExplorer"
+                )
                 return f"DENIAL:{original_ticker}"
             elif original_ticker:
-                print(f"[OpenAI] Usuário confirma ticker original (não-FII): {original_ticker} - buscando na base")
+                print(
+                    f"[OpenAI] Usuário confirma ticker original (não-FII): {original_ticker} - buscando na base"
+                )
                 return f"ORIGINAL:{original_ticker}"
-        
-        elif intent == 'ACEITA_SUGESTAO':
+
+        elif intent == "ACEITA_SUGESTAO":
             if ticker and ticker.upper() in [s.upper() for s in suggested_tickers]:
                 print(f"[OpenAI] Usuário aceita sugestão: {ticker}")
                 return ticker.upper()
@@ -686,57 +735,69 @@ Retorne APENAS o JSON."""
             elif len(suggested_tickers) > 1:
                 print(f"[OpenAI] Aceita sugestão mas múltiplas opções - ambíguo")
                 return "AMBIGUOUS"
-        
-        elif intent == 'NEGA_TODOS':
+
+        elif intent == "NEGA_TODOS":
             print(f"[OpenAI] Usuário nega todos os tickers")
             return "DENIAL"
-        
+
         return None
-    
-    def _detect_ticker_confirmation(self, message: str, conversation_history: Optional[List[dict]] = None) -> Optional[str]:
+
+    def _detect_ticker_confirmation(
+        self, message: str, conversation_history: Optional[List[dict]] = None
+    ) -> Optional[str]:
         """
         Wrapper síncrono para detecção de confirmação de ticker.
         Usa fallbacks simples para manter compatibilidade quando async não disponível.
         """
         if not conversation_history:
             return None
-        
+
         context = self._extract_suggestion_context(conversation_history)
-        if not context or not context.get('has_suggestion'):
+        if not context or not context.get("has_suggestion"):
             return None
-        
+
         msg_lower = message.lower().strip()
-        suggested_tickers = context.get('suggested_tickers', [])
-        original_ticker = context.get('original_ticker')
-        
+        suggested_tickers = context.get("suggested_tickers", [])
+        original_ticker = context.get("original_ticker")
+
         for ticker in suggested_tickers:
             if ticker.lower() in msg_lower or msg_lower == ticker.lower():
                 return ticker
-        
+
         if len(suggested_tickers) == 1:
-            affirmative = ['sim', 'isso', 'esse', 'esse mesmo', 'exato', 'isso mesmo', 'é esse', 's', 'yes']
+            affirmative = [
+                "sim",
+                "isso",
+                "esse",
+                "esse mesmo",
+                "exato",
+                "isso mesmo",
+                "é esse",
+                "s",
+                "yes",
+            ]
             if msg_lower in affirmative:
                 return suggested_tickers[0]
         elif len(suggested_tickers) > 1:
-            affirmative = ['sim', 'isso', 's', 'yes']
+            affirmative = ["sim", "isso", "s", "yes"]
             if msg_lower in affirmative:
                 return "AMBIGUOUS"
-        
+
         ordinal_map = [
-            (r'\b(?:o\s+)?primeir[oa]?\b|^1$', 0),
-            (r'\b(?:o\s+)?segund[oa]?\b|^2$', 1),
-            (r'\b(?:o\s+)?terceir[oa]?\b|^3$', 2)
+            (r"\b(?:o\s+)?primeir[oa]?\b|^1$", 0),
+            (r"\b(?:o\s+)?segund[oa]?\b|^2$", 1),
+            (r"\b(?:o\s+)?terceir[oa]?\b|^3$", 2),
         ]
         for pattern, idx in ordinal_map:
             if re.search(pattern, msg_lower) and idx < len(suggested_tickers):
                 return suggested_tickers[idx]
-        
+
         return None
-    
+
     def _is_followup_question(self, message: str) -> bool:
         """
         Detecta se a mensagem é uma pergunta de follow-up que depende do contexto anterior.
-        
+
         Padrões detectados:
         - Pronomes anafóricos: "dele", "dessa", "desse", "disso"
         - Conectivos de continuidade: "e o", "e a", "e qual", "e como"
@@ -744,66 +805,74 @@ Retorne APENAS o JSON."""
         - Referências implícitas: "também", "além disso", "mais alguma coisa"
         """
         message_lower = message.lower().strip()
-        
+
         anaphoric_patterns = [
-            r'\b(dele|dela|deles|delas)\b',
-            r'\b(desse|dessa|desses|dessas)\b',
-            r'\b(disso|disto|daquilo)\b',
-            r'\b(nele|nela|neles|nelas)\b',
-            r'\b(esse|essa|esses|essas)\b',
-            r'\b(este|esta|estes|estas)\b',
-            r'\b(aquele|aquela|aqueles|aquelas)\b',
-            r'\b(o mesmo|a mesma)\b',
-            r'\b(seu|sua|seus|suas)\b',
+            r"\b(dele|dela|deles|delas)\b",
+            r"\b(desse|dessa|desses|dessas)\b",
+            r"\b(disso|disto|daquilo)\b",
+            r"\b(nele|nela|neles|nelas)\b",
+            r"\b(esse|essa|esses|essas)\b",
+            r"\b(este|esta|estes|estas)\b",
+            r"\b(aquele|aquela|aqueles|aquelas)\b",
+            r"\b(o mesmo|a mesma)\b",
+            r"\b(seu|sua|seus|suas)\b",
         ]
-        
+
         continuation_patterns = [
-            r'^e\s+(o|a|qual|como|quanto|quando|onde|quem)\b',
-            r'^e\s+a\s+',
-            r'^e\s+o\s+',
-            r'^qual\s+(é|era|foi|seria)\s+(o|a)\s+',
-            r'^quanto\s+(é|era|foi|custa|vale)\b',
-            r'^quando\s+(é|era|foi|será)\b',
-            r'^como\s+(é|está|funciona)\b',
-            r'^me\s+(fala|diz|conta)\s+(mais|sobre)\b',
-            r'^fala\s+mais\b',
-            r'^mais\s+(detalhes|informações|dados)\b',
-            r'^também\b',
-            r'^além\s+disso\b',
-            r'^outra\s+(coisa|pergunta)\b',
+            r"^e\s+(o|a|qual|como|quanto|quando|onde|quem)\b",
+            r"^e\s+a\s+",
+            r"^e\s+o\s+",
+            r"^qual\s+(é|era|foi|seria)\s+(o|a)\s+",
+            r"^quanto\s+(é|era|foi|custa|vale)\b",
+            r"^quando\s+(é|era|foi|será)\b",
+            r"^como\s+(é|está|funciona)\b",
+            r"^me\s+(fala|diz|conta)\s+(mais|sobre)\b",
+            r"^fala\s+mais\b",
+            r"^mais\s+(detalhes|informações|dados)\b",
+            r"^também\b",
+            r"^além\s+disso\b",
+            r"^outra\s+(coisa|pergunta)\b",
         ]
-        
+
         for pattern in anaphoric_patterns:
             if re.search(pattern, message_lower):
                 print(f"[OpenAI] Follow-up detectado (pronome anafórico): {message}")
                 return True
-        
+
         for pattern in continuation_patterns:
             if re.search(pattern, message_lower):
-                print(f"[OpenAI] Follow-up detectado (padrão de continuação): {message}")
+                print(
+                    f"[OpenAI] Follow-up detectado (padrão de continuação): {message}"
+                )
                 return True
-        
+
         words = message_lower.split()
         if len(words) <= 5:
             short_question_patterns = [
-                r'^qual\s+',
-                r'^quanto\s+',
-                r'^quando\s+',
-                r'^como\s+',
-                r'^onde\s+',
-                r'^o\s+que\s+',
+                r"^qual\s+",
+                r"^quanto\s+",
+                r"^quando\s+",
+                r"^como\s+",
+                r"^onde\s+",
+                r"^o\s+que\s+",
             ]
-            has_question_word = any(re.search(p, message_lower) for p in short_question_patterns)
-            
-            has_entity = bool(re.search(r'\b[A-Z]{4}11\b', message, re.IGNORECASE))
-            has_product_name = bool(re.search(r'\b(TG|fundo|carteira|estratégia)\b', message, re.IGNORECASE))
-            
+            has_question_word = any(
+                re.search(p, message_lower) for p in short_question_patterns
+            )
+
+            has_entity = bool(re.search(r"\b[A-Z]{4}11\b", message, re.IGNORECASE))
+            has_product_name = bool(
+                re.search(r"\b(TG|fundo|carteira|estratégia)\b", message, re.IGNORECASE)
+            )
+
             if has_question_word and not has_entity and not has_product_name:
-                print(f"[OpenAI] Follow-up detectado (pergunta curta sem entidade): {message}")
+                print(
+                    f"[OpenAI] Follow-up detectado (pergunta curta sem entidade): {message}"
+                )
                 return True
-        
+
         return False
-    
+
     def _get_stevan_base_identity(self) -> str:
         """Retorna a identidade base imutável do Stevan."""
         return """Você é Stevan, um agente de atendimento interno da SVN, integrante da área de Renda Variável.
@@ -1043,7 +1112,7 @@ MENSAGENS FORA DO ESCOPO:
 Quando o assessor enviar mensagens fora do escopo de renda variável, redirecione naturalmente e de forma variada. Não use frases engessadas — gere uma resposta curta e natural que indique seu foco em RV e pergunte como pode ajudar nessa área.
 
 === FIM DO BLOCO DE PERSONALIDADE ==="""
-    
+
     TOOL_DEFINITIONS = [
         {
             "type": "function",
@@ -1055,16 +1124,16 @@ Quando o assessor enviar mensagens fora do escopo de renda variável, redirecion
                     "properties": {
                         "material_id": {
                             "type": "integer",
-                            "description": "ID do material a ser enviado (obtido dos metadados do contexto, campo material_id)"
+                            "description": "ID do material a ser enviado (obtido dos metadados do contexto, campo material_id)",
                         },
                         "product_name": {
                             "type": "string",
-                            "description": "Nome do produto/fundo associado ao material"
-                        }
+                            "description": "Nome do produto/fundo associado ao material",
+                        },
                     },
-                    "required": ["material_id", "product_name"]
-                }
-            }
+                    "required": ["material_id", "product_name"],
+                },
+            },
         },
         {
             "type": "function",
@@ -1076,17 +1145,17 @@ Quando o assessor enviar mensagens fora do escopo de renda variável, redirecion
                     "properties": {
                         "structure_slug": {
                             "type": "string",
-                            "description": "Slug da estrutura de derivativos (ex: booster, collar-com-ativo, put-spread)"
+                            "description": "Slug da estrutura de derivativos (ex: booster, collar-com-ativo, put-spread)",
                         },
                         "structure_name": {
                             "type": "string",
-                            "description": "Nome legível da estrutura"
-                        }
+                            "description": "Nome legível da estrutura",
+                        },
                     },
-                    "required": ["structure_slug", "structure_name"]
-                }
-            }
-        }
+                    "required": ["structure_slug", "structure_name"],
+                },
+            },
+        },
     ]
 
     def _get_temperature(self, categoria: str, config: dict = None) -> float:
@@ -1096,10 +1165,10 @@ Quando o assessor enviar mensagens fora do escopo de renda variável, redirecion
 
         temperature_map = {
             "DOCUMENTAL": 0.2,
-            "ESCOPO":     0.3,
-            "MERCADO":    0.4,
-            "PITCH":      0.7,
-            "SAUDACAO":   0.5,
+            "ESCOPO": 0.3,
+            "MERCADO": 0.4,
+            "PITCH": 0.7,
+            "SAUDACAO": 0.5,
         }
         return temperature_map.get(categoria, 0.4)
 
@@ -1110,10 +1179,10 @@ Quando o assessor enviar mensagens fora do escopo de renda variável, redirecion
 
         tokens_map = {
             "DOCUMENTAL": 1200,
-            "PITCH":      1200,
-            "ESCOPO":     1000,
-            "MERCADO":    1000,
-            "SAUDACAO":   150,
+            "PITCH": 1200,
+            "ESCOPO": 1000,
+            "MERCADO": 1000,
+            "SAUDACAO": 150,
         }
         return tokens_map.get(categoria, 600)
 
@@ -1124,123 +1193,190 @@ Quando o assessor enviar mensagens fora do escopo de renda variável, redirecion
         Configurações do banco de dados COMPLEMENTAM, nunca substituem.
         """
         from services.conversation_flow import get_enhanced_system_prompt
-        
+
         base_prompt = self._get_stevan_base_identity()
-        
+
         if config and config.get("personality"):
             db_personality = config["personality"].strip()
-            stevan_markers = ["Você é Stevan", "IDENTIDADE E PAPEL", "broker de suporte", "área de Renda Variável"]
-            is_stevan_base = any(marker in db_personality[:200] for marker in stevan_markers)
+            stevan_markers = [
+                "Você é Stevan",
+                "IDENTIDADE E PAPEL",
+                "broker de suporte",
+                "área de Renda Variável",
+            ]
+            is_stevan_base = any(
+                marker in db_personality[:200] for marker in stevan_markers
+            )
             if db_personality and not is_stevan_base:
                 base_prompt += f"\n\nINSTRUÇÕES ADICIONAIS:\n{db_personality}"
-        
+
         if config and config.get("restrictions"):
             db_restrictions = config["restrictions"].strip()
-            restriction_markers = ["LIMITES OPERACIONAIS", "O QUE STEVAN NUNCA FAZ", "NÃO cria estratégias novas"]
-            is_stevan_restrictions = any(marker in db_restrictions[:200] for marker in restriction_markers)
+            restriction_markers = [
+                "LIMITES OPERACIONAIS",
+                "O QUE STEVAN NUNCA FAZ",
+                "NÃO cria estratégias novas",
+            ]
+            is_stevan_restrictions = any(
+                marker in db_restrictions[:200] for marker in restriction_markers
+            )
             if db_restrictions and not is_stevan_restrictions:
                 base_prompt += f"\n\nRESTRIÇÕES ADICIONAIS:\n{db_restrictions}"
-        
-        dias_semana = ['segunda-feira', 'terça-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sábado', 'domingo']
-        meses = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro']
+
+        dias_semana = [
+            "segunda-feira",
+            "terça-feira",
+            "quarta-feira",
+            "quinta-feira",
+            "sexta-feira",
+            "sábado",
+            "domingo",
+        ]
+        meses = [
+            "janeiro",
+            "fevereiro",
+            "março",
+            "abril",
+            "maio",
+            "junho",
+            "julho",
+            "agosto",
+            "setembro",
+            "outubro",
+            "novembro",
+            "dezembro",
+        ]
         now = datetime.now()
         dia_semana = dias_semana[now.weekday()]
         mes = meses[now.month - 1]
-        data_formatada = f"{dia_semana}, {now.day} de {mes} de {now.year}, {now.strftime('%H:%M')}"
+        data_formatada = (
+            f"{dia_semana}, {now.day} de {mes} de {now.year}, {now.strftime('%H:%M')}"
+        )
         base_prompt += f"\n\nCONTEXTO TEMPORAL:\nData e hora atual: {data_formatada}\n"
 
         return get_enhanced_system_prompt(base_prompt)
-    
-    def _should_web_search(self, context_documents: List[dict], query: str) -> Tuple[bool, str]:
+
+    def _should_web_search(
+        self, context_documents: List[dict], query: str
+    ) -> Tuple[bool, str]:
         """
         Determina se deve fazer busca na web.
-        
+
         Retorna (should_search, reason).
         """
         if not context_documents:
             return True, "Nenhum documento encontrado na base interna"
-        
-        high_score_docs = [d for d in context_documents if d.get('composite_score', 0) > 0.3]
+
+        high_score_docs = [
+            d for d in context_documents if d.get("composite_score", 0) > 0.3
+        ]
         if not high_score_docs:
             return True, "Documentos encontrados têm baixa relevância"
-        
-        market_keywords = ['cotação', 'cotacao', 'preço', 'preco', 'hoje', 'agora', 'atual', 
-                          'últimos dias', 'esta semana', 'notícia', 'noticia', 'fato relevante',
-                          'ifix', 'ibov', 'ibovespa', 'cdi', 'selic', 'ipca', 'igpm', 'dólar', 'dollar', 's&p']
+
+        market_keywords = [
+            "cotação",
+            "cotacao",
+            "preço",
+            "preco",
+            "hoje",
+            "agora",
+            "atual",
+            "últimos dias",
+            "esta semana",
+            "notícia",
+            "noticia",
+            "fato relevante",
+            "ifix",
+            "ibov",
+            "ibovespa",
+            "cdi",
+            "selic",
+            "ipca",
+            "igpm",
+            "dólar",
+            "dollar",
+            "s&p",
+        ]
         query_lower = query.lower()
         if any(kw in query_lower for kw in market_keywords):
             return True, "Consulta sobre dados de mercado em tempo real"
-        
+
         return False, ""
-    
+
     def _web_search_fallback(self, query: str, db=None) -> Optional[Dict]:
         """
         Realiza busca na web como fallback.
         Retorna resultados formatados com citações.
         """
         web_service = get_web_search_service()
-        
+
         if not web_service.is_configured():
             print("[OpenAI] Web search não configurada - TAVILY_API_KEY ausente")
             return None
-        
+
         print(f"[OpenAI] Iniciando busca na web para: {query[:50]}...")
         result = web_service.search_sync(query, db=db)
-        
-        if not result.get('success'):
+
+        if not result.get("success"):
             print(f"[OpenAI] Web search falhou: {result.get('error')}")
             return None
-        
-        if not result.get('results'):
+
+        if not result.get("results"):
             print("[OpenAI] Web search não retornou resultados")
             return None
-        
+
         print(f"[OpenAI] Web search retornou {len(result['results'])} resultados")
-        
+
         if db:
             web_service.log_search(
                 db=db,
                 query=query,
                 results=result,
-                fallback_reason="Base interna insuficiente"
+                fallback_reason="Base interna insuficiente",
             )
-        
+
         return result
-    
+
     def _build_web_context(self, web_results: Dict) -> str:
         """
         Constrói contexto a partir dos resultados da busca na web.
         Inclui citações obrigatórias.
         """
-        if not web_results or not web_results.get('results'):
+        if not web_results or not web_results.get("results"):
             return ""
-        
-        parts = ["INFORMAÇÕES OBTIDAS DA INTERNET (já recuperadas automaticamente — USE na resposta):", ""]
-        
-        for i, result in enumerate(web_results['results'][:5], 1):
-            title = result.get('title', 'Sem título')
-            content = result.get('content', '')[:400]
-            url = result.get('url', '')
-            date = result.get('published_date', '')
-            
+
+        parts = [
+            "INFORMAÇÕES OBTIDAS DA INTERNET (já recuperadas automaticamente — USE na resposta):",
+            "",
+        ]
+
+        for i, result in enumerate(web_results["results"][:5], 1):
+            title = result.get("title", "Sem título")
+            content = result.get("content", "")[:400]
+            url = result.get("url", "")
+            date = result.get("published_date", "")
+
             date_str = ""
             if date:
                 try:
                     from datetime import datetime
+
                     parsed = datetime.fromisoformat(date.replace("Z", "+00:00"))
                     date_str = f" ({parsed.strftime('%d/%m/%Y')})"
                 except:
                     pass
-            
+
             parts.append(f"[{i}] {title}{date_str}")
             parts.append(f"{content}")
             parts.append(f"Fonte: {url}")
             parts.append("")
-        
-        parts.append("IMPORTANTE: Ao usar estas informações, SEMPRE cite a fonte com o link.")
-        
+
+        parts.append(
+            "IMPORTANTE: Ao usar estas informações, SEMPRE cite a fonte com o link."
+        )
+
         return "\n".join(parts)
-    
+
     def _get_fact_extraction_prompt(self) -> str:
         """
         Retorna o prompt especializado para extração de fatos.
@@ -1254,118 +1390,177 @@ REGRAS PARA INFORMAÇÕES DA INTERNET:
 4. PRIORIZE RECÊNCIA: Dê preferência às informações mais recentes.
 5. SEJA TRANSPARENTE: Deixe claro quando a informação vem da internet e não da base oficial.
 """
-    
 
     def _check_pending_manager_selection(
-        self, 
-        user_message: str, 
-        conversation_history: Optional[List[dict]]
+        self, user_message: str, conversation_history: Optional[List[dict]]
     ) -> Optional[Tuple[str, bool, dict]]:
         """
         Verifica se o usuário está respondendo a uma pergunta de desambiguação de gestora.
-        
+
         Detecta se o usuário quer:
         - Informações sobre a gestora em si
         - Informações sobre um ativo específico (por ordinal, ticker ou nome)
         """
         if not conversation_history:
             return None
-        
+
         for hist in reversed(conversation_history[-4:]):
-            metadata = hist.get('metadata', {})
-            if metadata.get('intent') == 'manager_disambiguation':
-                pending_products = metadata.get('products', [])
-                manager = metadata.get('manager', '')
-                
+            metadata = hist.get("metadata", {})
+            if metadata.get("intent") == "manager_disambiguation":
+                pending_products = metadata.get("products", [])
+                manager = metadata.get("manager", "")
+
                 msg_lower = user_message.lower().strip()
                 msg_upper = user_message.upper().strip()
-                
-                gestora_keywords = ['gestora', 'sobre a gestora', 'a gestora', 'sobre ela', 'sobre a empresa', 'empresa', 'quem é', 'quem são']
+
+                gestora_keywords = [
+                    "gestora",
+                    "sobre a gestora",
+                    "a gestora",
+                    "sobre ela",
+                    "sobre a empresa",
+                    "empresa",
+                    "quem é",
+                    "quem são",
+                ]
                 if any(kw in msg_lower for kw in gestora_keywords):
                     print(f"[OpenAI] Usuário quer saber sobre a gestora {manager}")
                     return (
                         f"__MANAGER_INFO__{manager}",
                         False,
-                        {"intent": "manager_info_request", "manager": manager}
+                        {"intent": "manager_info_request", "manager": manager},
                     )
-                
-                ativo_keywords = ['ativo', 'sobre o ativo', 'o ativo', 'fundo', 'sobre o fundo', 'o fundo', 'produto']
+
+                ativo_keywords = [
+                    "ativo",
+                    "sobre o ativo",
+                    "o ativo",
+                    "fundo",
+                    "sobre o fundo",
+                    "o fundo",
+                    "produto",
+                ]
                 if any(kw in msg_lower for kw in ativo_keywords):
                     if len(pending_products) == 1:
-                        ticker = pending_products[0]['ticker']
+                        ticker = pending_products[0]["ticker"]
                         print(f"[OpenAI] Usuário quer o ativo (único): {ticker}")
                         return (
                             f"__TICKER_OVERRIDE__{ticker}",
                             False,
-                            {"intent": "manager_selection_resolved", "selected_ticker": ticker}
+                            {
+                                "intent": "manager_selection_resolved",
+                                "selected_ticker": ticker,
+                            },
                         )
                     else:
-                        product_list = [f"• {p['ticker']} - {p['name']}" for p in pending_products]
-                        response = f"Qual ativo da {manager} você quer saber mais?\n\n" + "\n".join(product_list)
-                        print(f"[OpenAI] Usuário quer ativo, mas há {len(pending_products)} - listando")
+                        product_list = [
+                            f"• {p['ticker']} - {p['name']}" for p in pending_products
+                        ]
+                        response = (
+                            f"Qual ativo da {manager} você quer saber mais?\n\n"
+                            + "\n".join(product_list)
+                        )
+                        print(
+                            f"[OpenAI] Usuário quer ativo, mas há {len(pending_products)} - listando"
+                        )
                         return (
                             response,
                             False,
-                            {"intent": "manager_product_list", "manager": manager, "products": pending_products}
+                            {
+                                "intent": "manager_product_list",
+                                "manager": manager,
+                                "products": pending_products,
+                            },
                         )
-                
+
                 if not pending_products:
                     return None
-                
+
                 ordinal_map = {
-                    'primeiro': 0, 'primeira': 0, '1': 0, 'o primeiro': 0, 'a primeira': 0,
-                    'segundo': 1, 'segunda': 1, '2': 1, 'o segundo': 1, 'a segunda': 1,
-                    'terceiro': 2, 'terceira': 2, '3': 2, 'o terceiro': 2, 'a terceira': 2,
-                    'quarto': 3, 'quarta': 3, '4': 3,
-                    'quinto': 4, 'quinta': 4, '5': 4,
+                    "primeiro": 0,
+                    "primeira": 0,
+                    "1": 0,
+                    "o primeiro": 0,
+                    "a primeira": 0,
+                    "segundo": 1,
+                    "segunda": 1,
+                    "2": 1,
+                    "o segundo": 1,
+                    "a segunda": 1,
+                    "terceiro": 2,
+                    "terceira": 2,
+                    "3": 2,
+                    "o terceiro": 2,
+                    "a terceira": 2,
+                    "quarto": 3,
+                    "quarta": 3,
+                    "4": 3,
+                    "quinto": 4,
+                    "quinta": 4,
+                    "5": 4,
                 }
-                
+
                 for ordinal, idx in ordinal_map.items():
                     if ordinal in msg_lower and idx < len(pending_products):
                         chosen = pending_products[idx]
-                        print(f"[OpenAI] Usuário escolheu produto por ordinal '{ordinal}': {chosen['ticker']}")
+                        print(
+                            f"[OpenAI] Usuário escolheu produto por ordinal '{ordinal}': {chosen['ticker']}"
+                        )
                         return (
                             f"__TICKER_OVERRIDE__{chosen['ticker']}",
                             False,
-                            {"intent": "manager_selection_resolved", "selected_ticker": chosen['ticker']}
+                            {
+                                "intent": "manager_selection_resolved",
+                                "selected_ticker": chosen["ticker"],
+                            },
                         )
-                
+
                 for product in pending_products:
-                    ticker = product.get('ticker', '')
-                    name = product.get('name', '')
-                    
-                    if ticker and (ticker in msg_upper or ticker.replace('11', ' 11') in msg_upper):
+                    ticker = product.get("ticker", "")
+                    name = product.get("name", "")
+
+                    if ticker and (
+                        ticker in msg_upper or ticker.replace("11", " 11") in msg_upper
+                    ):
                         print(f"[OpenAI] Usuário escolheu produto por ticker: {ticker}")
                         return (
                             f"__TICKER_OVERRIDE__{ticker}",
                             False,
-                            {"intent": "manager_selection_resolved", "selected_ticker": ticker}
+                            {
+                                "intent": "manager_selection_resolved",
+                                "selected_ticker": ticker,
+                            },
                         )
-                    
+
                     if name:
                         name_words = [w for w in name.split() if len(w) > 3]
                         if any(word.upper() in msg_upper for word in name_words[:2]):
-                            print(f"[OpenAI] Usuário escolheu produto pelo nome: {name} -> {ticker}")
+                            print(
+                                f"[OpenAI] Usuário escolheu produto pelo nome: {name} -> {ticker}"
+                            )
                             return (
                                 f"__TICKER_OVERRIDE__{ticker}",
                                 False,
-                                {"intent": "manager_selection_resolved", "selected_ticker": ticker}
+                                {
+                                    "intent": "manager_selection_resolved",
+                                    "selected_ticker": ticker,
+                                },
                             )
-                
-                print(f"[OpenAI] Resposta à desambiguação não reconhecida: '{user_message[:60]}' - seguindo para RAG normal")
+
+                print(
+                    f"[OpenAI] Resposta à desambiguação não reconhecida: '{user_message[:60]}' - seguindo para RAG normal"
+                )
                 break
-        
+
         return None
-    
 
     def _check_manager_disambiguation_gpt(
-        self, 
-        manager_name: str
+        self, manager_name: str
     ) -> Optional[Tuple[str, bool, dict]]:
         """
         Verifica se a gestora identificada pelo GPT-4o (via QueryRewriter) tem
         múltiplos produtos na base, disparando desambiguação se necessário.
-        
+
         Diferente da versão antiga que usava substring matching, aqui o GPT-4o
         já decidiu que o usuário está perguntando sobre uma gestora específica.
         """
@@ -1374,6 +1569,7 @@ REGRAS PARA INFORMAÇÕES DA INTERNET:
             return None
 
         from services.vector_store import KNOWN_MANAGERS
+
         normalized_manager = None
         manager_lower = manager_name.lower().strip()
         for keyword, name in KNOWN_MANAGERS.items():
@@ -1382,8 +1578,9 @@ REGRAS PARA INFORMAÇÕES DA INTERNET:
                 break
         if not normalized_manager:
             import re
+
             for keyword, name in KNOWN_MANAGERS.items():
-                pattern = r'\b' + re.escape(keyword) + r'\b'
+                pattern = r"\b" + re.escape(keyword) + r"\b"
                 if re.search(pattern, manager_lower):
                     normalized_manager = name
                     break
@@ -1391,56 +1588,62 @@ REGRAS PARA INFORMAÇÕES DA INTERNET:
             normalized_manager = manager_name
 
         products = vs.get_products_by_manager(normalized_manager)
-        
+
         if len(products) == 0:
-            print(f"[OpenAI] GPT detectou gestora '{manager_name}' mas sem produtos na base - seguindo para RAG")
+            print(
+                f"[OpenAI] GPT detectou gestora '{manager_name}' mas sem produtos na base - seguindo para RAG"
+            )
             return None
-        
+
         if len(products) == 1:
             product = products[0]
             response = f"Você quer saber sobre a gestora {normalized_manager} ou sobre o ativo {product['ticker']} ({product['name']})?"
-            print(f"[OpenAI] GPT detectou gestora {normalized_manager} com 1 produto - perguntando intenção")
+            print(
+                f"[OpenAI] GPT detectou gestora {normalized_manager} com 1 produto - perguntando intenção"
+            )
             return (
                 response,
                 False,
                 {
                     "intent": "manager_disambiguation",
                     "manager": normalized_manager,
-                    "products": products
-                }
+                    "products": products,
+                },
             )
-        
+
         product_list = [f"• {p['ticker']} - {p['name']}" for p in products]
         products_text = "\n".join(product_list)
         response = f"Você quer saber sobre a gestora {normalized_manager} ou sobre um ativo específico dela?\n\nTemos {len(products)} ativos da {normalized_manager} na base:\n{products_text}"
-        print(f"[OpenAI] GPT detectou gestora {normalized_manager} com {len(products)} produtos - perguntando intenção")
-        
+        print(
+            f"[OpenAI] GPT detectou gestora {normalized_manager} com {len(products)} produtos - perguntando intenção"
+        )
+
         return (
             response,
             False,
             {
                 "intent": "manager_disambiguation",
                 "manager": normalized_manager,
-                "products": products
-            }
+                "products": products,
+            },
         )
-    
+
     def _build_context(self, documents: List[dict]) -> str:
         """Constrói o contexto a partir dos documentos encontrados."""
         if not documents:
             return "Nenhum contexto relevante encontrado na base de conhecimento."
-        
+
         context_parts = []
         derivatives_by_tab = {}
-        
+
         for i, doc in enumerate(documents, 1):
-            metadata = doc.get('metadata', {})
-            title = metadata.get('title', f'Documento {i}')
-            content = doc.get('content', '')
-            material_id = metadata.get('material_id', '')
-            product_name = metadata.get('product_name', '')
-            material_type = metadata.get('material_type', '')
-            
+            metadata = doc.get("metadata", {})
+            title = metadata.get("title", f"Documento {i}")
+            content = doc.get("content", "")
+            material_id = metadata.get("material_id", "")
+            product_name = metadata.get("product_name", "")
+            material_type = metadata.get("material_type", "")
+
             header = f"[{title}]"
             if material_id:
                 header += f" (material_id: {material_id})"
@@ -1448,14 +1651,18 @@ REGRAS PARA INFORMAÇÕES DA INTERNET:
                 header += f" | Produto: {product_name}"
             if material_type:
                 header += f" | Tipo: {material_type}"
-            
+
             context_parts.append(f"{header}\n{content}")
-            
-            doc_type = metadata.get('type', '')
-            if doc_type in ('derivatives_structure', 'derivatives_structure_technical', 'derivatives_tab'):
-                tab = metadata.get('tab', 'Outros')
-                structure_name = metadata.get('product_name', '')
-                has_diagram = metadata.get('has_diagram', 'false') == 'true'
+
+            doc_type = metadata.get("type", "")
+            if doc_type in (
+                "derivatives_structure",
+                "derivatives_structure_technical",
+                "derivatives_tab",
+            ):
+                tab = metadata.get("tab", "Outros")
+                structure_name = metadata.get("product_name", "")
+                has_diagram = metadata.get("has_diagram", "false") == "true"
                 if structure_name and tab:
                     if tab not in derivatives_by_tab:
                         derivatives_by_tab[tab] = []
@@ -1464,7 +1671,7 @@ REGRAS PARA INFORMAÇÕES DA INTERNET:
                         entry += " [diagrama disponível]"
                     if entry not in [e for e in derivatives_by_tab[tab]]:
                         derivatives_by_tab[tab].append(entry)
-        
+
         if derivatives_by_tab:
             listing = "\n[ESTRUTURAS DE DERIVATIVOS ENCONTRADAS NO CONTEXTO]\n"
             listing += "Use esta lista para orientar a desambiguação com o assessor:\n"
@@ -1473,10 +1680,12 @@ REGRAS PARA INFORMAÇÕES DA INTERNET:
                 for s in structures:
                     listing += f"  • {s}\n"
             context_parts.append(listing)
-        
+
         return "\n\n---\n\n".join(context_parts)
 
-    def _build_comparative_context(self, documents: List[dict], entities: List[str]) -> str:
+    def _build_comparative_context(
+        self, documents: List[dict], entities: List[str]
+    ) -> str:
         if not documents:
             return "Nenhum contexto relevante encontrado na base de conhecimento."
 
@@ -1489,8 +1698,8 @@ REGRAS PARA INFORMAÇÕES DA INTERNET:
 
         by_product = {}
         for doc in documents:
-            metadata = doc.get('metadata', {})
-            pname = metadata.get('product_name', 'Outros')
+            metadata = doc.get("metadata", {})
+            pname = metadata.get("product_name", "Outros")
             if pname not in by_product:
                 by_product[pname] = []
             by_product[pname].append(doc)
@@ -1499,10 +1708,12 @@ REGRAS PARA INFORMAÇÕES DA INTERNET:
         for pname, docs in by_product.items():
             section = f"\n--- {pname} ---\n"
             for doc in docs:
-                metadata = doc.get('metadata', {})
-                title = metadata.get('title', metadata.get('document_title', 'Documento'))
-                content = doc.get('content', '')[:500]
-                material_type = metadata.get('material_type', '')
+                metadata = doc.get("metadata", {})
+                title = metadata.get(
+                    "title", metadata.get("document_title", "Documento")
+                )
+                content = doc.get("content", "")[:500]
+                material_type = metadata.get("material_type", "")
                 section += f"[{title}]"
                 if material_type:
                     section += f" [{material_type}]"
@@ -1519,18 +1730,18 @@ REGRAS PARA INFORMAÇÕES DA INTERNET:
         sender_phone: Optional[str] = None,
         identified_assessor: Optional[Dict[str, Any]] = None,
         rewrite_result=None,
-        allow_tools: bool = True
+        allow_tools: bool = True,
     ) -> Tuple[str, bool, dict]:
         """
         Gera uma resposta para a mensagem do usuário.
-        
+
         Args:
             user_message: Mensagem do usuário
             conversation_history: Histórico da conversa (opcional)
             extra_context: Contexto adicional (opcional)
             sender_phone: Telefone do remetente para identificação (opcional)
             identified_assessor: Assessor já identificado em mensagens anteriores (opcional)
-            
+
         Returns:
             Tuple contendo:
             - response: Resposta gerada
@@ -1542,147 +1753,206 @@ REGRAS PARA INFORMAÇÕES DA INTERNET:
                 "Desculpe, o serviço de IA não está configurado no momento. "
                 "Deseja abrir um chamado para falar com um assessor?",
                 False,
-                {"intent": "error"}
+                {"intent": "error"},
             )
-        
+
         if rewrite_result is None:
             from services.query_rewriter import rewrite_query
-            rewrite_result = await rewrite_query(user_message, conversation_history, self.client)
 
-        affirmative_responses = ['sim', 'yes', 's', 'quero', 'pode ser', 'pode', 'busca', 'busque', 'ok', 'beleza', 'por favor', 'claro']
+            rewrite_result = await rewrite_query(
+                user_message, conversation_history, self.client
+            )
+
+        affirmative_responses = [
+            "sim",
+            "yes",
+            "s",
+            "quero",
+            "pode ser",
+            "pode",
+            "busca",
+            "busque",
+            "ok",
+            "beleza",
+            "por favor",
+            "claro",
+        ]
         msg_lower = user_message.lower().strip()
-        is_affirmative = msg_lower in affirmative_responses or any(word in msg_lower.split() for word in ['sim', 'quero', 'pode', 'busca', 'busque', 'ok', 'claro', 'yes'])
-        
+        is_affirmative = msg_lower in affirmative_responses or any(
+            word in msg_lower.split()
+            for word in [
+                "sim",
+                "quero",
+                "pode",
+                "busca",
+                "busque",
+                "ok",
+                "claro",
+                "yes",
+            ]
+        )
+
         last_intent = None
         pending_fii_ticker = None
         recent_external_search_ticker = None
         if conversation_history:
             for hist in reversed(conversation_history[-10:]):
-                metadata = hist.get('metadata', {})
-                intent = metadata.get('intent')
-                if intent == 'fii_external_search_offer':
-                    last_intent = 'fii_external_search_offer'
-                    pending_fii_ticker = metadata.get('ticker')
+                metadata = hist.get("metadata", {})
+                intent = metadata.get("intent")
+                if intent == "fii_external_search_offer":
+                    last_intent = "fii_external_search_offer"
+                    pending_fii_ticker = metadata.get("ticker")
                     break
-                elif intent == 'create_ticket_offer':
-                    last_intent = 'create_ticket_offer'
+                elif intent == "create_ticket_offer":
+                    last_intent = "create_ticket_offer"
                     break
-                elif intent in ('fii_external_result', 'fii_not_found'):
-                    recent_external_search_ticker = metadata.get('ticker')
+                elif intent in ("fii_external_result", "fii_not_found"):
+                    recent_external_search_ticker = metadata.get("ticker")
                     last_intent = intent
                     break
-        
+
         if recent_external_search_ticker and not rewrite_result.is_comparative:
-            ticker_match = re.search(r'\b([A-Z]{4,5}11)\b', user_message.upper())
+            ticker_match = re.search(r"\b([A-Z]{4,5}11)\b", user_message.upper())
             if ticker_match:
                 new_ticker = ticker_match.group(1)
                 if new_ticker != recent_external_search_ticker:
-                    print(f"[OpenAI] Detectada correção de ticker: {recent_external_search_ticker} -> {new_ticker} - executando busca direta")
+                    print(
+                        f"[OpenAI] Detectada correção de ticker: {recent_external_search_ticker} -> {new_ticker} - executando busca direta"
+                    )
                     fii_service = get_fii_lookup_service()
                     fii_result = fii_service.lookup(new_ticker)
-                    if fii_result and fii_result.get('data'):
-                        fii_info = fii_service.format_complete_response(fii_result['data'])
+                    if fii_result and fii_result.get("data"):
+                        fii_info = fii_service.format_complete_response(
+                            fii_result["data"]
+                        )
                         return (
                             f"Encontrei informações públicas sobre {new_ticker}. Lembre-se que este fundo NÃO está na nossa base oficial de recomendações.\n\n{fii_info}",
                             False,
                             {
                                 "intent": "fii_external_result",
                                 "ticker": new_ticker,
-                                "source": "fundsexplorer"
-                            }
+                                "source": "fundsexplorer",
+                            },
                         )
                     else:
                         return (
                             f"Infelizmente não consegui encontrar informações sobre {new_ticker} nas fontes públicas. Este fundo pode não existir ou o código estar incorreto.",
                             False,
-                            {"intent": "fii_not_found", "ticker": new_ticker}
+                            {"intent": "fii_not_found", "ticker": new_ticker},
                         )
-        
-        if is_affirmative and last_intent == 'fii_external_search_offer' and pending_fii_ticker and not rewrite_result.is_comparative:
-            print(f"[OpenAI] Usuário confirmou busca externa para FII {pending_fii_ticker} (via intent)")
+
+        if (
+            is_affirmative
+            and last_intent == "fii_external_search_offer"
+            and pending_fii_ticker
+            and not rewrite_result.is_comparative
+        ):
+            print(
+                f"[OpenAI] Usuário confirmou busca externa para FII {pending_fii_ticker} (via intent)"
+            )
             fii_service = get_fii_lookup_service()
             fii_result = fii_service.lookup(pending_fii_ticker)
-            if fii_result and fii_result.get('data'):
-                fii_info = fii_service.format_complete_response(fii_result['data'])
+            if fii_result and fii_result.get("data"):
+                fii_info = fii_service.format_complete_response(fii_result["data"])
                 return (
                     f"Encontrei informações públicas sobre {pending_fii_ticker}. Lembre-se que este fundo NÃO está na nossa base oficial de recomendações.\n\n{fii_info}",
                     False,
                     {
                         "intent": "fii_external_result",
                         "ticker": pending_fii_ticker,
-                        "source": "fundsexplorer"
-                    }
+                        "source": "fundsexplorer",
+                    },
                 )
             else:
                 return (
                     f"Infelizmente não consegui encontrar informações sobre {pending_fii_ticker} nas fontes públicas. Este fundo pode não existir ou o código estar incorreto.",
                     False,
-                    {"intent": "fii_not_found"}
+                    {"intent": "fii_not_found"},
                 )
-        
-        if is_affirmative and last_intent == 'create_ticket_offer':
+
+        if is_affirmative and last_intent == "create_ticket_offer":
             return (
                 "Perfeito! Estou abrindo um chamado para você. "
                 "Um de nossos assessores entrará em contato em breve. "
                 "Obrigado pela paciência!",
                 True,
-                {"intent": "create_ticket"}
+                {"intent": "create_ticket"},
             )
-        
-        confirmed_ticker = await self._detect_ticker_confirmation_async(user_message, conversation_history)
-        
+
+        confirmed_ticker = await self._detect_ticker_confirmation_async(
+            user_message, conversation_history
+        )
+
         if confirmed_ticker and confirmed_ticker.startswith("ORIGINAL:"):
             original_ticker = confirmed_ticker.split(":")[1]
-            print(f"[OpenAI] Usuário confirma ticker original (não-FII): {original_ticker} - buscando na base")
+            print(
+                f"[OpenAI] Usuário confirma ticker original (não-FII): {original_ticker} - buscando na base"
+            )
             user_message = original_ticker
             confirmed_ticker = None
         elif confirmed_ticker and confirmed_ticker.startswith("DENIAL:"):
             denial_ticker = confirmed_ticker.split(":")[1]
-            print(f"[OpenAI] Usuário negou sugestões e quer FII {denial_ticker} - buscando automaticamente")
-            if denial_ticker.upper().endswith('11'):
+            print(
+                f"[OpenAI] Usuário negou sugestões e quer FII {denial_ticker} - buscando automaticamente"
+            )
+            if denial_ticker.upper().endswith("11"):
                 fii_service_denial = get_fii_lookup_service()
                 fii_result_denial = fii_service_denial.lookup(denial_ticker)
-                if fii_result_denial and fii_result_denial.get('data'):
-                    fii_info = fii_service_denial.format_complete_response(fii_result_denial['data'])
+                if fii_result_denial and fii_result_denial.get("data"):
+                    fii_info = fii_service_denial.format_complete_response(
+                        fii_result_denial["data"]
+                    )
                     return (
                         f"Encontrei informações públicas sobre {denial_ticker}. Lembre-se que este fundo NÃO está na nossa base oficial de recomendações.\n\n{fii_info}",
                         False,
                         {
                             "intent": "fii_external_result",
                             "ticker": denial_ticker,
-                            "source": "fundsexplorer"
-                        }
+                            "source": "fundsexplorer",
+                        },
                     )
                 else:
-                    print(f"[OpenAI] FII {denial_ticker} não encontrado no FundsExplorer - continuando para busca web")
+                    print(
+                        f"[OpenAI] FII {denial_ticker} não encontrado no FundsExplorer - continuando para busca web"
+                    )
             confirmed_ticker = None
         elif confirmed_ticker == "DENIAL":
-            print(f"[OpenAI] Usuário negou todas as sugestões - verificando ticker original")
+            print(
+                f"[OpenAI] Usuário negou todas as sugestões - verificando ticker original"
+            )
             original_ticker = None
-            for hist in reversed(conversation_history[-4:] if conversation_history else []):
-                if hist.get('role') == 'assistant':
-                    content = hist.get('content', '')
-                    if 'não encontrei' in content.lower():
-                        ticker_match = re.search(r'não encontrei\s+([A-Z]{4,6}11)', content, re.IGNORECASE)
+            for hist in reversed(
+                conversation_history[-4:] if conversation_history else []
+            ):
+                if hist.get("role") == "assistant":
+                    content = hist.get("content", "")
+                    if "não encontrei" in content.lower():
+                        ticker_match = re.search(
+                            r"não encontrei\s+([A-Z]{4,6}11)", content, re.IGNORECASE
+                        )
                         if ticker_match:
                             original_ticker = ticker_match.group(1).upper()
                         break
-            if original_ticker and original_ticker.endswith('11'):
+            if original_ticker and original_ticker.endswith("11"):
                 fii_service_denial2 = get_fii_lookup_service()
                 fii_result_denial2 = fii_service_denial2.lookup(original_ticker)
-                if fii_result_denial2 and fii_result_denial2.get('data'):
-                    fii_info = fii_service_denial2.format_complete_response(fii_result_denial2['data'])
+                if fii_result_denial2 and fii_result_denial2.get("data"):
+                    fii_info = fii_service_denial2.format_complete_response(
+                        fii_result_denial2["data"]
+                    )
                     return (
                         f"Encontrei informações públicas sobre {original_ticker}. Lembre-se que este fundo NÃO está na nossa base oficial de recomendações.\n\n{fii_info}",
                         False,
                         {
                             "intent": "fii_external_result",
                             "ticker": original_ticker,
-                            "source": "fundsexplorer"
-                        }
+                            "source": "fundsexplorer",
+                        },
                     )
                 else:
-                    print(f"[OpenAI] FII {original_ticker} não encontrado no FundsExplorer - continuando para busca web")
+                    print(
+                        f"[OpenAI] FII {original_ticker} não encontrado no FundsExplorer - continuando para busca web"
+                    )
             confirmed_ticker = None
         elif confirmed_ticker == "AMBIGUOUS":
             print(f"[OpenAI] Resposta ambígua - solicitando clarificação")
@@ -1690,26 +1960,30 @@ REGRAS PARA INFORMAÇÕES DA INTERNET:
                 "Entendi que você quer saber sobre um desses, mas qual especificamente? "
                 "Pode me dizer o nome ou número (primeiro, segundo...)?",
                 False,
-                {"intent": "clarification_needed"}
+                {"intent": "clarification_needed"},
             )
         elif confirmed_ticker:
             print(f"[OpenAI] Usuário confirmou ticker: {confirmed_ticker}")
             user_message = confirmed_ticker
-        
+
         assessor_data = identified_assessor
-        
+
         if not assessor_data:
             extracted_name = self._extract_name_from_message(user_message)
             if extracted_name:
                 assessor_data = self._search_assessor_by_name(extracted_name)
                 if assessor_data:
-                    print(f"[OpenAI] Assessor identificado por nome: {assessor_data['nome']}")
-        
+                    print(
+                        f"[OpenAI] Assessor identificado por nome: {assessor_data['nome']}"
+                    )
+
         if not assessor_data and sender_phone:
             assessor_data = self._search_assessor_by_phone(sender_phone)
             if assessor_data:
-                print(f"[OpenAI] Assessor identificado por telefone: {assessor_data['nome']}")
-        
+                print(
+                    f"[OpenAI] Assessor identificado por telefone: {assessor_data['nome']}"
+                )
+
         config = self._get_config_from_db()
         system_prompt = self._build_system_prompt(config)
         model = config.get("model", "gpt-4o") if config else "gpt-4o"
@@ -1727,8 +2001,8 @@ REGRAS PARA INFORMAÇÕES DA INTERNET:
                         "topic_switch": rewrite_result.topic_switch,
                         "clarification_needed": True,
                         "clarification_text": rewrite_result.clarification_text,
-                    }
-                }
+                    },
+                },
             )
 
         categoria = rewrite_result.categoria
@@ -1736,58 +2010,77 @@ REGRAS PARA INFORMAÇÕES DA INTERNET:
 
         temperature = self._get_temperature(categoria, config)
         max_tokens = self._get_max_tokens(categoria, config)
-        print(f"[OpenAI] Parâmetros adaptativos - Categoria: {categoria}, Temp: {temperature}, MaxTokens: {max_tokens} | QueryRewriter: query='{rewrite_result.rewritten_query[:80]}', topic_switch={rewrite_result.topic_switch}, comparative={rewrite_result.is_comparative}")
-        
-        pending_manager_selection = self._check_pending_manager_selection(user_message, conversation_history)
+        print(
+            f"[OpenAI] Parâmetros adaptativos - Categoria: {categoria}, Temp: {temperature}, MaxTokens: {max_tokens} | QueryRewriter: query='{rewrite_result.rewritten_query[:80]}', topic_switch={rewrite_result.topic_switch}, comparative={rewrite_result.is_comparative}"
+        )
+
+        pending_manager_selection = self._check_pending_manager_selection(
+            user_message, conversation_history
+        )
         if pending_manager_selection:
             response_text, should_ticket, context_info = pending_manager_selection
             if response_text.startswith("__TICKER_OVERRIDE__"):
-                selected_ticker = context_info.get('selected_ticker')
+                selected_ticker = context_info.get("selected_ticker")
                 if selected_ticker:
                     user_message = f"fale sobre o {selected_ticker}"
                     extracted_products = [selected_ticker]
-                    print(f"[OpenAI] Query substituída para buscar ticker: {selected_ticker}")
+                    print(
+                        f"[OpenAI] Query substituída para buscar ticker: {selected_ticker}"
+                    )
             elif response_text.startswith("__MANAGER_INFO__"):
-                manager = context_info.get('manager', '')
-                user_message = f"quem é a gestora {manager}? qual a história, filosofia e equipe?"
-                print(f"[OpenAI] Query substituída para buscar info da gestora: {manager}")
+                manager = context_info.get("manager", "")
+                user_message = (
+                    f"quem é a gestora {manager}? qual a história, filosofia e equipe?"
+                )
+                print(
+                    f"[OpenAI] Query substituída para buscar info da gestora: {manager}"
+                )
             else:
                 return pending_manager_selection
 
         if rewrite_result.manager_query:
-            manager_disambiguation = self._check_manager_disambiguation_gpt(rewrite_result.manager_query)
+            manager_disambiguation = self._check_manager_disambiguation_gpt(
+                rewrite_result.manager_query
+            )
             if manager_disambiguation:
                 return manager_disambiguation
-        
+
         enriched_query = rewrite_result.rewritten_query
-        
+
         vs = get_vector_store()
         context_documents = []
         concept_context = ""
-        
+
         try:
-            from services.financial_concepts import expand_query as expand_financial_query
+            from services.financial_concepts import (
+                expand_query as expand_financial_query,
+            )
+
             concept_expansion = expand_financial_query(user_message)
             concept_context = concept_expansion.get("contexto_agente", "")
             if concept_expansion.get("conceitos_detectados"):
-                print(f"[OpenAI] Conceitos financeiros detectados: {concept_expansion['conceitos_detectados']}")
+                print(
+                    f"[OpenAI] Conceitos financeiros detectados: {concept_expansion['conceitos_detectados']}"
+                )
         except Exception as e:
             print(f"[OpenAI] Erro na expansão de conceitos: {e}")
-        
+
         conversation_id_for_context = f"wa_{sender_phone}" if sender_phone else None
-        
+
         if categoria == "SAUDACAO":
             print(f"[OpenAI] Saudação detectada - NÃO consultando documentos")
         elif categoria == "ATENDIMENTO_HUMANO":
-            print(f"[OpenAI] Pedido de atendimento humano detectado - Marcando para escalação")
+            print(
+                f"[OpenAI] Pedido de atendimento humano detectado - Marcando para escalação"
+            )
             return (
                 None,
                 True,
                 {
                     "human_transfer": True,
                     "should_create_ticket": True,
-                    "transfer_reason": "explicit_human_request"
-                }
+                    "transfer_reason": "explicit_human_request",
+                },
             )
         elif categoria == "FORA_ESCOPO":
             print(f"[OpenAI] Fora de escopo - NÃO consultando documentos")
@@ -1796,111 +2089,159 @@ REGRAS PARA INFORMAÇÕES DA INTERNET:
             try:
                 enhanced_search = get_enhanced_search()
                 internal_results = enhanced_search.search(
-                    query=enriched_query,
-                    n_results=3,
-                    similarity_threshold=0.75
+                    query=enriched_query, n_results=3, similarity_threshold=0.75
                 )
                 high_quality_internal = [
-                    r for r in internal_results
-                    if r.composite_score > 0.5
+                    r for r in internal_results if r.composite_score > 0.5
                 ]
                 if high_quality_internal:
                     for result in high_quality_internal:
-                        context_documents.append({
-                            'content': result.content,
-                            'metadata': result.metadata,
-                            'distance': result.vector_distance,
-                            'composite_score': result.composite_score,
-                            'confidence_level': result.confidence_level,
-                            'source': f"internal_{result.source}"
-                        })
-                    print(f"[OpenAI] MERCADO - {len(high_quality_internal)} docs internos de alta qualidade encontrados")
+                        context_documents.append(
+                            {
+                                "content": result.content,
+                                "metadata": result.metadata,
+                                "distance": result.vector_distance,
+                                "composite_score": result.composite_score,
+                                "confidence_level": result.confidence_level,
+                                "source": f"internal_{result.source}",
+                            }
+                        )
+                    print(
+                        f"[OpenAI] MERCADO - {len(high_quality_internal)} docs internos de alta qualidade encontrados"
+                    )
                 else:
                     print(f"[OpenAI] MERCADO - nenhum doc interno com score > 0.5")
             except Exception as e:
-                print(f"[OpenAI] MERCADO - busca interna falhou (seguindo para web): {e}")
+                print(
+                    f"[OpenAI] MERCADO - busca interna falhou (seguindo para web): {e}"
+                )
         elif categoria == "PITCH" and vs:
-            print(f"[OpenAI] Categoria PITCH - buscando documentos para criar texto de venda")
+            print(
+                f"[OpenAI] Categoria PITCH - buscando documentos para criar texto de venda"
+            )
             if extracted_products:
                 for product in extracted_products:
                     product_docs = vs.search_by_product(product, n_results=15)
-                    print(f"[OpenAI] Encontrados {len(product_docs)} docs para pitch do produto '{product}'")
+                    print(
+                        f"[OpenAI] Encontrados {len(product_docs)} docs para pitch do produto '{product}'"
+                    )
                     for doc in product_docs:
                         if doc not in context_documents:
                             context_documents.append(doc)
         elif vs:
-            is_comite_query = "COMITE" in [p.upper() for p in extracted_products] if extracted_products else False
-            
+            is_comite_query = (
+                "COMITE" in [p.upper() for p in extracted_products]
+                if extracted_products
+                else False
+            )
+
             if not is_comite_query:
-                comite_keywords = ["comitê", "comite", "produto do mês", "produto do mes", "produtos do mês", "produtos do mes", "recomendações atuais", "recomendacoes atuais", "o que a svn tá recomendando", "o que a svn ta recomendando", "recomendação do mês", "recomendacao do mes"]
+                comite_keywords = [
+                    "comitê",
+                    "comite",
+                    "produto do mês",
+                    "produto do mes",
+                    "produtos do mês",
+                    "produtos do mes",
+                    "recomendações atuais",
+                    "recomendacoes atuais",
+                    "o que a svn tá recomendando",
+                    "o que a svn ta recomendando",
+                    "recomendação do mês",
+                    "recomendacao do mes",
+                ]
                 msg_lower = user_message.lower()
                 if any(kw in msg_lower for kw in comite_keywords):
                     is_comite_query = True
-                    print(f"[OpenAI] Fallback: detectada palavra-chave de Comitê na mensagem")
-            
+                    print(
+                        f"[OpenAI] Fallback: detectada palavra-chave de Comitê na mensagem"
+                    )
+
             if is_comite_query:
-                print(f"[OpenAI] Detectada consulta sobre COMITÊ/Produtos do Mês - buscando produtos vigentes")
+                print(
+                    f"[OpenAI] Detectada consulta sobre COMITÊ/Produtos do Mês - buscando produtos vigentes"
+                )
                 comite_docs = vs.search_comite_vigent(query=user_message, n_results=20)
                 if comite_docs:
                     context_documents.extend(comite_docs)
-                    print(f"[OpenAI] {len(comite_docs)} documentos vigentes do Comitê adicionados ao contexto")
+                    print(
+                        f"[OpenAI] {len(comite_docs)} documentos vigentes do Comitê adicionados ao contexto"
+                    )
                 else:
-                    print(f"[OpenAI] Nenhum produto vigente encontrado - Stevan informará ao assessor")
-                extracted_products = [p for p in extracted_products if p.upper() != "COMITE"]
+                    print(
+                        f"[OpenAI] Nenhum produto vigente encontrado - Stevan informará ao assessor"
+                    )
+                extracted_products = [
+                    p for p in extracted_products if p.upper() != "COMITE"
+                ]
             if extracted_products:
                 for product in extracted_products:
                     product_docs = vs.search_by_product(product, n_results=10)
-                    print(f"[OpenAI] Encontrados {len(product_docs)} docs para produto '{product}'")
+                    print(
+                        f"[OpenAI] Encontrados {len(product_docs)} docs para produto '{product}'"
+                    )
                     for doc in product_docs:
                         if doc not in context_documents:
                             context_documents.append(doc)
-            
+
             try:
                 enhanced_search = get_enhanced_search()
-                
+
                 tokens = TokenExtractor.extract(user_message)
-                print(f"[OpenAI] Tokens extraídos - Tickers: {tokens.possible_tickers}, Gestoras: {tokens.possible_gestoras}")
-                
+                print(
+                    f"[OpenAI] Tokens extraídos - Tickers: {tokens.possible_tickers}, Gestoras: {tokens.possible_gestoras}"
+                )
+
                 search_results = enhanced_search.search(
                     query=enriched_query,
                     n_results=8,
                     conversation_id=conversation_id_for_context,
-                    similarity_threshold=0.85
+                    similarity_threshold=0.85,
                 )
-                
-                seen_contents = set(doc.get('content', '')[:100] for doc in context_documents)
+
+                seen_contents = set(
+                    doc.get("content", "")[:100] for doc in context_documents
+                )
                 for result in search_results:
                     content_key = result.content[:100]
                     if content_key not in seen_contents:
                         seen_contents.add(content_key)
-                        context_documents.append({
-                            'content': result.content,
-                            'metadata': result.metadata,
-                            'distance': result.vector_distance,
-                            'composite_score': result.composite_score,
-                            'confidence_level': result.confidence_level,
-                            'source': result.source
-                        })
-                
-                high_conf = sum(1 for r in search_results if r.confidence_level == 'high')
-                print(f"[OpenAI] Busca aprimorada adicionou {len(search_results)} resultados (Alta confiança: {high_conf})")
-                
+                        context_documents.append(
+                            {
+                                "content": result.content,
+                                "metadata": result.metadata,
+                                "distance": result.vector_distance,
+                                "composite_score": result.composite_score,
+                                "confidence_level": result.confidence_level,
+                                "source": result.source,
+                            }
+                        )
+
+                high_conf = sum(
+                    1 for r in search_results if r.confidence_level == "high"
+                )
+                print(
+                    f"[OpenAI] Busca aprimorada adicionou {len(search_results)} resultados (Alta confiança: {high_conf})"
+                )
+
             except Exception as e:
                 print(f"[OpenAI] Busca aprimorada falhou (usando fallback): {e}")
-            
+
             if not context_documents:
                 if rewrite_result.entities:
-                    print(f"[QueryRewriter] Fallback - buscando por entidades resolvidas: {rewrite_result.entities[:3]}")
+                    print(
+                        f"[QueryRewriter] Fallback - buscando por entidades resolvidas: {rewrite_result.entities[:3]}"
+                    )
                     for entity in rewrite_result.entities[:3]:
                         entity_docs = vs.search_by_product(entity, n_results=10)
                         for doc in entity_docs:
                             if doc not in context_documents:
                                 context_documents.append(doc)
-                
+
                 if not context_documents:
                     context_documents = vs.search(enriched_query, n_results=5)
                     print(f"[OpenAI] Fallback semântico: {len(context_documents)} docs")
-        
+
         fii_lookup_result = None
         similar_tickers_suggestion = None
         database_fallback_product = None
@@ -1908,58 +2249,100 @@ REGRAS PARA INFORMAÇÕES DA INTERNET:
         fii_service = get_fii_lookup_service()
         detected_ticker = fii_service.extract_ticker(user_message)
         if not detected_ticker:
-            general_ticker_match = re.search(r'\b([A-Z]{4}[0-9]{1,2})\b', user_message.upper())
+            general_ticker_match = re.search(
+                r"\b([A-Z]{4}[0-9]{1,2})\b", user_message.upper()
+            )
             if general_ticker_match:
                 detected_ticker = general_ticker_match.group(1)
                 print(f"[OpenAI] Ticker geral detectado (não-FII): {detected_ticker}")
-        
+
         if not context_documents or len(context_documents) == 0:
-            print(f"[OpenAI] Busca semântica vazia - tentando fallback no banco de dados")
-            database_fallback_product = vs.search_product_in_database(user_message) if vs else None
-            
+            print(
+                f"[OpenAI] Busca semântica vazia - tentando fallback no banco de dados"
+            )
+            database_fallback_product = (
+                vs.search_product_in_database(user_message) if vs else None
+            )
+
             if not database_fallback_product:
-                product_pattern = re.search(r'\b([A-Z]{3,6}\s*(?:PRE|PRÉ|POS|PÓS|CDI|IPCA|DI|11)?)\b', user_message.upper())
+                product_pattern = re.search(
+                    r"\b([A-Z]{3,6}\s*(?:PRE|PRÉ|POS|PÓS|CDI|IPCA|DI|11)?)\b",
+                    user_message.upper(),
+                )
                 if product_pattern:
                     potential_product = product_pattern.group(1).strip()
                     if potential_product != user_message.upper().strip():
-                        print(f"[OpenAI] Tentando busca com padrão extraído: {potential_product}")
-                        database_fallback_product = vs.search_product_in_database(potential_product) if vs else None
-            
+                        print(
+                            f"[OpenAI] Tentando busca com padrão extraído: {potential_product}"
+                        )
+                        database_fallback_product = (
+                            vs.search_product_in_database(potential_product)
+                            if vs
+                            else None
+                        )
+
             if database_fallback_product:
-                print(f"[OpenAI] Fallback encontrou produto: {database_fallback_product.get('name')} ({database_fallback_product.get('ticker')})")
-        
+                print(
+                    f"[OpenAI] Fallback encontrou produto: {database_fallback_product.get('name')} ({database_fallback_product.get('ticker')})"
+                )
+
         if detected_ticker and not (rewrite_result and rewrite_result.is_comparative):
-            ticker_exists_exactly = vs.find_exact_ticker(detected_ticker) if vs else False
-            
-            ticker_in_docs = any(
-                detected_ticker.upper() in str(doc.get('content', '')).upper() or
-                detected_ticker.upper() in str(doc.get('metadata', {}).get('products', '')).upper()
-                for doc in context_documents
-            ) if context_documents else False
-            
-            print(f"[OpenAI] Ticker {detected_ticker} - existe na base: {ticker_exists_exactly}, nos docs: {ticker_in_docs}")
-            
+            ticker_exists_exactly = (
+                vs.find_exact_ticker(detected_ticker) if vs else False
+            )
+
+            ticker_in_docs = (
+                any(
+                    detected_ticker.upper() in str(doc.get("content", "")).upper()
+                    or detected_ticker.upper()
+                    in str(doc.get("metadata", {}).get("products", "")).upper()
+                    for doc in context_documents
+                )
+                if context_documents
+                else False
+            )
+
+            print(
+                f"[OpenAI] Ticker {detected_ticker} - existe na base: {ticker_exists_exactly}, nos docs: {ticker_in_docs}"
+            )
+
             if not ticker_exists_exactly and not ticker_in_docs:
-                similar_tickers = vs.find_similar_tickers(detected_ticker, max_distance=2, limit=3) if vs else []
-                ticker_similar = [t for t in similar_tickers if re.match(r'^[A-Z]{4,5}11$', t)]
-                product_similar = [t for t in similar_tickers if t not in ticker_similar]
-                print(f"[OpenAI] Similares - Tickers: {ticker_similar}, Produtos: {product_similar}")
-                
+                similar_tickers = (
+                    vs.find_similar_tickers(detected_ticker, max_distance=2, limit=3)
+                    if vs
+                    else []
+                )
+                ticker_similar = [
+                    t for t in similar_tickers if re.match(r"^[A-Z]{4,5}11$", t)
+                ]
+                product_similar = [
+                    t for t in similar_tickers if t not in ticker_similar
+                ]
+                print(
+                    f"[OpenAI] Similares - Tickers: {ticker_similar}, Produtos: {product_similar}"
+                )
+
                 all_similar = ticker_similar + product_similar
                 if all_similar:
                     similar_tickers_suggestion = {
-                        'searched_ticker': detected_ticker,
-                        'suggestions': all_similar[:3],
-                        'has_ticker_format': bool(ticker_similar)
+                        "searched_ticker": detected_ticker,
+                        "suggestions": all_similar[:3],
+                        "has_ticker_format": bool(ticker_similar),
                     }
-                    print(f"[OpenAI] Sugerindo alternativas para {detected_ticker}: {all_similar[:3]}")
+                    print(
+                        f"[OpenAI] Sugerindo alternativas para {detected_ticker}: {all_similar[:3]}"
+                    )
                 else:
-                    is_fii = detected_ticker.upper().endswith('11')
+                    is_fii = detected_ticker.upper().endswith("11")
                     if is_fii:
-                        print(f"[OpenAI] Nenhum similar para FII {detected_ticker} - buscando automaticamente no FundsExplorer")
+                        print(
+                            f"[OpenAI] Nenhum similar para FII {detected_ticker} - buscando automaticamente no FundsExplorer"
+                        )
                         fii_auto_result = fii_service.lookup(detected_ticker)
-                        if fii_auto_result and fii_auto_result.get('data'):
-                            fii_info = fii_service.format_complete_response(fii_auto_result['data'])
+                        if fii_auto_result and fii_auto_result.get("data"):
+                            fii_info = fii_service.format_complete_response(
+                                fii_auto_result["data"]
+                            )
                             return (
                                 f"O fundo {detected_ticker} não está na nossa base oficial de recomendações, mas encontrei informações públicas:\n\n{fii_info}",
                                 False,
@@ -1968,32 +2351,63 @@ REGRAS PARA INFORMAÇÕES DA INTERNET:
                                     "ticker": detected_ticker,
                                     "source": "fundsexplorer",
                                     "documents": context_documents,
-                                    "identified_assessor": assessor_data
-                                }
+                                    "identified_assessor": assessor_data,
+                                },
                             )
                         else:
-                            print(f"[OpenAI] FII {detected_ticker} não encontrado no FundsExplorer - forçando busca web")
+                            print(
+                                f"[OpenAI] FII {detected_ticker} não encontrado no FundsExplorer - forçando busca web"
+                            )
                             force_web_for_ticker = True
                     else:
-                        print(f"[OpenAI] Nenhum similar para {detected_ticker} - forçando busca web")
+                        print(
+                            f"[OpenAI] Nenhum similar para {detected_ticker} - forçando busca web"
+                        )
                         force_web_for_ticker = True
-        
-        if rewrite_result and rewrite_result.is_comparative and len(rewrite_result.entities) >= 2:
-            context = self._build_comparative_context(context_documents, rewrite_result.entities)
+
+        if (
+            rewrite_result
+            and rewrite_result.is_comparative
+            and len(rewrite_result.entities) >= 2
+        ):
+            context = self._build_comparative_context(
+                context_documents, rewrite_result.entities
+            )
         else:
             context = self._build_context(context_documents)
-        
+
         web_search_results = None
         web_context = ""
-        retrieval_strategy = rewrite_result.retrieval_strategy if rewrite_result else "rag"
-        should_search_web, web_reason = self._should_web_search(context_documents, user_message)
-        
+        retrieval_strategy = (
+            rewrite_result.retrieval_strategy if rewrite_result else "rag"
+        )
+        should_search_web, web_reason = self._should_web_search(
+            context_documents, user_message
+        )
+
         force_web = retrieval_strategy in ("web", "hybrid")
-        if categoria == "MERCADO" or force_web or force_web_for_ticker or (should_search_web and categoria not in ["SAUDACAO", "FORA_ESCOPO", "ATENDIMENTO_HUMANO"]):
-            effective_reason = web_reason if web_reason else ("Ticker não encontrado na base" if force_web_for_ticker else "Forçado por estratégia/categoria")
+        if (
+            categoria == "MERCADO"
+            or force_web
+            or force_web_for_ticker
+            or (
+                should_search_web
+                and categoria not in ["SAUDACAO", "FORA_ESCOPO", "ATENDIMENTO_HUMANO"]
+            )
+        ):
+            effective_reason = (
+                web_reason
+                if web_reason
+                else (
+                    "Ticker não encontrado na base"
+                    if force_web_for_ticker
+                    else "Forçado por estratégia/categoria"
+                )
+            )
             print(f"[OpenAI] Ativando busca na web: {effective_reason}")
             try:
                 from database.database import SessionLocal
+
                 db = SessionLocal()
                 try:
                     web_search_results = self._web_search_fallback(user_message, db=db)
@@ -2003,42 +2417,42 @@ REGRAS PARA INFORMAÇÕES DA INTERNET:
                     db.close()
             except Exception as e:
                 print(f"[OpenAI] Erro na busca web: {e}")
-        
+
         if database_fallback_product:
-            materials_count = database_fallback_product.get('materials_count', 0)
-            blocks_count = database_fallback_product.get('blocks_count', 0)
-            
+            materials_count = database_fallback_product.get("materials_count", 0)
+            blocks_count = database_fallback_product.get("blocks_count", 0)
+
             if blocks_count > 0:
                 material_note = f"O produto possui {materials_count} material(is) e {blocks_count} bloco(s) de conteúdo indexados."
             elif materials_count > 0:
                 material_note = f"O produto possui {materials_count} material(is) cadastrado(s), mas ainda sem conteúdo indexado para busca."
             else:
                 material_note = "O produto está cadastrado, mas ainda não possui materiais comerciais detalhados. Sugira que o assessor entre em contato com a área de produtos para obter materiais específicos."
-            
+
             product_info = f"""
 PRODUTO ENCONTRADO NA BASE:
-- Nome: {database_fallback_product.get('name', 'N/A')}
-- Ticker: {database_fallback_product.get('ticker', 'N/A')}
-- Gestora: {database_fallback_product.get('manager', 'N/A')}
-- Categoria: {database_fallback_product.get('category', 'Sem categoria')}
-- Descrição: {database_fallback_product.get('description') or 'Não disponível'}
-- Status: {database_fallback_product.get('status', 'N/A')}
+- Nome: {database_fallback_product.get("name", "N/A")}
+- Ticker: {database_fallback_product.get("ticker", "N/A")}
+- Gestora: {database_fallback_product.get("manager", "N/A")}
+- Categoria: {database_fallback_product.get("category", "Sem categoria")}
+- Descrição: {database_fallback_product.get("description") or "Não disponível"}
+- Status: {database_fallback_product.get("status", "N/A")}
 
 NOTA: {material_note}
 """
             context = product_info + "\n" + context
-        
+
         if assessor_data:
             context = self._build_assessor_context(assessor_data) + "\n" + context
-        
+
         if extra_context:
             context += f"\n\n{extra_context}"
-        
+
         messages = [{"role": "system", "content": system_prompt}]
-        
+
         if conversation_history:
             messages.extend(conversation_history[-20:])
-        
+
         if categoria == "MERCADO" and web_context:
             user_content = f"""PERGUNTA SOBRE MERCADO - PRIORIZE AS INFORMAÇÕES DA WEB:
 
@@ -2074,9 +2488,9 @@ INSTRUÇÕES PARA O PITCH:
                 user_content += "\n\nINSTRUÇÃO: As informações da internet acima já foram buscadas automaticamente. USE-AS na resposta junto com o contexto da base. Cite as fontes. NUNCA pergunte se o assessor quer buscar na internet — os dados já estão aqui."
 
         if similar_tickers_suggestion:
-            suggestions = similar_tickers_suggestion['suggestions']
-            searched = similar_tickers_suggestion['searched_ticker']
-            
+            suggestions = similar_tickers_suggestion["suggestions"]
+            searched = similar_tickers_suggestion["searched_ticker"]
+
             if len(suggestions) == 1:
                 confirmation_message = f"Não encontrei {searched} na nossa base. Você quis dizer {suggestions[0]}?"
             elif len(suggestions) == 2:
@@ -2084,8 +2498,10 @@ INSTRUÇÕES PARA O PITCH:
             else:
                 formatted = ", ".join(suggestions[:-1]) + f" ou {suggestions[-1]}"
                 confirmation_message = f"Não encontrei {searched} na nossa base. Você quis dizer {formatted}?"
-            
-            print(f"[OpenAI] Retornando pergunta de confirmação diretamente (bypass modelo)")
+
+            print(
+                f"[OpenAI] Retornando pergunta de confirmação diretamente (bypass modelo)"
+            )
             return (
                 confirmation_message,
                 False,
@@ -2094,11 +2510,11 @@ INSTRUÇÕES PARA O PITCH:
                     "searched_ticker": searched,
                     "suggestions": suggestions,
                     "documents": context_documents,
-                    "identified_assessor": assessor_data
-                }
+                    "identified_assessor": assessor_data,
+                },
             )
         elif fii_lookup_result:
-            fii_data = fii_lookup_result.get('data')
+            fii_data = fii_lookup_result.get("data")
             if fii_data:
                 fii_info = fii_service.format_complete_response(fii_data)
                 user_content += f"""
@@ -2106,7 +2522,7 @@ INSTRUÇÕES PARA O PITCH:
 ---
 
 DADOS EXTERNOS (FundsExplorer) - FUNDO NÃO ENCONTRADO NA BASE OFICIAL:
-O fundo {fii_lookup_result.get('ticker')} NÃO está na base de conhecimento oficial da SVN.
+O fundo {fii_lookup_result.get("ticker")} NÃO está na base de conhecimento oficial da SVN.
 Dados obtidos de fonte externa pública (FundsExplorer):
 
 {fii_info}
@@ -2138,26 +2554,31 @@ INSTRUÇÕES IMPORTANTES:
 4. Use as informações do assessor identificado se disponíveis
 5. Se houver DADOS EXTERNOS, apresente com o disclaimer de que não é recomendação oficial
 6. SOMENTE se realmente não houver nenhuma informação relevante no contexto E nem dados externos, pergunte se deseja abrir um chamado"""
-        
-        messages.append({
-            "role": "user",
-            "content": user_content
-        })
-        
-        has_actionable_context = bool(context_documents) or categoria in ("DOCUMENTAL", "ESCOPO", "PITCH")
-        use_tools = allow_tools and has_actionable_context and categoria not in ("SAUDACAO", "FORA_ESCOPO", "ATENDIMENTO_HUMANO")
-        
+
+        messages.append({"role": "user", "content": user_content})
+
+        has_actionable_context = bool(context_documents) or categoria in (
+            "DOCUMENTAL",
+            "ESCOPO",
+            "PITCH",
+        )
+        use_tools = (
+            allow_tools
+            and has_actionable_context
+            and categoria not in ("SAUDACAO", "FORA_ESCOPO", "ATENDIMENTO_HUMANO")
+        )
+
         try:
             api_kwargs = {
                 "model": model,
                 "messages": messages,
                 "max_tokens": max_tokens,
-                "temperature": temperature
+                "temperature": temperature,
             }
             if use_tools:
                 api_kwargs["tools"] = self.TOOL_DEFINITIONS
                 api_kwargs["tool_choice"] = "auto"
-            
+
             response = self.client.chat.completions.create(**api_kwargs)
             try:
                 if response.usage:
@@ -2166,15 +2587,15 @@ INSTRUÇÕES IMPORTANTES:
                         prompt_tokens=response.usage.prompt_tokens,
                         completion_tokens=response.usage.completion_tokens,
                         total_tokens=response.usage.total_tokens,
-                        operation='chat_response',
-                        conversation_id=conversation_id_for_context
+                        operation="chat_response",
+                        conversation_id=conversation_id_for_context,
                     )
             except Exception:
                 pass
-            
+
             choice = response.choices[0]
             ai_response = choice.message.content or ""
-            
+
             tool_calls_data = []
             if choice.message.tool_calls:
                 for tc in choice.message.tool_calls:
@@ -2182,32 +2603,43 @@ INSTRUÇÕES IMPORTANTES:
                         args = json.loads(tc.function.arguments)
                     except (json.JSONDecodeError, TypeError):
                         args = {}
-                    tool_calls_data.append({
-                        "name": tc.function.name,
-                        "arguments": args
-                    })
+                    tool_calls_data.append(
+                        {"name": tc.function.name, "arguments": args}
+                    )
                     print(f"[OpenAI] Tool call: {tc.function.name}({args})")
-            
-            derivatives_structures = self._detect_derivatives_structures(context_documents)
-            
-            return ai_response, False, {
-                "intent": "question", 
-                "documents": context_documents,
-                "identified_assessor": assessor_data,
-                "fii_external_lookup": fii_lookup_result.get('ticker') if fii_lookup_result else None,
-                "ticker_suggestions": similar_tickers_suggestion,
-                "derivatives_structures": derivatives_structures,
-                "tool_calls": tool_calls_data if tool_calls_data else None
-            }
-            
+
+            derivatives_structures = self._detect_derivatives_structures(
+                context_documents
+            )
+
+            return (
+                ai_response,
+                False,
+                {
+                    "intent": "question",
+                    "documents": context_documents,
+                    "identified_assessor": assessor_data,
+                    "fii_external_lookup": fii_lookup_result.get("ticker")
+                    if fii_lookup_result
+                    else None,
+                    "ticker_suggestions": similar_tickers_suggestion,
+                    "derivatives_structures": derivatives_structures,
+                    "tool_calls": tool_calls_data if tool_calls_data else None,
+                },
+            )
+
         except Exception as e:
             print(f"[OpenAI] Erro ao gerar resposta: {e}")
             return (
                 None,
                 False,
-                {"intent": "error", "error": str(e), "identified_assessor": assessor_data}
+                {
+                    "intent": "error",
+                    "error": str(e),
+                    "identified_assessor": assessor_data,
+                },
             )
-    
+
     def _detect_derivatives_structures(self, context_documents: list) -> list:
         """
         Detecta se os documentos de contexto contêm informações sobre estruturas de derivativos.
@@ -2215,27 +2647,32 @@ INSTRUÇÕES IMPORTANTES:
         """
         structures_found = []
         seen_slugs = set()
-        
+
         for doc in context_documents:
-            metadata = doc.get('metadata', {}) if isinstance(doc, dict) else {}
-            doc_type = metadata.get('type', '')
-            
-            if doc_type in ('derivatives_structure', 'derivatives_structure_technical'):
-                slug = metadata.get('structure_slug', '')
+            metadata = doc.get("metadata", {}) if isinstance(doc, dict) else {}
+            doc_type = metadata.get("type", "")
+
+            if doc_type in ("derivatives_structure", "derivatives_structure_technical"):
+                slug = metadata.get("structure_slug", "")
                 if slug and slug not in seen_slugs:
                     seen_slugs.add(slug)
-                    structures_found.append({
-                        'slug': slug,
-                        'name': metadata.get('product_name', ''),
-                        'tab': metadata.get('tab', ''),
-                        'strategy': metadata.get('strategy', ''),
-                        'has_diagram': metadata.get('has_diagram', 'false') == 'true',
-                        'diagram_path': metadata.get('diagram_image_path', '')
-                    })
-        
+                    structures_found.append(
+                        {
+                            "slug": slug,
+                            "name": metadata.get("product_name", ""),
+                            "tab": metadata.get("tab", ""),
+                            "strategy": metadata.get("strategy", ""),
+                            "has_diagram": metadata.get("has_diagram", "false")
+                            == "true",
+                            "diagram_path": metadata.get("diagram_image_path", ""),
+                        }
+                    )
+
         if structures_found:
-            print(f"[OpenAI] Estruturas de derivativos detectadas: {[s['name'] for s in structures_found]}")
-        
+            print(
+                f"[OpenAI] Estruturas de derivativos detectadas: {[s['name'] for s in structures_found]}"
+            )
+
         return structures_found
 
     async def generate_response_v2(
@@ -2250,10 +2687,10 @@ INSTRUÇÕES IMPORTANTES:
     ) -> Tuple[str, bool, dict]:
         """
         Pipeline V2: GPT decide, depois age (agentic RAG com tool-calling).
-        
+
         O GPT recebe a mensagem crua do assessor (sem contexto injetado no user turn)
         e decide quais tools usar via function calling. Loop iterativo com MAX_ITERATIONS=3.
-        
+
         Args:
             user_message: Mensagem crua do assessor (sem contexto injetado)
             conversation_history: Histórico da conversa (formato OpenAI messages)
@@ -2262,7 +2699,7 @@ INSTRUÇÕES IMPORTANTES:
             db: Sessão do banco de dados (para queries de materiais, etc)
             conversation_id: ID da conversa para logs
             allow_tools: Se deve permitir tool calling
-            
+
         Returns:
             Tuple (response, should_create_ticket, context_info)
         """
@@ -2278,7 +2715,7 @@ INSTRUÇÕES IMPORTANTES:
             return (
                 "Desculpe, o serviço de IA não está configurado no momento.",
                 False,
-                {"intent": "error"}
+                {"intent": "error"},
             )
 
         config = self._get_config_from_db()
@@ -2290,14 +2727,18 @@ INSTRUÇÕES IMPORTANTES:
         if not assessor_data and sender_phone:
             assessor_data = self._search_assessor_by_phone(sender_phone)
             if assessor_data:
-                print(f"[V2] Assessor identificado por telefone: {assessor_data['nome']}")
+                print(
+                    f"[V2] Assessor identificado por telefone: {assessor_data['nome']}"
+                )
 
         if not assessor_data:
             extracted_name = self._extract_name_from_message(user_message)
             if extracted_name:
                 assessor_data = self._search_assessor_by_name(extracted_name)
                 if assessor_data:
-                    print(f"[V2] Assessor identificado por nome: {assessor_data['nome']}")
+                    print(
+                        f"[V2] Assessor identificado por nome: {assessor_data['nome']}"
+                    )
 
         available_materials = []
         if db:
@@ -2338,7 +2779,9 @@ INSTRUÇÕES IMPORTANTES:
 
         for iteration in range(MAX_ITERATIONS):
             iterations = iteration + 1
-            print(f"[V2] Iteração {iterations}/{MAX_ITERATIONS} — {len(messages)} mensagens no contexto")
+            print(
+                f"[V2] Iteração {iterations}/{MAX_ITERATIONS} — {len(messages)} mensagens no contexto"
+            )
 
             try:
                 api_kwargs = {
@@ -2360,8 +2803,8 @@ INSTRUÇÕES IMPORTANTES:
                             prompt_tokens=response.usage.prompt_tokens,
                             completion_tokens=response.usage.completion_tokens,
                             total_tokens=response.usage.total_tokens,
-                            operation='chat_response_v2',
-                            conversation_id=conversation_id
+                            operation="chat_response_v2",
+                            conversation_id=conversation_id,
                         )
                 except Exception:
                     pass
@@ -2369,16 +2812,25 @@ INSTRUÇÕES IMPORTANTES:
             except Exception as e:
                 print(f"[V2] Erro na chamada OpenAI (iteração {iterations}): {e}")
                 error_str = str(e)
-                if "429" in error_str or "quota" in error_str.lower() or "rate_limit" in error_str.lower():
+                if (
+                    "429" in error_str
+                    or "quota" in error_str.lower()
+                    or "rate_limit" in error_str.lower()
+                ):
                     try:
                         from services.dependency_check import set_openai_quota_exceeded
+
                         set_openai_quota_exceeded(error_str)
                     except Exception:
                         pass
                 return (
                     "Desculpe, não foi possível processar sua mensagem no momento.",
                     False,
-                    {"intent": "error", "error": error_str, "identified_assessor": assessor_data}
+                    {
+                        "intent": "error",
+                        "error": error_str,
+                        "identified_assessor": assessor_data,
+                    },
                 )
 
             choice = response.choices[0]
@@ -2387,51 +2839,67 @@ INSTRUÇÕES IMPORTANTES:
             if not assistant_message.tool_calls:
                 ai_response = assistant_message.content or ""
                 elapsed_ms = int((time.time() - start_time) * 1000)
-                print(f"[V2] Resposta final — {iterations} iteração(ões), {elapsed_ms}ms total, {len(tool_calls_log)} tool calls")
+                print(
+                    f"[V2] Resposta final — {iterations} iteração(ões), {elapsed_ms}ms total, {len(tool_calls_log)} tool calls"
+                )
 
                 action_tool_calls = [
-                    tc for tc in tool_calls_log
+                    tc
+                    for tc in tool_calls_log
                     if tc["name"] in ("send_document", "send_payoff_diagram")
                 ]
 
                 handoff_calls = [
-                    tc for tc in tool_calls_log
-                    if tc["name"] == "request_human_handoff"
+                    tc for tc in tool_calls_log if tc["name"] == "request_human_handoff"
                 ]
                 should_create_ticket = bool(handoff_calls)
-                handoff_reason = handoff_calls[0]["arguments"].get("reason") if handoff_calls else None
+                handoff_reason = (
+                    handoff_calls[0]["arguments"].get("reason")
+                    if handoff_calls
+                    else None
+                )
 
-                return ai_response, should_create_ticket, {
-                    "intent": "question",
-                    "identified_assessor": assessor_data,
-                    "tool_calls": tool_calls_log if tool_calls_log else None,
-                    "action_tool_calls": action_tool_calls if action_tool_calls else None,
-                    "human_transfer": should_create_ticket,
-                    "transfer_reason": handoff_reason,
-                    "iterations": iterations,
-                    "elapsed_ms": elapsed_ms,
-                    "pipeline": "v2",
-                }
-
-            messages.append({
-                "role": "assistant",
-                "content": assistant_message.content,
-                "tool_calls": [
+                return (
+                    ai_response,
+                    should_create_ticket,
                     {
-                        "id": tc.id,
-                        "type": "function",
-                        "function": {
-                            "name": tc.function.name,
-                            "arguments": tc.function.arguments,
+                        "intent": "question",
+                        "identified_assessor": assessor_data,
+                        "tool_calls": tool_calls_log if tool_calls_log else None,
+                        "action_tool_calls": action_tool_calls
+                        if action_tool_calls
+                        else None,
+                        "human_transfer": should_create_ticket,
+                        "transfer_reason": handoff_reason,
+                        "iterations": iterations,
+                        "elapsed_ms": elapsed_ms,
+                        "pipeline": "v2",
+                    },
+                )
+
+            messages.append(
+                {
+                    "role": "assistant",
+                    "content": assistant_message.content,
+                    "tool_calls": [
+                        {
+                            "id": tc.id,
+                            "type": "function",
+                            "function": {
+                                "name": tc.function.name,
+                                "arguments": tc.function.arguments,
+                            },
                         }
-                    }
-                    for tc in assistant_message.tool_calls
-                ]
-            })
+                        for tc in assistant_message.tool_calls
+                    ],
+                }
+            )
 
             tasks = []
             for tc in assistant_message.tool_calls:
-                tasks.append(execute_tool_call(tc, db=db, conversation_id=conversation_id))
+                tasks.append(
+                    execute_tool_call(tc, db=db, conversation_id=conversation_id)
+                )
 
             if len(tasks) == 1:
                 results = [await tasks[0]]
@@ -2453,8 +2921,13 @@ INSTRUÇÕES IMPORTANTES:
                 if len(result_str) > 8000:
                     if isinstance(result, dict) and "results" in result:
                         truncated = dict(result)
-                        while len(json.dumps(truncated, ensure_ascii=False)) > 7500 and truncated.get("results"):
-                            if isinstance(truncated["results"], list) and len(truncated["results"]) > 1:
+                        while len(
+                            json.dumps(truncated, ensure_ascii=False)
+                        ) > 7500 and truncated.get("results"):
+                            if (
+                                isinstance(truncated["results"], list)
+                                and len(truncated["results"]) > 1
+                            ):
                                 truncated["results"] = truncated["results"][:-1]
                             else:
                                 break
@@ -2463,18 +2936,24 @@ INSTRUÇÕES IMPORTANTES:
                     else:
                         result_str = result_str[:7500]
 
-                messages.append({
-                    "role": "tool",
-                    "tool_call_id": tc.id,
-                    "content": result_str,
-                })
+                messages.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": tc.id,
+                        "content": result_str,
+                    }
+                )
 
-                tool_calls_log.append({
-                    "name": tc_name,
-                    "arguments": tc_args,
-                    "result_preview": result_str[:200] if not isinstance(result, Exception) else str(result)[:200],
-                    "iteration": iterations,
-                })
+                tool_calls_log.append(
+                    {
+                        "name": tc_name,
+                        "arguments": tc_args,
+                        "result_preview": result_str[:200]
+                        if not isinstance(result, Exception)
+                        else str(result)[:200],
+                        "iteration": iterations,
+                    }
+                )
 
         elapsed_ms = int((time.time() - start_time) * 1000)
         print(f"[V2] MAX_ITERATIONS atingido ({MAX_ITERATIONS}) — {elapsed_ms}ms total")
@@ -2491,38 +2970,49 @@ INSTRUÇÕES IMPORTANTES:
         except Exception as e:
             print(f"[V2] Erro na resposta final após max iterations: {e}")
             error_str = str(e)
-            if "429" in error_str or "quota" in error_str.lower() or "rate_limit" in error_str.lower():
+            if (
+                "429" in error_str
+                or "quota" in error_str.lower()
+                or "rate_limit" in error_str.lower()
+            ):
                 try:
                     from services.dependency_check import set_openai_quota_exceeded
+
                     set_openai_quota_exceeded(error_str)
                 except Exception:
                     pass
             ai_response = "Desculpe, tive um problema ao processar sua pergunta. Pode tentar novamente?"
 
         action_tool_calls = [
-            tc for tc in tool_calls_log
+            tc
+            for tc in tool_calls_log
             if tc["name"] in ("send_document", "send_payoff_diagram")
         ]
 
         handoff_calls = [
-            tc for tc in tool_calls_log
-            if tc["name"] == "request_human_handoff"
+            tc for tc in tool_calls_log if tc["name"] == "request_human_handoff"
         ]
         should_create_ticket = bool(handoff_calls)
-        handoff_reason = handoff_calls[0]["arguments"].get("reason") if handoff_calls else None
+        handoff_reason = (
+            handoff_calls[0]["arguments"].get("reason") if handoff_calls else None
+        )
 
-        return ai_response, should_create_ticket, {
-            "intent": "question",
-            "identified_assessor": assessor_data,
-            "tool_calls": tool_calls_log if tool_calls_log else None,
-            "action_tool_calls": action_tool_calls if action_tool_calls else None,
-            "human_transfer": should_create_ticket,
-            "transfer_reason": handoff_reason,
-            "iterations": iterations + 1,
-            "elapsed_ms": elapsed_ms,
-            "pipeline": "v2",
-            "max_iterations_reached": True,
-        }
+        return (
+            ai_response,
+            should_create_ticket,
+            {
+                "intent": "question",
+                "identified_assessor": assessor_data,
+                "tool_calls": tool_calls_log if tool_calls_log else None,
+                "action_tool_calls": action_tool_calls if action_tool_calls else None,
+                "human_transfer": should_create_ticket,
+                "transfer_reason": handoff_reason,
+                "iterations": iterations + 1,
+                "elapsed_ms": elapsed_ms,
+                "pipeline": "v2",
+                "max_iterations_reached": True,
+            },
+        )
 
     def _get_active_campaigns(self, db) -> list:
         try:
@@ -2531,11 +3021,17 @@ INSTRUÇÕES IMPORTANTES:
             from datetime import datetime as _dt
 
             now = _dt.utcnow()
-            campaigns = db.query(CampaignStructure).filter(
-                CampaignStructure.is_active == 1,
-                (CampaignStructure.valid_from.is_(None)) | (CampaignStructure.valid_from <= now),
-                (CampaignStructure.valid_until.is_(None)) | (CampaignStructure.valid_until >= now),
-            ).all()
+            campaigns = (
+                db.query(CampaignStructure)
+                .filter(
+                    CampaignStructure.is_active == 1,
+                    (CampaignStructure.valid_from.is_(None))
+                    | (CampaignStructure.valid_from <= now),
+                    (CampaignStructure.valid_until.is_(None))
+                    | (CampaignStructure.valid_until >= now),
+                )
+                .all()
+            )
 
             result = []
             for c in campaigns:
@@ -2545,7 +3041,9 @@ INSTRUÇÕES IMPORTANTES:
                     "structure_type": c.structure_type,
                     "campaign_slug": c.campaign_slug,
                     "key_data": _json.loads(c.key_data) if c.key_data else {},
-                    "valid_until": c.valid_until.strftime("%d/%m/%Y") if c.valid_until else None,
+                    "valid_until": c.valid_until.strftime("%d/%m/%Y")
+                    if c.valid_until
+                    else None,
                 }
                 result.append(entry)
 
@@ -2560,8 +3058,15 @@ INSTRUÇÕES IMPORTANTES:
         """Lista materiais com PDF disponível para o system prompt V2."""
         try:
             from database.models import Material, Product, MaterialFile
+
             materials_with_files = (
-                db.query(Material.id, Material.name, Material.material_type, Product.name.label("pname"), Product.ticker)
+                db.query(
+                    Material.id,
+                    Material.name,
+                    Material.material_type,
+                    Product.name.label("pname"),
+                    Product.ticker,
+                )
                 .join(Product, Product.id == Material.product_id)
                 .join(MaterialFile, MaterialFile.material_id == Material.id)
                 .filter(Material.publish_status != "arquivado")
@@ -2569,12 +3074,14 @@ INSTRUÇÕES IMPORTANTES:
             )
             result = []
             type_labels = {
-                'one_page': 'One Pager', 'apresentacao': 'Apresentação',
-                'comite': 'Material do Comitê', 'relatorio': 'Relatório',
-                'lamina': 'Lâmina',
+                "one_page": "One Pager",
+                "apresentacao": "Apresentação",
+                "comite": "Material do Comitê",
+                "relatorio": "Relatório",
+                "lamina": "Lâmina",
             }
             for mat in materials_with_files:
-                label = type_labels.get(mat.material_type, mat.name or 'Documento')
+                label = type_labels.get(mat.material_type, mat.name or "Documento")
                 key = mat.ticker or mat.pname
                 result.append(f"{key}: [ID:{mat.id}] {mat.name or label}")
             return result

@@ -71,7 +71,7 @@ KNOWN_GESTORAS = [
     "Alianza", "Alianza Trust",
 ]
 
-TICKER_PATTERN = re.compile(r'\b([A-Z]{4})(11|12|13)\b')
+TICKER_PATTERN = re.compile(r'\b([A-Z]{4})([3-9]|1[0-3])\b')
 
 STOPWORDS_PRODUTOS = {
     "fii", "fundo", "de", "investimento", "imobiliario", "imobiliário",

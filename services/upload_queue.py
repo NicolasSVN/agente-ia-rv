@@ -914,9 +914,20 @@ class UploadQueue:
 
                 try:
                     from api.endpoints.products import auto_publish_if_ready
-                    auto_publish_if_ready(mat, db)
+                    published = auto_publish_if_ready(mat, db)
+                    if published:
+                        item.add_log(f"Material auto-publicado com sucesso", "success")
+                    else:
+                        pending = db.query(ContentBlock).filter(
+                            ContentBlock.material_id == mat.id,
+                            ContentBlock.status == ContentBlockStatus.PENDING_REVIEW.value
+                        ).count()
+                        logger.info(f"[UPLOAD_WORKER] Material {item.material_id} não auto-publicado: "
+                                    f"publish_status={mat.publish_status}, pending_blocks={pending}")
                 except Exception as pub_err:
-                    logger.warning(f"[UPLOAD_WORKER] Erro ao auto-publicar material {item.material_id}: {pub_err}")
+                    import traceback
+                    logger.error(f"[UPLOAD_WORKER] Erro ao auto-publicar material {item.material_id}: {pub_err}\n"
+                                 f"{traceback.format_exc()}")
 
             processing_job.status = ProcessingJobStatus.COMPLETED.value
             processing_job.processed_pages = processing_job.total_pages

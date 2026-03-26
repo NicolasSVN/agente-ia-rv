@@ -13,7 +13,7 @@ from database.models import DocumentEmbedding
 from sqlalchemy import text as sql_text
 
 
-TICKER_PATTERN = re.compile(r'\b([A-Z]{4,5})\s*11\b', re.IGNORECASE)
+TICKER_PATTERN = re.compile(r'\b([A-Z]{4,5})\s*(?:1[0-3]|[3-9])\b', re.IGNORECASE)
 
 PUBLISH_STATUS_FILTER = "AND publish_status NOT IN ('rascunho', 'arquivado')"
 
@@ -58,9 +58,8 @@ KNOWN_MANAGERS = {
 
 def extract_tickers_from_query(query: str) -> List[str]:
     """
-    Extrai tickers de FIIs de uma query.
-    Padrão: 4-5 letras + 11 (com ou sem espaço)
-    Exemplos válidos: MANA11, mana 11, XPLG11, xplg 11
+    Extrai tickers de uma query (FIIs e ações).
+    Padrão: 4-5 letras + número (ex: MANA11, VIVT3, VALE3, XPLG11)
     
     Args:
         query: Texto da query do usuário
@@ -68,8 +67,9 @@ def extract_tickers_from_query(query: str) -> List[str]:
     Returns:
         Lista de tickers encontrados (uppercase, sem espaço)
     """
-    matches = TICKER_PATTERN.findall(query)
-    return [m.upper().replace(" ", "") + "11" for m in matches]
+    full_pattern = re.compile(r'\b([A-Z]{4,5}\s*(?:1[0-3]|[3-9]))\b', re.IGNORECASE)
+    matches = full_pattern.findall(query)
+    return [m.upper().replace(" ", "") for m in matches]
 
 
 def extract_manager_from_query(query: str) -> Optional[str]:
@@ -1123,6 +1123,85 @@ class VectorStore:
             print(f"[VECTOR_STORE] Erro ao buscar por produto: {e}")
             return []
     
+    def search_by_product_ids(self, product_ids: List[int], max_per_product: int = 5) -> List[dict]:
+        """
+        Busca blocos de conteúdo via ORM relacional (Product→Material→ContentBlock).
+        Não depende de product_ticker nos embeddings.
+        Filtra por ContentBlock.status aprovado e Material publicado (mesma política do PUBLISH_STATUS_FILTER).
+        """
+        from database.models import Product, Material, ContentBlock
+        from datetime import datetime
+
+        if not product_ids:
+            return []
+
+        db = SessionLocal()
+        try:
+            documents = []
+            now = datetime.now()
+
+            for pid in product_ids[:5]:
+                product = db.query(Product).filter(Product.id == pid).first()
+                if not product:
+                    continue
+
+                gestora_inferred = self._infer_gestora_from_name(product.name) if hasattr(self, '_infer_gestora_from_name') else ''
+
+                blocks = db.query(ContentBlock).join(Material).filter(
+                    Material.product_id == pid,
+                    Material.publish_status.notin_(['rascunho', 'arquivado']),
+                    ContentBlock.status.in_(['approved', 'auto_approved'])
+                ).order_by(ContentBlock.id).limit(max_per_product).all()
+
+                if not blocks:
+                    blocks = db.query(ContentBlock).join(Material).filter(
+                        Material.product_id == pid,
+                        Material.publish_status != 'arquivado',
+                        ContentBlock.status.in_(['approved', 'auto_approved'])
+                    ).order_by(ContentBlock.id).limit(max_per_product).all()
+
+                for block in blocks:
+                    material = block.material
+
+                    valid_until = material.valid_until if material else None
+                    if valid_until:
+                        try:
+                            if hasattr(valid_until, 'replace'):
+                                vu = valid_until.replace(tzinfo=None) if valid_until.tzinfo else valid_until
+                            else:
+                                vu = datetime.fromisoformat(str(valid_until).replace('Z', '+00:00')).replace(tzinfo=None)
+                            if vu < now:
+                                continue
+                        except Exception:
+                            pass
+
+                    metadata = {
+                        'product_name': product.name,
+                        'product_ticker': product.ticker or '',
+                        'products': product.name,
+                        'gestora': gestora_inferred,
+                        'category': product.category or '',
+                        'material_id': material.id if material else None,
+                        'material_type': material.material_type if material else '',
+                        'block_id': block.id,
+                        'block_type': block.block_type or 'text',
+                        'source': 'entity_resolver',
+                        'publish_status': material.publish_status if material else 'publicado',
+                    }
+
+                    documents.append({
+                        'content': block.content or '',
+                        'metadata': metadata,
+                        'distance': 0.15,
+                    })
+
+            return documents
+        except Exception as e:
+            print(f"[VECTOR_STORE] Erro em search_by_product_ids: {e}")
+            return []
+        finally:
+            db.close()
+
     def get_all_tickers(self) -> Set[str]:
         """
         Extrai todos os tickers únicos da base de conhecimento.
