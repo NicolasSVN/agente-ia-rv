@@ -353,9 +353,12 @@ async def _execute_search_web(args: dict, db=None) -> Dict[str, Any]:
     if not web_service.is_configured():
         return {"error": "Busca web não configurada (API key ausente)"}
 
+    print(f"[AgentTools] search_web chamada com query='{query}'")
     result = web_service.search_sync(query, db=db)
     if not result.get("success"):
-        return {"error": f"Busca web falhou: {result.get('error', 'desconhecido')}"}
+        error_msg = result.get('error', 'desconhecido')
+        print(f"[AgentTools] search_web FALHOU: {error_msg}")
+        return {"error": f"Busca web falhou: {error_msg}"}
 
     if not result.get("results"):
         return {"results": [], "message": "Nenhum resultado encontrado na web."}

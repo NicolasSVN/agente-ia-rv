@@ -57,6 +57,68 @@ class WebSearchService:
         
         return self.default_sources
     
+    async def _do_search_async(
+        self,
+        query: str,
+        include_domains: list = None,
+        max_results: int = 5,
+        search_depth: str = "advanced"
+    ) -> Dict:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            payload = {
+                "api_key": self.api_key,
+                "query": query,
+                "search_depth": search_depth,
+                "max_results": max_results,
+                "include_answer": True,
+                "include_raw_content": False,
+            }
+            if include_domains:
+                payload["include_domains"] = include_domains
+
+            response = await client.post(f"{self.base_url}/search", json=payload)
+
+            if response.status_code != 200:
+                error_detail = ""
+                try:
+                    error_detail = response.text[:300]
+                except Exception:
+                    pass
+                print(f"[WebSearch] API error {response.status_code}: {error_detail}")
+                return {
+                    "success": False,
+                    "error": f"Erro na API: {response.status_code} - {error_detail}",
+                    "results": [],
+                    "citations": []
+                }
+
+            data = response.json()
+
+            results = []
+            citations = []
+
+            for result in data.get("results", []):
+                fact = {
+                    "title": result.get("title", ""),
+                    "content": result.get("content", ""),
+                    "url": result.get("url", ""),
+                    "score": result.get("score", 0),
+                    "published_date": result.get("published_date"),
+                }
+                results.append(fact)
+
+                citation = self._format_citation(fact)
+                if citation:
+                    citations.append(citation)
+
+            return {
+                "success": True,
+                "query": query,
+                "answer": data.get("answer"),
+                "results": results,
+                "citations": citations,
+            }
+
     async def search(
         self,
         query: str,
@@ -64,18 +126,6 @@ class WebSearchService:
         max_results: int = 5,
         search_depth: str = "advanced"
     ) -> Dict:
-        """
-        Realiza busca na web usando Tavily API.
-        
-        Args:
-            query: Pergunta ou termos de busca
-            db: Sessão do banco para obter fontes confiáveis
-            max_results: Número máximo de resultados
-            search_depth: "basic" ou "advanced"
-        
-        Returns:
-            Dict com results, citations e metadata
-        """
         if not self.api_key:
             return {
                 "success": False,
@@ -83,70 +133,38 @@ class WebSearchService:
                 "results": [],
                 "citations": []
             }
-        
+
         start_time = time.time()
         trusted_domains = self.get_trusted_domains(db)
-        
+
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                response = await client.post(
-                    f"{self.base_url}/search",
-                    json={
-                        "api_key": self.api_key,
-                        "query": query,
-                        "search_depth": search_depth,
-                        "max_results": max_results,
-                        "include_domains": trusted_domains,
-                        "include_answer": True,
-                        "include_raw_content": False,
-                    }
-                )
-                
-                if response.status_code != 200:
-                    return {
-                        "success": False,
-                        "error": f"Erro na API: {response.status_code}",
-                        "results": [],
-                        "citations": []
-                    }
-                
-                data = response.json()
-                
-                results = []
-                citations = []
-                
-                for result in data.get("results", []):
-                    fact = {
-                        "title": result.get("title", ""),
-                        "content": result.get("content", ""),
-                        "url": result.get("url", ""),
-                        "score": result.get("score", 0),
-                        "published_date": result.get("published_date"),
-                    }
-                    results.append(fact)
-                    
-                    citation = self._format_citation(fact)
-                    if citation:
-                        citations.append(citation)
-                
-                try:
-                    cost_tracker.track_tavily_search(query=query)
-                except Exception:
-                    pass
-                
-                elapsed_ms = int((time.time() - start_time) * 1000)
-                
-                return {
-                    "success": True,
-                    "query": query,
-                    "answer": data.get("answer"),
-                    "results": results,
-                    "citations": citations,
-                    "sources_searched": trusted_domains,
-                    "response_time_ms": elapsed_ms
-                }
-                
+            result = await self._do_search_async(query, include_domains=trusted_domains, max_results=max_results, search_depth=search_depth)
+
+            if result.get("success") and not result.get("results"):
+                print(f"[WebSearch] 0 resultados com domínios restritos, retentando sem filtro para: {query}")
+                result = await self._do_search_async(query, include_domains=None, max_results=max_results, search_depth=search_depth)
+
+            if not result.get("success"):
+                print(f"[WebSearch] Busca com domínios restritos falhou ({result.get('error', '?')}), retentando sem filtro para: {query}")
+                result = await self._do_search_async(query, include_domains=None, max_results=max_results, search_depth=search_depth)
+
+            try:
+                cost_tracker.track_tavily_search(query=query)
+            except Exception:
+                pass
+
+            elapsed_ms = int((time.time() - start_time) * 1000)
+            result["sources_searched"] = trusted_domains
+            result["response_time_ms"] = elapsed_ms
+
+            print(f"[WebSearch] query='{query}' | success={result.get('success')} | results={len(result.get('results', []))} | {elapsed_ms}ms")
+
+            return result
+
         except Exception as e:
+            print(f"[WebSearch] Exceção na busca: {e}")
+            import traceback
+            traceback.print_exc()
             return {
                 "success": False,
                 "error": str(e),
@@ -154,6 +172,68 @@ class WebSearchService:
                 "citations": []
             }
     
+    def _do_search_sync(
+        self,
+        query: str,
+        include_domains: list = None,
+        max_results: int = 5,
+        search_depth: str = "advanced"
+    ) -> Dict:
+        with httpx.Client(timeout=30.0) as client:
+            payload = {
+                "api_key": self.api_key,
+                "query": query,
+                "search_depth": search_depth,
+                "max_results": max_results,
+                "include_answer": True,
+                "include_raw_content": False,
+            }
+            if include_domains:
+                payload["include_domains"] = include_domains
+
+            response = client.post(f"{self.base_url}/search", json=payload)
+
+            if response.status_code != 200:
+                error_detail = ""
+                try:
+                    error_detail = response.text[:300]
+                except Exception:
+                    pass
+                print(f"[WebSearch] API error {response.status_code}: {error_detail}")
+                return {
+                    "success": False,
+                    "error": f"Erro na API: {response.status_code} - {error_detail}",
+                    "results": [],
+                    "citations": []
+                }
+
+            data = response.json()
+
+            results = []
+            citations = []
+
+            for result in data.get("results", []):
+                fact = {
+                    "title": result.get("title", ""),
+                    "content": result.get("content", ""),
+                    "url": result.get("url", ""),
+                    "score": result.get("score", 0),
+                    "published_date": result.get("published_date"),
+                }
+                results.append(fact)
+
+                citation = self._format_citation(fact)
+                if citation:
+                    citations.append(citation)
+
+            return {
+                "success": True,
+                "query": query,
+                "answer": data.get("answer"),
+                "results": results,
+                "citations": citations,
+            }
+
     def search_sync(
         self,
         query: str,
@@ -161,9 +241,6 @@ class WebSearchService:
         max_results: int = 5,
         search_depth: str = "advanced"
     ) -> Dict:
-        """
-        Versão síncrona da busca na web.
-        """
         if not self.api_key:
             return {
                 "success": False,
@@ -171,70 +248,38 @@ class WebSearchService:
                 "results": [],
                 "citations": []
             }
-        
+
         start_time = time.time()
         trusted_domains = self.get_trusted_domains(db)
-        
+
         try:
-            with httpx.Client(timeout=30.0) as client:
-                response = client.post(
-                    f"{self.base_url}/search",
-                    json={
-                        "api_key": self.api_key,
-                        "query": query,
-                        "search_depth": search_depth,
-                        "max_results": max_results,
-                        "include_domains": trusted_domains,
-                        "include_answer": True,
-                        "include_raw_content": False,
-                    }
-                )
-                
-                if response.status_code != 200:
-                    return {
-                        "success": False,
-                        "error": f"Erro na API: {response.status_code}",
-                        "results": [],
-                        "citations": []
-                    }
-                
-                data = response.json()
-                
-                results = []
-                citations = []
-                
-                for result in data.get("results", []):
-                    fact = {
-                        "title": result.get("title", ""),
-                        "content": result.get("content", ""),
-                        "url": result.get("url", ""),
-                        "score": result.get("score", 0),
-                        "published_date": result.get("published_date"),
-                    }
-                    results.append(fact)
-                    
-                    citation = self._format_citation(fact)
-                    if citation:
-                        citations.append(citation)
-                
-                try:
-                    cost_tracker.track_tavily_search(query=query)
-                except Exception:
-                    pass
-                
-                elapsed_ms = int((time.time() - start_time) * 1000)
-                
-                return {
-                    "success": True,
-                    "query": query,
-                    "answer": data.get("answer"),
-                    "results": results,
-                    "citations": citations,
-                    "sources_searched": trusted_domains,
-                    "response_time_ms": elapsed_ms
-                }
-                
+            result = self._do_search_sync(query, include_domains=trusted_domains, max_results=max_results, search_depth=search_depth)
+
+            if result.get("success") and not result.get("results"):
+                print(f"[WebSearch] 0 resultados com domínios restritos, retentando sem filtro para: {query}")
+                result = self._do_search_sync(query, include_domains=None, max_results=max_results, search_depth=search_depth)
+
+            if not result.get("success"):
+                print(f"[WebSearch] Busca com domínios restritos falhou ({result.get('error', '?')}), retentando sem filtro para: {query}")
+                result = self._do_search_sync(query, include_domains=None, max_results=max_results, search_depth=search_depth)
+
+            try:
+                cost_tracker.track_tavily_search(query=query)
+            except Exception:
+                pass
+
+            elapsed_ms = int((time.time() - start_time) * 1000)
+            result["sources_searched"] = trusted_domains
+            result["response_time_ms"] = elapsed_ms
+
+            print(f"[WebSearch] query='{query}' | success={result.get('success')} | results={len(result.get('results', []))} | {elapsed_ms}ms")
+
+            return result
+
         except Exception as e:
+            print(f"[WebSearch] Exceção na busca: {e}")
+            import traceback
+            traceback.print_exc()
             return {
                 "success": False,
                 "error": str(e),
