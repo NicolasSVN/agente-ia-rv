@@ -2709,7 +2709,7 @@ INSTRUÇÕES IMPORTANTES:
         """
         import asyncio
         import time
-        from services.agent_tools import ALL_TOOLS_V2, execute_tool_call
+        from services.agent_tools import ALL_TOOLS_V2, execute_tool_call, execute_tool_call_direct
         from services.agent_prompt import build_system_prompt_v2
 
         MAX_ITERATIONS = 3
@@ -2781,6 +2781,40 @@ INSTRUÇÕES IMPORTANTES:
         tool_calls_log = []
         search_results_for_visual = []
         iterations = 0
+
+        if db and allow_tools:
+            try:
+                from services.visual_decision import VISUAL_TRIGGERS, CONCEPTUAL_BLOCKERS
+                query_lower = user_message.lower().strip()
+                has_blocker = any(b in query_lower for b in CONCEPTUAL_BLOCKERS)
+                has_trigger = any(t in query_lower for t in VISUAL_TRIGGERS)
+                if has_trigger and not has_blocker:
+                    print(f"[V2_VISUAL_PREFETCH] Visual triggers detected, running proactive search...")
+                    prefetch_result = await execute_tool_call_direct(
+                        "search_knowledge_base",
+                        {"query": user_message},
+                        db=db,
+                        conversation_id=conversation_id
+                    )
+                    if isinstance(prefetch_result, dict):
+                        for sr in prefetch_result.get("results", []):
+                            bid = sr.get("block_id")
+                            if sr.get("block_type") == "grafico" and bid:
+                                search_results_for_visual.append(sr)
+                        for vc in prefetch_result.get("visual_candidates", []):
+                            vc_bid = vc.get("block_id")
+                            if vc_bid and vc_bid not in {b.get("block_id") for b in search_results_for_visual}:
+                                search_results_for_visual.append(vc)
+                        if search_results_for_visual:
+                            print(f"[V2_VISUAL_PREFETCH] Proactive search found {len(search_results_for_visual)} graphic blocks")
+                        else:
+                            print(f"[V2_VISUAL_PREFETCH] Proactive search returned no graphic blocks")
+                    else:
+                        print(f"[V2_VISUAL_PREFETCH] Proactive search returned non-dict result")
+                elif has_blocker:
+                    print(f"[V2_VISUAL_PREFETCH] Skipped — conceptual blocker detected")
+            except Exception as prefetch_err:
+                print(f"[V2_VISUAL_PREFETCH] Error in proactive search: {prefetch_err}")
 
         for iteration in range(MAX_ITERATIONS):
             iterations = iteration + 1

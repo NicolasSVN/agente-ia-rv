@@ -232,6 +232,17 @@ async def execute_tool_call(tool_call, db=None, conversation_id=None) -> Dict[st
         return {"error": f"Erro ao executar {name}: {str(e)}"}
 
 
+async def execute_tool_call_direct(name: str, args: dict, db=None, conversation_id=None) -> Dict[str, Any]:
+    if name == "search_knowledge_base":
+        return await _execute_search_knowledge_base(args, db, conversation_id)
+    elif name == "search_web":
+        return await _execute_search_web(args, db)
+    elif name == "lookup_fii_public":
+        return await _execute_lookup_fii(args)
+    else:
+        return {"error": f"Tool desconhecida: {name}"}
+
+
 async def _execute_search_knowledge_base(args: dict, db=None, conversation_id=None) -> Dict[str, Any]:
     """Executa busca na base de conhecimento usando EnhancedSearch existente."""
     from services.semantic_search import EnhancedSearch
