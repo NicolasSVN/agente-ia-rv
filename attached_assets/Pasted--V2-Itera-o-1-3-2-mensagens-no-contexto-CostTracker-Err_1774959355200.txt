@@ -1,0 +1,45 @@
+[V2] Iteração 1/3 — 2 mensagens no contexto
+[CostTracker] Erro ao salvar registro: (psycopg2.errors.InvalidTextRepresentation) invalid input syntax for type integer: "test_21"
+LINE 1: ... 11, 6818, NULL, 0.0171275, 0.0993395, 5.8, NULL, 'test_21',...
+                                                             ^
+[SQL: INSERT INTO cost_tracking (service, operation, model, prompt_tokens, completion_tokens, total_tokens, audio_duration_seconds, cost_usd, cost_brl, exchange_rate, context, conversation_id, created_at) VALUES (%(service)s, %(operation)s, %(model)s, %(prompt_tokens)s, %(completion_tokens)s, %(total_tokens)s, %(audio_duration_seconds)s, %(cost_usd)s, %(cost_brl)s, %(exchange_rate)s, %(context)s, %(conversation_id)s, %(created_at)s) RETURNING cost_tracking.id]
+[parameters: {'service': 'openai', 'operation': 'chat_response_v2', 'model': 'gpt-4o', 'prompt_tokens': 6807, 'completion_tokens': 11, 'total_tokens': 6818, 'audio_duration_seconds': None, 'cost_usd': 0.0171275, 'cost_brl': 0.0993395, 'exchange_rate': 5.8, 'context': None, 'conversation_id': 'test_21', 'created_at': datetime.datetime(2026, 3, 31, 12, 6, 12, 438890)}]
+(Background on this error at: https://sqlalche.me/e/20/9h9h)
+[V2] Resposta final — 1 iteração(ões), 3224ms total, 0 tool calls
+[ACCESS] → 200 (3271ms) POST /api/agent/test
+INFO:     100.64.0.7:45980 - "POST /api/agent/test HTTP/1.1" 200 OK
+2026-03-31 12:06:12.443 UTC [117618] ERROR:  invalid input syntax for type integer: "test_21" at character 303
+2026-03-31 12:06:12.443 UTC [117618] STATEMENT:  INSERT INTO cost_tracking (service, operation, model, prompt_tokens, completion_tokens, total_tokens, audio_duration_seconds, cost_usd, cost_brl, exchange_rate, context, conversation_id, created_at) VALUES ('openai', 'chat_response_v2', 'gpt-4o', 6807, 11, 6818, NULL, 0.0171275, 0.0993395, 5.8, NULL, 'test_21', '2026-03-31T12:06:12.438890'::timestamp) RETURNING cost_tracking.id
+2026-03-31 12:06:38.244 UTC [120508] ERROR:  invalid input syntax for type integer: "test_21" at character 324
+2026-03-31 12:06:38.244 UTC [120508] STATEMENT:  INSERT INTO cost_tracking (service, operation, model, prompt_tokens, completion_tokens, total_tokens, audio_duration_seconds, cost_usd, cost_brl, exchange_rate, context, conversation_id, created_at) VALUES ('openai', 'chat_response_v2', 'gpt-4o', 6835, 55, 6890, NULL, 0.017637499999999997, 0.10229749999999999, 5.8, NULL, 'test_21', '2026-03-31T12:06:38.240958'::timestamp) RETURNING cost_tracking.id
+[ACCESS] POST /api/agent/test from 100.64.0.12
+[V2] Iteração 1/3 — 4 mensagens no contexto
+[CostTracker] Erro ao salvar registro: (psycopg2.errors.InvalidTextRepresentation) invalid input syntax for type integer: "test_21"
+LINE 1: ...7637499999999997, 0.10229749999999999, 5.8, NULL, 'test_21',...
+                                                             ^
+[SQL: INSERT INTO cost_tracking (service, operation, model, prompt_tokens, completion_tokens, total_tokens, audio_duration_seconds, cost_usd, cost_brl, exchange_rate, context, conversation_id, created_at) VALUES (%(service)s, %(operation)s, %(model)s, %(prompt_tokens)s, %(completion_tokens)s, %(total_tokens)s, %(audio_duration_seconds)s, %(cost_usd)s, %(cost_brl)s, %(exchange_rate)s, %(context)s, %(conversation_id)s, %(created_at)s) RETURNING cost_tracking.id]
+[parameters: {'service': 'openai', 'operation': 'chat_response_v2', 'model': 'gpt-4o', 'prompt_tokens': 6835, 'completion_tokens': 55, 'total_tokens': 6890, 'audio_duration_seconds': None, 'cost_usd': 0.017637499999999997, 'cost_brl': 0.10229749999999999, 'exchange_rate': 5.8, 'context': None, 'conversation_id': 'test_21', 'created_at': datetime.datetime(2026, 3, 31, 12, 6, 38, 240958)}]
+(Background on this error at: https://sqlalche.me/e/20/9h9h)
+[V2 Tool Call] lookup_fii_public({"ticker": "BTLG11"})
+[V2 Tool Result] lookup_fii_public — 200ms — success
+[V2 Tool Call] search_knowledge_base({"query": "BTLG11 rentabilidade histórica"})
+[VECTORSTORE] Singleton criado com sucesso | openai_client=True
+[EnhancedSearch] query_intent=numeric | 8 resultados | 1743ms
+[V2 Tool Result] search_knowledge_base — 1783ms — success
+[V2] Iteração 2/3 — 7 mensagens no contexto
+[EnhancedSearch] Layer 0 EntityResolver: 5 blocos de ['FII BTG Pactual Logística']
+[VECTOR_STORE] Conceitos financeiros detectados: ['rentabilidade']
+[VECTOR_STORE] Busca por ticker BTLG11: 32 blocos encontrados
+[VECTOR_STORE] Query expandida com 8 termos: ['desempenho', 'DY', 'valorização', 'IFIX', 'cota patrimonial']...
+[VECTOR_STORE] SQL retornou 48 rows (fetch_count=48, query_type=numeric)
+[VECTOR_STORE] Busca híbrida: 32 por ticker + 48 semânticos = 16 finais
+[RETRIEVAL] Query: 'BTLG11 rentabilidade histórica' | Type: numeric | Intent: None | Entities: None | Results: 16/80 | Products: ['FII BTG Pactual Logística'] | MaxScore: None
+2026-03-31 12:06:44.434 UTC [120581] ERROR:  invalid input syntax for type integer: "test_21" at character 299
+2026-03-31 12:06:44.434 UTC [120581] STATEMENT:  INSERT INTO cost_tracking (service, operation, model, prompt_tokens, completion_tokens, total_tokens, audio_duration_seconds, cost_usd, cost_brl, exchange_rate, context, conversation_id, created_at) VALUES ('openai', 'chat_response_v2', 'gpt-4o', 9296, 246, 9542, NULL, 0.0257, 0.14906, 5.8, NULL, 'test_21', '2026-03-31T12:06:44.432424'::timestamp) RETURNING cost_tracking.id
+[CostTracker] Erro ao salvar registro: (psycopg2.errors.InvalidTextRepresentation) invalid input syntax for type integer: "test_21"
+LINE 1: ...296, 246, 9542, NULL, 0.0257, 0.14906, 5.8, NULL, 'test_21',...
+                                                             ^
+[SQL: INSERT INTO cost_tracking (service, operation, model, prompt_tokens, completion_tokens, total_tokens, audio_duration_seconds, cost_usd, cost_brl, exchange_rate, context, conversation_id, created_at) VALUES (%(service)s, %(operation)s, %(model)s, %(prompt_tokens)s, %(completion_tokens)s, %(total_tokens)s, %(audio_duration_seconds)s, %(cost_usd)s, %(cost_brl)s, %(exchange_rate)s, %(context)s, %(conversation_id)s, %(created_at)s) RETURNING cost_tracking.id]
+[parameters: {'service': 'openai', 'operation': 'chat_response_v2', 'model': 'gpt-4o', 'prompt_tokens': 9296, 'completion_tokens': 246, 'total_tokens': 9542, 'audio_duration_seconds': None, 'cost_usd': 0.0257, 'cost_brl': 0.14906, 'exchange_rate': 5.8, 'context': None, 'conversation_id': 'test_21', 'created_at': datetime.datetime(2026, 3, 31, 12, 6, 44, 432424)}]
+(Background on this error at: https://sqlalche.me/e/20/9h9h)
+[V2] Resposta final — 2 iteração(ões), 8097ms total, 2 tool calls
