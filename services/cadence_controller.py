@@ -163,6 +163,27 @@ async def run_cadence_tick():
             sent_this_tick = True
 
         if not sent_this_tick:
+            stale_threshold = now - timedelta(minutes=10)
+            stale_dispatches = (
+                db.query(CampaignDispatch)
+                .filter(
+                    CampaignDispatch.status == "processing",
+                    CampaignDispatch.scheduled_for < stale_threshold,
+                )
+                .all()
+            )
+            for stale in stale_dispatches:
+                stale.retry_count = (stale.retry_count or 0) + 1
+                if stale.retry_count >= 3:
+                    stale.status = "failed"
+                    stale.error_message = "Travado em processing por mais de 10 minutos"
+                else:
+                    stale.status = "pending"
+                    stale.scheduled_for = now + timedelta(minutes=5)
+            if stale_dispatches:
+                db.commit()
+                print(f"[CADENCE] Recuperados {len(stale_dispatches)} dispatches travados em processing")
+
             active_unified = (
                 db.query(Campaign)
                 .filter(Campaign.status == "firing_cadence")
@@ -251,7 +272,10 @@ async def run_cadence_tick():
 
                 zapi = ZAPIClient()
                 if not zapi.is_configured():
-                    print("[CADENCE] Z-API não configurada, pulando envio")
+                    next_dispatch.status = "pending"
+                    next_dispatch.scheduled_for = now + timedelta(minutes=5)
+                    db.commit()
+                    print("[CADENCE] Z-API não configurada, dispatch devolvido para pending")
                     return
 
                 try:
