@@ -172,6 +172,29 @@ def _category_match_score(visual_desc: str, category: str) -> float:
     return (matches / len(cat_data["block_terms"])) * cat_data["weight"]
 
 
+def _topic_concentration_bonus(visual_desc: str, category: str) -> float:
+    if not visual_desc or not category:
+        return 0.0
+    cat_data = SEMANTIC_CATEGORIES.get(category)
+    if not cat_data:
+        return 0.0
+    desc_lower = visual_desc.lower()
+    first_sentence = desc_lower.split(".")[0] if "." in desc_lower else desc_lower[:150]
+    cat_terms_in_first = sum(1 for t in cat_data["block_terms"] if t in first_sentence)
+    all_category_mentions = 0
+    for other_cat, other_data in SEMANTIC_CATEGORIES.items():
+        if other_cat == category:
+            continue
+        all_category_mentions += sum(1 for t in other_data["block_terms"] if t in desc_lower and len(t) > 3)
+    if cat_terms_in_first >= 1 and all_category_mentions <= 1:
+        return 1.5
+    if cat_terms_in_first >= 1:
+        return 0.8
+    if all_category_mentions >= 4:
+        return -0.5
+    return 0.0
+
+
 def _query_relevance_score(visual_desc: str, query: str) -> float:
     if not visual_desc:
         return 0.0
@@ -188,9 +211,11 @@ def _query_relevance_score(visual_desc: str, query: str) -> float:
     category = _detect_query_category(query)
     cat_score = _category_match_score(visual_desc, category) if category else 0.0
 
+    concentration = _topic_concentration_bonus(visual_desc, category) if category else 0.0
+
     institutional_penalty = -0.8 if _is_institutional_block(visual_desc) else 0.0
 
-    total = word_score + cat_score + institutional_penalty
+    total = word_score + cat_score + concentration + institutional_penalty
     return max(total, 0.0)
 
 

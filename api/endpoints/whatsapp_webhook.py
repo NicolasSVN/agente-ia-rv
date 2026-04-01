@@ -502,6 +502,27 @@ async def _send_diagrams_from_markers(phone: str, slugs: List[str], db: Session)
 
 
 
+def _is_farewell_or_emoji(text: str) -> bool:
+    import re as _re
+    cleaned = text.strip().lower()
+    cleaned = _re.sub(r'[!.,;:?]+', '', cleaned).strip()
+    if not cleaned:
+        return True
+    if _re.fullmatch(r'[\U0001F300-\U0001FAFF\U00002600-\U000027BF\U0000FE00-\U0000FE0F\U0000200D\U0001F1E0-\U0001F1FF\s]+', cleaned):
+        return True
+    farewell_terms = [
+        "até", "ate", "tchau", "flw", "falou", "fui", "abraço", "abraco",
+        "até mais", "ate mais", "até logo", "tmj", "tamo junto",
+        "bom trabalho",
+    ]
+    for term in farewell_terms:
+        if cleaned == term or cleaned.startswith(term + " "):
+            return True
+    if _re.fullmatch(r'(at[eé]|tchau|flw|falou|abra[cç]o|tmj)\s*(obrigad[oa])?[\s!]*', cleaned):
+        return True
+    return False
+
+
 async def process_text_message(phone: str, message: str, db: Session, message_record: WhatsAppMessage = None, conversation: Conversation = None):
     """
     Processa uma mensagem de texto seguindo o framework de fluxo:
@@ -554,6 +575,13 @@ async def process_text_message(phone: str, message: str, db: Session, message_re
             return
         
         if conversation.ticket_status == TicketStatusV2.SOLVED.value:
+            if is_positive_confirmation(normalized_message) or _is_farewell_or_emoji(normalized_message):
+                print(f"[WEBHOOK] Ticket SOLVED + despedida/emoji/agradecimento — ignorando (sem loop): {phone}")
+                if message_record:
+                    message_record.ai_response = None
+                    message_record.ai_intent = "solved_farewell_ignored"
+                    db.commit()
+                return
             conversation.ticket_status = None
             db.commit()
             print(f"[WEBHOOK] Ticket reaberto em process_text_message (era solved): {phone}")
@@ -1448,6 +1476,17 @@ async def zapi_webhook(
         }
     
     if conversation and conversation.ticket_status == TicketStatusV2.SOLVED.value:
+        incoming_text = body or ""
+        from services.conversation_flow import is_positive_confirmation
+        if incoming_text and (is_positive_confirmation(incoming_text) or _is_farewell_or_emoji(incoming_text)):
+            print(f"[WEBHOOK] Ticket SOLVED + farewell/emoji/gratitude — ignorando (sem loop): {phone}")
+            return {
+                "status": "received",
+                "message_type": message_type,
+                "message_id": message_record.id if message_record else None,
+                "auto_response": False,
+                "reason": "solved_farewell_ignored"
+            }
         conversation.ticket_status = None
         db.commit()
         print(f"[WEBHOOK] Ticket reaberto (era solved, nova mensagem recebida): {phone}")

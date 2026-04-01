@@ -288,11 +288,24 @@ async def update_assessor(assessor_id: int, assessor: AssessorUpdate, db: Sessio
             raise HTTPException(status_code=400, detail="Já existe outro assessor com este e-mail")
     
     update_data = assessor.model_dump(exclude_unset=True)
+    phone_changed = "telefone_whatsapp" in update_data and update_data["telefone_whatsapp"] != db_assessor.telefone_whatsapp
     for key, value in update_data.items():
         if key == "custom_fields" and value is not None:
             setattr(db_assessor, key, json.dumps(value))
         else:
             setattr(db_assessor, key, value)
+    
+    if phone_changed and db_assessor.telefone_whatsapp:
+        import re as _re
+        from database.models import Conversation
+        normalized_phone = _re.sub(r'\D', '', db_assessor.telefone_whatsapp) if db_assessor.telefone_whatsapp else None
+        linked_conversations = db.query(Conversation).filter(
+            Conversation.assessor_id == db_assessor.id
+        ).all()
+        for conv in linked_conversations:
+            conv.phone = normalized_phone or db_assessor.telefone_whatsapp
+        if linked_conversations:
+            print(f"[ASSESSOR] Phone sync: {len(linked_conversations)} conversas atualizadas para {normalized_phone or db_assessor.telefone_whatsapp}")
     
     db.commit()
     db.refresh(db_assessor)

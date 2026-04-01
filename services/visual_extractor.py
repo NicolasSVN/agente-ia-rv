@@ -27,16 +27,19 @@ VISION_PROMPT = (
     "has_chart: true se esta página contém pelo menos um gráfico visual (não tabela).\n"
     "chart_type: tipo do gráfico (barras, linhas, pizza, área, waterfall, etc.).\n"
     "chart_position: coordenadas aproximadas do gráfico PRINCIPAL em porcentagem da página "
-    "(top=0 é o topo da página, bottom=100 é o rodapé). Marque a região que contém APENAS o gráfico, "
-    "excluindo cabeçalhos, rodapés, logos, e texto fora do gráfico.\n"
-    "chart_description: breve descrição do conteúdo do gráfico.\n"
+    "(top=0 é o topo da página, bottom=100 é o rodapé). INCLUA o título do gráfico e legendas na região — "
+    "não corte títulos no topo nem legendas nas laterais. Margem generosa.\n"
+    "chart_description: na PRIMEIRA frase, descreva o FOCO PRINCIPAL do gráfico usando termos financeiros "
+    "específicos (ex: 'Gráfico de evolução de dividendos por cota', 'Gráfico de desempenho vs IFIX e CDI', "
+    "'Gráfico de vacância física'). Não use descrições genéricas como 'página com diversos gráficos'. "
+    "Se houver múltiplos gráficos na mesma região, descreva o tema DOMINANTE.\n"
     "Se houver múltiplos gráficos, localize o MAIOR/mais proeminente.\n"
     "Se não houver gráfico, use chart_position com valores zeros."
 )
 
 BBOX_AREA_THRESHOLD = 85.0
 RENDER_DPI = 200
-CROP_MARGIN_PX = 20
+CROP_MARGIN_PX = 40
 
 
 def extract_visual(content_block_id: int, db: Session) -> dict | None:
