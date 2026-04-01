@@ -295,6 +295,9 @@ async def run_cadence_tick():
                         if next_dispatch.retry_count >= 3:
                             next_dispatch.status = "failed"
                             next_dispatch.error_message = result.get("error", "desconhecido")
+                        else:
+                            next_dispatch.status = "pending"
+                            next_dispatch.scheduled_for = now + timedelta(minutes=10)
 
                         db.commit()
                         error_msg = result.get("error", "desconhecido")
@@ -310,6 +313,9 @@ async def run_cadence_tick():
                     if next_dispatch.retry_count >= 3:
                         next_dispatch.status = "failed"
                         next_dispatch.error_message = str(send_err)
+                    else:
+                        next_dispatch.status = "pending"
+                        next_dispatch.scheduled_for = now + timedelta(minutes=10)
                     db.commit()
                     print(f"[CADENCE] Erro ao enviar para {phone}: {send_err}")
 

@@ -61,16 +61,16 @@ async def run_init_background():
         from api.endpoints import (
             auth, users, tickets, whatsapp_webhook, integrations, agent_config,
             assessores, campaigns, knowledge, agent_test, conversations, products,
-            files, insights, search, trusted_sources, costs, health, cadence_campaigns
+            files, insights, search, trusted_sources, costs, health
         )
         return (auth, users, tickets, whatsapp_webhook, integrations, agent_config,
                 assessores, campaigns, knowledge, agent_test, conversations, products,
-                files, insights, search, trusted_sources, costs, health, cadence_campaigns)
+                files, insights, search, trusted_sources, costs, health)
 
     try:
         (auth, users, tickets, whatsapp_webhook, integrations, agent_config,
          assessores, campaigns, knowledge, agent_test, conversations, products,
-         files, insights, search, trusted_sources, costs, health, cadence_campaigns) = await asyncio.to_thread(_import_endpoint_modules)
+         files, insights, search, trusted_sources, costs, health) = await asyncio.to_thread(_import_endpoint_modules)
         app.include_router(auth.router)
         app.include_router(users.router)
         app.include_router(tickets.router)
@@ -91,7 +91,6 @@ async def run_init_background():
         app.include_router(trusted_sources.router)
         app.include_router(costs.router)
         app.include_router(health.router)
-        app.include_router(cadence_campaigns.router)
         print("[INIT] Routers registrados com sucesso.")
     except Exception as e:
         print(f"[INIT] Erro ao registrar routers: {e}")

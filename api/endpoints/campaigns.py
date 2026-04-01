@@ -2510,11 +2510,15 @@ async def list_campaigns(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin_or_gestao())
 ):
-    """Lista todas as campanhas com paginação."""
+    """Lista todas as campanhas (unificadas + legadas) com paginação."""
+    from database.models import CadenceCampaign, CadenceCampaignContact
+    from sqlalchemy import func as sql_func
+
     campaigns = db.query(Campaign).order_by(Campaign.created_at.desc()).offset(skip).limit(limit).all()
-    
-    return [
-        {
+
+    result = []
+    for c in campaigns:
+        result.append({
             "id": c.id,
             "name": c.name,
             "status": c.status,
@@ -2528,10 +2532,44 @@ async def list_campaigns(
             "deadline_days": c.deadline_days,
             "created_at": c.created_at.isoformat() if c.created_at else None,
             "sent_at": c.sent_at.isoformat() if c.sent_at else None,
-            "template_name": c.template.name if c.template else None
-        }
-        for c in campaigns
-    ]
+            "template_name": c.template.name if c.template else None,
+            "source": "unified",
+        })
+
+    legacy_campaigns = db.query(CadenceCampaign).order_by(CadenceCampaign.created_at.desc()).all()
+    for lc in legacy_campaigns:
+        sent_count = db.query(sql_func.count(CadenceCampaignContact.id)).filter(
+            CadenceCampaignContact.campaign_id == lc.id,
+            CadenceCampaignContact.status.in_(["sent", "responded"]),
+        ).scalar() or 0
+        failed_count = db.query(sql_func.count(CadenceCampaignContact.id)).filter(
+            CadenceCampaignContact.campaign_id == lc.id,
+            CadenceCampaignContact.status == "failed",
+        ).scalar() or 0
+
+        status_map = {"firing": "firing_cadence", "done": "cadence_done", "paused": "paused_cadence"}
+        mapped_status = status_map.get(lc.status, lc.status)
+
+        result.append({
+            "id": -lc.id,
+            "name": f"{lc.name} (legado)",
+            "status": mapped_status,
+            "original_filename": None,
+            "total_assessors": lc.total_contacts or 0,
+            "total_recommendations": 0,
+            "messages_sent": sent_count,
+            "messages_failed": failed_count,
+            "delivery_mode": "cadence",
+            "daily_limit": lc.daily_limit,
+            "deadline_days": None,
+            "created_at": lc.created_at.isoformat() if lc.created_at else None,
+            "sent_at": lc.start_date.isoformat() if lc.start_date else None,
+            "template_name": None,
+            "source": "legacy_cadence",
+        })
+
+    result.sort(key=lambda x: x.get("created_at") or "", reverse=True)
+    return result
 
 
 class CampaignStructureCreate(BaseModel):
