@@ -738,6 +738,10 @@
         .status-firing_cadence { background: #dbeafe; color: #1e40af; }
         .status-paused_cadence { background: #fef3c7; color: #92400e; }
         .status-cadence_done { background: #d1fae5; color: #065f46; }
+        .status-scheduled { background: #e0e7ff; color: #3730a3; }
+        .status-done { background: #d1fae5; color: #065f46; }
+        .status-firing { background: #dbeafe; color: #1e40af; }
+        .status-paused { background: #fef3c7; color: #92400e; }
 
         .file-info {
             display: flex;
@@ -3097,19 +3101,36 @@ Equipe de Gestao"></textarea>
                 }
 
                 tbody.innerHTML = campaigns.map(c => {
-                    var isCadence = c.delivery_mode === 'cadence' || c.status === 'firing_cadence' || c.status === 'paused_cadence' || c.status === 'cadence_done';
+                    var isLegacy = c.source === 'legacy_cadence';
+                    var isCadence = !isLegacy && (c.delivery_mode === 'cadence' || c.status === 'firing_cadence' || c.status === 'paused_cadence' || c.status === 'cadence_done');
                     var statusDisplay = c.status;
                     if (c.status === 'firing_cadence') statusDisplay = 'Em cadencia';
                     else if (c.status === 'paused_cadence') statusDisplay = 'Pausada';
                     else if (c.status === 'cadence_done') statusDisplay = 'Cadencia concluida';
+                    else if (c.status === 'scheduled') statusDisplay = 'Agendada';
 
-                    var cadenceBadge = isCadence ? '<span style="font-size: 10px; padding: 2px 6px; background: #eff6ff; color: #1e40af; border-radius: 4px; margin-left: 4px;">Cadencia</span>' : '';
+                    var cadenceBadge = '';
+                    if (isLegacy) cadenceBadge = '<span style="font-size: 10px; padding: 2px 6px; background: #f3e8ff; color: #7c3aed; border-radius: 4px; margin-left: 4px;">Legado</span>';
+                    else if (isCadence) cadenceBadge = '<span style="font-size: 10px; padding: 2px 6px; background: #eff6ff; color: #1e40af; border-radius: 4px; margin-left: 4px;">Cadencia</span>';
+
+                    var nameLink = isLegacy
+                        ? '<span style="font-weight: 600; color: var(--text-primary);">' + c.name + '</span>'
+                        : '<a href="#" data-action="openCampaign" data-id="' + c.id + '" data-status="' + c.status + '" style="color: var(--primary-color); text-decoration: none; font-weight: 600;">' + c.name + '</a>';
+
+                    var dashboardBtn = isCadence
+                        ? '<button class="btn" style="padding: 4px 8px; font-size: 11px; background: #eff6ff; color: #1e40af; border: 1px solid #bfdbfe; margin-right: 4px;" data-action="openCadenceDashboard" data-id="' + c.id + '">Dashboard</button>'
+                        : '';
+
+                    var optionsContent = '';
+                    if (!isLegacy) {
+                        if (c.messages_failed > 0) {
+                            optionsContent += '<button data-action="openFailures" data-id="' + c.id + '" style="display: block; width: 100%; padding: 10px 16px; text-align: left; border: none; background: none; cursor: pointer; color: #dc2626; font-size: 14px;">Analisar Falhas</button>';
+                        }
+                        optionsContent += '<button data-action="deleteCampaign" data-id="' + c.id + '" style="display: block; width: 100%; padding: 10px 16px; text-align: left; border: none; background: none; cursor: pointer; color: #dc2626; font-size: 14px;">Excluir</button>';
+                    }
 
                     return '<tr>' +
-                        '<td>' +
-                            '<a href="#" data-action="openCampaign" data-id="' + c.id + '" data-status="' + c.status + '" style="color: var(--primary-color); text-decoration: none; font-weight: 600;">' +
-                                c.name +
-                            '</a>' + cadenceBadge +
+                        '<td>' + nameLink + cadenceBadge +
                             '<br><small style="color: var(--text-secondary);">' + (c.original_filename || '') + '</small>' +
                         '</td>' +
                         '<td>' + (c.created_at ? new Date(c.created_at).toLocaleDateString('pt-BR') : '-') + '</td>' +
@@ -3117,19 +3138,19 @@ Equipe de Gestao"></textarea>
                         '<td>' + c.messages_sent + '</td>' +
                         '<td style="color: ' + (c.messages_failed > 0 ? '#dc2626' : 'inherit') + '; font-weight: ' + (c.messages_failed > 0 ? '600' : 'normal') + ';">' +
                             c.messages_failed +
-                            (c.messages_failed > 0 ? '<button data-action="openFailures" data-id="' + c.id + '" class="btn" style="margin-left: 8px; padding: 2px 8px; font-size: 11px; background: #fef2f2; color: #dc2626; border: 1px solid #fecaca;">Ver Falhas</button>' : '') +
                         '</td>' +
                         '<td><span class="status-badge status-' + c.status + '">' + statusDisplay + '</span></td>' +
                         '<td>' +
                             '<div style="position: relative;">' +
-                                (isCadence ? '<button class="btn" style="padding: 4px 8px; font-size: 11px; background: #eff6ff; color: #1e40af; border: 1px solid #bfdbfe; margin-right: 4px;" data-action="openCadenceDashboard" data-id="' + c.id + '">Dashboard</button>' : '') +
-                                '<button class="btn btn-secondary" style="padding: 4px 8px; font-size: 12px;" data-action="toggleOptions" data-id="' + c.id + '">' +
-                                    '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg>' +
-                                '</button>' +
-                                '<div id="optionsMenu-' + c.id + '" class="options-menu" style="display: none; position: absolute; right: 0; top: 100%; background: white; border: 1px solid var(--border-color); border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); z-index: 100; min-width: 120px;">' +
-                                    (c.messages_failed > 0 ? '<button data-action="openFailures" data-id="' + c.id + '" style="display: block; width: 100%; padding: 10px 16px; text-align: left; border: none; background: none; cursor: pointer; color: #dc2626; font-size: 14px;">Analisar Falhas</button>' : '') +
-                                    '<button data-action="deleteCampaign" data-id="' + c.id + '" style="display: block; width: 100%; padding: 10px 16px; text-align: left; border: none; background: none; cursor: pointer; color: #dc2626; font-size: 14px;">Excluir</button>' +
-                                '</div>' +
+                                dashboardBtn +
+                                (isLegacy ? '' :
+                                    '<button class="btn btn-secondary" style="padding: 4px 8px; font-size: 12px;" data-action="toggleOptions" data-id="' + c.id + '">' +
+                                        '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg>' +
+                                    '</button>' +
+                                    '<div id="optionsMenu-' + c.id + '" class="options-menu" style="display: none; position: absolute; right: 0; top: 100%; background: white; border: 1px solid var(--border-color); border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); z-index: 100; min-width: 120px;">' +
+                                        optionsContent +
+                                    '</div>'
+                                ) +
                             '</div>' +
                         '</td>' +
                     '</tr>';
