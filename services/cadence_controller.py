@@ -16,7 +16,8 @@ async def run_cadence_tick():
 
     from database.database import SessionLocal
     from database.models import (
-        CadenceCampaign, CadenceCampaignContact, CampaignDailyLog
+        CadenceCampaign, CadenceCampaignContact, CampaignDailyLog,
+        Campaign, CampaignDispatch
     )
     from services.whatsapp_client import ZAPIClient
     from sqlalchemy import and_
@@ -43,18 +44,20 @@ async def run_cadence_tick():
 
     db = SessionLocal()
     try:
-        active_campaigns = (
+        sent_this_tick = False
+
+        active_legacy = (
             db.query(CadenceCampaign)
             .filter(CadenceCampaign.status == "firing")
             .all()
         )
 
-        if not active_campaigns:
-            return
-
         today_date = now.date()
 
-        for campaign in active_campaigns:
+        for campaign in active_legacy:
+            if sent_this_tick:
+                break
+
             daily_log = (
                 db.query(CampaignDailyLog)
                 .filter(
@@ -91,7 +94,7 @@ async def run_cadence_tick():
                     campaign.status = "done"
                     campaign.end_date = now
                     db.commit()
-                    print(f"[CADENCE] Campanha '{campaign.name}' (id={campaign.id}) concluída!")
+                    print(f"[CADENCE] Campanha legada '{campaign.name}' (id={campaign.id}) concluída!")
                 continue
 
             zapi = ZAPIClient()
@@ -124,7 +127,7 @@ async def run_cadence_tick():
 
                     _last_send_time = now
                     db.commit()
-                    print(f"[CADENCE] Enviado para {next_contact.phone} (campanha '{campaign.name}')")
+                    print(f"[CADENCE] Enviado para {next_contact.phone} (campanha legada '{campaign.name}')")
                 else:
                     next_contact.retry_count += 1
                     _consecutive_failures += 1
@@ -157,12 +160,199 @@ async def run_cadence_tick():
                 db.commit()
                 print(f"[CADENCE] Erro ao enviar para {next_contact.phone}: {send_err}")
 
-            return
+            sent_this_tick = True
+
+        if not sent_this_tick:
+            active_unified = (
+                db.query(Campaign)
+                .filter(Campaign.status == "firing_cadence")
+                .all()
+            )
+
+            for campaign in active_unified:
+                if sent_this_tick:
+                    break
+
+                today_sent = (
+                    db.query(CampaignDispatch)
+                    .filter(
+                        CampaignDispatch.campaign_id == campaign.id,
+                        CampaignDispatch.status.in_(["sent", "responded"]),
+                        CampaignDispatch.sent_at >= datetime.combine(today_date, time.min, tzinfo=tz),
+                    )
+                    .count()
+                )
+
+                if today_sent >= (campaign.daily_limit or 50):
+                    continue
+
+                from sqlalchemy import text as sql_text
+                claim_result = db.execute(
+                    sql_text("""
+                        UPDATE campaign_dispatches SET status = 'processing'
+                        WHERE id = (
+                            SELECT id FROM campaign_dispatches
+                            WHERE campaign_id = :cid AND status = 'pending' AND scheduled_for <= :now
+                            ORDER BY scheduled_for ASC
+                            LIMIT 1
+                            FOR UPDATE SKIP LOCKED
+                        )
+                        RETURNING id
+                    """),
+                    {"cid": campaign.id, "now": now}
+                )
+                claimed_row = claim_result.fetchone()
+                db.commit()
+
+                if claimed_row:
+                    next_dispatch = db.query(CampaignDispatch).filter(CampaignDispatch.id == claimed_row[0]).first()
+                else:
+                    next_dispatch = None
+
+                if not next_dispatch:
+                    remaining = (
+                        db.query(CampaignDispatch)
+                        .filter(
+                            CampaignDispatch.campaign_id == campaign.id,
+                            CampaignDispatch.status.in_(["pending", "processing"]),
+                        )
+                        .count()
+                    )
+                    if remaining == 0:
+                        campaign.status = "cadence_done"
+                        campaign.messages_sent = (
+                            db.query(CampaignDispatch)
+                            .filter(
+                                CampaignDispatch.campaign_id == campaign.id,
+                                CampaignDispatch.status.in_(["sent", "responded"]),
+                            )
+                            .count()
+                        )
+                        campaign.messages_failed = (
+                            db.query(CampaignDispatch)
+                            .filter(
+                                CampaignDispatch.campaign_id == campaign.id,
+                                CampaignDispatch.status == "failed",
+                            )
+                            .count()
+                        )
+                        db.commit()
+                        print(f"[CADENCE] Campanha unificada '{campaign.name}' (id={campaign.id}) concluída!")
+                    continue
+
+                phone = next_dispatch.assessor_phone
+                message = next_dispatch.message_content
+
+                if not phone:
+                    next_dispatch.status = "failed"
+                    next_dispatch.error_message = "Telefone não informado"
+                    db.commit()
+                    continue
+
+                zapi = ZAPIClient()
+                if not zapi.is_configured():
+                    print("[CADENCE] Z-API não configurada, pulando envio")
+                    return
+
+                try:
+                    attachment_url = campaign.attachment_url
+                    attachment_type = campaign.attachment_type
+                    attachment_filename = campaign.attachment_filename
+
+                    if attachment_url and attachment_type:
+                        from core.config import get_public_domain
+                        replit_domain = get_public_domain()
+                        full_url = f"https://{replit_domain}{attachment_url}" if replit_domain and attachment_url.startswith('/') else attachment_url
+                        if attachment_type == "image":
+                            result = await zapi.send_image(phone, full_url, message)
+                        elif attachment_type == "video":
+                            result = await zapi.send_video(phone, full_url, message)
+                        elif attachment_type == "audio":
+                            result = await zapi.send_audio(phone, full_url)
+                        else:
+                            result = await zapi.send_document(phone, full_url, attachment_filename or "", message)
+                    else:
+                        result = await zapi.send_text(
+                            to=phone,
+                            message=message,
+                            delay_typing=3,
+                        )
+
+                    if result.get("success"):
+                        next_dispatch.status = "sent"
+                        next_dispatch.sent_at = now
+                        _consecutive_failures = 0
+                        _last_send_time = now
+
+                        _persist_unified_campaign_message(db, phone, message, campaign.name)
+
+                        db.commit()
+                        print(f"[CADENCE] Enviado para {phone} (campanha '{campaign.name}')")
+                    else:
+                        next_dispatch.retry_count = (next_dispatch.retry_count or 0) + 1
+                        _consecutive_failures += 1
+
+                        if next_dispatch.retry_count >= 3:
+                            next_dispatch.status = "failed"
+                            next_dispatch.error_message = result.get("error", "desconhecido")
+
+                        db.commit()
+                        error_msg = result.get("error", "desconhecido")
+                        print(f"[CADENCE] Falha ao enviar para {phone}: {error_msg} (tentativa {next_dispatch.retry_count})")
+
+                        if _consecutive_failures >= 2:
+                            _pause_until = now + timedelta(minutes=20)
+                            _consecutive_failures = 0
+                            print(f"[CADENCE] ⚠ 2 falhas consecutivas — pausando disparos por 20 minutos até {_pause_until.strftime('%H:%M')}")
+
+                except Exception as send_err:
+                    next_dispatch.retry_count = (next_dispatch.retry_count or 0) + 1
+                    if next_dispatch.retry_count >= 3:
+                        next_dispatch.status = "failed"
+                        next_dispatch.error_message = str(send_err)
+                    db.commit()
+                    print(f"[CADENCE] Erro ao enviar para {phone}: {send_err}")
+
+                sent_this_tick = True
 
     except Exception as e:
         print(f"[CADENCE] Erro no tick: {e}")
     finally:
         db.close()
+
+
+def _persist_unified_campaign_message(db, phone: str, message: str, campaign_name: str):
+    try:
+        from database.models import WhatsAppMessage, MessageDirection, MessageType, SenderType, Conversation
+        clean_phone = ''.join(filter(str.isdigit, phone))
+        if not clean_phone:
+            return
+
+        conversation = db.query(Conversation).filter(
+            Conversation.phone == clean_phone
+        ).first()
+        if not conversation:
+            conversation = Conversation(phone=clean_phone)
+            db.add(conversation)
+            db.flush()
+
+        tag = f"[Campanha: {campaign_name}] " if campaign_name else ""
+        record = WhatsAppMessage(
+            chat_id=clean_phone,
+            phone=clean_phone,
+            direction=MessageDirection.OUTBOUND.value,
+            message_type=MessageType.TEXT.value,
+            from_me=True,
+            body=f"{tag}{message}",
+            ai_response=None,
+            ai_intent="campaign_dispatch",
+            sender_type=SenderType.BOT.value,
+            conversation_id=conversation.id,
+        )
+        db.add(record)
+        db.flush()
+    except Exception as e:
+        print(f"[CADENCE] Erro ao salvar mensagem de campanha: {e}")
 
 
 async def cadence_loop():
@@ -192,7 +382,7 @@ def stop_cadence():
 
 
 def track_campaign_response(phone: str, db):
-    from database.models import CadenceCampaignContact, CampaignDailyLog
+    from database.models import CadenceCampaignContact, CampaignDailyLog, CampaignDispatch
     from datetime import timezone
     from zoneinfo import ZoneInfo
 
@@ -236,4 +426,21 @@ def track_campaign_response(phone: str, db):
             db.add(daily_log)
 
         db.commit()
-        print(f"[CADENCE] Resposta registrada de {phone} para campanha {contact.campaign_id}")
+        print(f"[CADENCE] Resposta registrada de {phone} para campanha legada {contact.campaign_id}")
+        return
+
+    dispatch = (
+        db.query(CampaignDispatch)
+        .filter(
+            CampaignDispatch.status == "sent",
+            CampaignDispatch.responded_at.is_(None),
+            CampaignDispatch.assessor_phone.ilike(f"%{phone_suffix}%"),
+        )
+        .first()
+    )
+
+    if dispatch:
+        dispatch.responded_at = now
+        dispatch.status = "responded"
+        db.commit()
+        print(f"[CADENCE] Resposta registrada de {phone} para campanha unificada {dispatch.campaign_id}")

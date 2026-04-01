@@ -330,6 +330,15 @@ def _apply_incremental_migrations():
                 RAISE NOTICE 'LID cleanup: consolidated % duplicate conversations total', total_cleaned;
             END IF;
         END $$""",
+        "ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS delivery_mode VARCHAR(20) DEFAULT 'immediate'",
+        "ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS daily_limit INTEGER",
+        "ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS deadline_days INTEGER",
+        "ALTER TABLE campaign_dispatches ADD COLUMN IF NOT EXISTS scheduled_for TIMESTAMPTZ",
+        "ALTER TABLE campaign_dispatches ADD COLUMN IF NOT EXISTS priority INTEGER DEFAULT 3",
+        "ALTER TABLE campaign_dispatches ADD COLUMN IF NOT EXISTS responded_at TIMESTAMPTZ",
+        "ALTER TABLE campaign_dispatches ADD COLUMN IF NOT EXISTS retry_count INTEGER DEFAULT 0",
+        "CREATE INDEX IF NOT EXISTS ix_campaign_dispatches_status ON campaign_dispatches(status)",
+        "CREATE INDEX IF NOT EXISTS ix_campaign_dispatches_scheduled ON campaign_dispatches(scheduled_for)",
     ]
     db = SessionLocal()
     try:
@@ -1173,19 +1182,9 @@ async def campanhas_page(request: Request):
     return templates.TemplateResponse("campanhas.html", {"request": request, "user_role": user_role})
 
 
-@app.get("/cadence-campaigns", response_class=HTMLResponse)
-async def cadence_campaigns_page(request: Request):
-    from core.security import decode_token
-    token = request.cookies.get("access_token")
-    if not token:
-        return RedirectResponse(url="/login")
-    payload = decode_token(token)
-    if not payload:
-        return RedirectResponse(url="/login")
-    user_role = payload.get("role")
-    if user_role not in ["admin", "gestao_rv"]:
-        return RedirectResponse(url="/login?error=permission")
-    return templates.TemplateResponse("cadence_campaigns.html", {"request": request, "user_role": user_role})
+@app.get("/cadence-campaigns")
+async def cadence_campaigns_redirect(request: Request):
+    return RedirectResponse(url="/campanhas")
 
 
 @app.get("/estruturas-campanha", response_class=HTMLResponse)

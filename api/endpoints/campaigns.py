@@ -12,7 +12,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
-from pydantic import BaseModel
+from pydantic import BaseModel, validator
 from database.database import get_db, SessionLocal
 from database.models import MessageTemplate, Campaign, CampaignDispatch, CampaignStatus, Assessor, CampaignStructure
 from api.endpoints.auth import require_role
@@ -2523,6 +2523,9 @@ async def list_campaigns(
             "total_recommendations": c.total_recommendations,
             "messages_sent": c.messages_sent,
             "messages_failed": c.messages_failed,
+            "delivery_mode": c.delivery_mode or "immediate",
+            "daily_limit": c.daily_limit,
+            "deadline_days": c.deadline_days,
             "created_at": c.created_at.isoformat() if c.created_at else None,
             "sent_at": c.sent_at.isoformat() if c.sent_at else None,
             "template_name": c.template.name if c.template else None
@@ -3033,3 +3036,433 @@ def _persist_campaign_message(db_session: Session, phone: str, message: str, cam
             db_session.rollback()
         except Exception:
             pass
+
+
+class CadenceDispatchRequest(BaseModel):
+    daily_limit: int = 50
+    deadline_days: int = 5
+
+    @validator('daily_limit')
+    def validate_daily_limit(cls, v):
+        if v < 1:
+            raise ValueError('Limite diário deve ser pelo menos 1')
+        if v > 500:
+            raise ValueError('Limite diário não pode exceder 500')
+        return v
+
+    @validator('deadline_days')
+    def validate_deadline_days(cls, v):
+        if v < 1:
+            raise ValueError('Prazo deve ser pelo menos 1 dia')
+        if v > 60:
+            raise ValueError('Prazo não pode exceder 60 dias')
+        return v
+
+
+@router.post("/{campaign_id}/dispatch-cadence")
+async def dispatch_campaign_cadence(
+    campaign_id: int,
+    data: CadenceDispatchRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin_or_gestao())
+):
+    from services.campaign_planner import calculate_daily_plan, _get_business_days, _build_daily_schedule
+    from zoneinfo import ZoneInfo
+    import math
+
+    campaign = db.query(Campaign).filter(Campaign.id == campaign_id).first()
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campanha não encontrada")
+
+    if campaign.status == CampaignStatus.SENT.value:
+        raise HTTPException(status_code=400, detail="Esta campanha já foi enviada")
+
+    source_type = getattr(campaign, 'source_type', 'upload') or 'upload'
+
+    header_template = campaign.message_header or ""
+    content_template = campaign.message_content_template or ""
+    footer_template = campaign.message_footer or ""
+    use_blocks = bool(header_template.strip() or content_template.strip() or footer_template.strip())
+
+    template_content = DEFAULT_TEMPLATE_CONTENT
+    if not use_blocks:
+        if campaign.custom_template_content:
+            candidate = str(campaign.custom_template_content)
+            if template_has_required_variables(candidate):
+                template_content = candidate
+        elif campaign.template_id:
+            template = db.query(MessageTemplate).filter(MessageTemplate.id == campaign.template_id).first()
+            if template:
+                candidate = str(template.content)
+                if template_has_required_variables(candidate):
+                    template_content = candidate
+
+    try:
+        column_mapping = json.loads(str(campaign.column_mapping)) if campaign.column_mapping else {}
+        custom_mapping = json.loads(str(campaign.custom_fields_mapping)) if campaign.custom_fields_mapping else {}
+        processed_data = json.loads(str(campaign.processed_data)) if campaign.processed_data else []
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="Erro nos dados da campanha")
+
+    if source_type in ["base", "base_assessores"]:
+        assessor_list = processed_data
+        if not assessor_list:
+            raise HTTPException(status_code=400, detail="Nenhum assessor encontrado nos dados da campanha")
+
+        dispatches_data = []
+        content_line_template = campaign.message_content_template or ""
+        is_grouped = bool(campaign.group_by_client)
+
+        for assessor in assessor_list:
+            assessor_name = assessor.get("nome", "")
+            phone = assessor.get("telefone_whatsapp", "") or assessor.get("telefone", "")
+            variables = build_assessor_variables(assessor)
+
+            message_parts = []
+            header_rendered = replace_variables_generic(header_template, variables)
+            if header_rendered.strip():
+                message_parts.append(header_rendered.strip())
+            content_rendered = replace_variables_generic(content_template, variables)
+            if content_rendered.strip():
+                message_parts.append(content_rendered.strip())
+            footer_rendered = replace_variables_generic(footer_template, variables)
+            if footer_rendered.strip():
+                message_parts.append(footer_rendered.strip())
+            message = "\n\n".join(message_parts)
+            message = re.sub(r'\{\{[^}]+\}\}', '', message)
+
+            dispatches_data.append({
+                "assessor_id": str(assessor.get("id", "")),
+                "assessor_email": assessor.get("email", ""),
+                "assessor_phone": phone,
+                "assessor_name": assessor_name,
+                "message_content": message,
+            })
+    else:
+        grouped = group_recommendations_by_assessor(processed_data, column_mapping, custom_mapping, db)
+        if not grouped:
+            raise HTTPException(status_code=400, detail="Nenhum assessor encontrado para disparo")
+
+        dispatches_data = []
+        content_line_template = campaign.message_content_template or ""
+        is_grouped = bool(campaign.group_by_client)
+
+        for assessor_id, assessor_data in grouped.items():
+            if use_blocks:
+                wrapper_parts = []
+                if header_template.strip():
+                    wrapper_parts.append(header_template.strip())
+                if content_template.strip() and "{{lista_clientes}}" in content_template:
+                    wrapper_parts.append(content_template.strip())
+                else:
+                    wrapper_parts.append("{{lista_clientes}}")
+                if footer_template.strip():
+                    wrapper_parts.append(footer_template.strip())
+                wrapper_template = "\n\n".join(wrapper_parts)
+                message = build_message(wrapper_template, assessor_data, custom_mapping, content_line_template, group_by_client=is_grouped)
+            else:
+                message = build_message(template_content, assessor_data, custom_mapping, content_line_template, group_by_client=is_grouped)
+
+            phone = assessor_data.get("telefone", "")
+            dispatches_data.append({
+                "assessor_id": assessor_id,
+                "assessor_email": assessor_data.get("email_assessor", ""),
+                "assessor_phone": phone,
+                "assessor_name": assessor_data.get("nome_assessor", ""),
+                "message_content": message,
+            })
+
+    total = len(dispatches_data)
+    if total == 0:
+        raise HTTPException(status_code=400, detail="Nenhum destinatário encontrado")
+
+    daily_limit = data.daily_limit
+    deadline_days = data.deadline_days
+    plan = calculate_daily_plan(total, deadline_days, daily_limit)
+
+    tz = ZoneInfo("America/Sao_Paulo")
+    now = datetime.now(tz)
+    today = now.date()
+    business_days = _get_business_days(today, deadline_days)
+    daily_cap = min(daily_limit, math.ceil(total / len(business_days))) if business_days else daily_limit
+
+    from database.models import Conversation, WhatsAppMessage
+    from datetime import timedelta
+
+    for d in dispatches_data:
+        phone = d["assessor_phone"]
+        if phone:
+            phone_suffix = phone[-8:] if len(phone) >= 8 else phone
+            recent_msg = (
+                db.query(WhatsAppMessage.id)
+                .join(Conversation, Conversation.id == WhatsAppMessage.conversation_id)
+                .filter(
+                    Conversation.phone.ilike(f"%{phone_suffix}%"),
+                    WhatsAppMessage.direction == "INBOUND",
+                    WhatsAppMessage.created_at >= now - timedelta(days=2),
+                )
+                .first()
+            )
+            if recent_msg:
+                d["priority"] = 1
+                continue
+            any_conv = db.query(Conversation.id).filter(
+                Conversation.phone.ilike(f"%{phone_suffix}%")
+            ).first()
+            if any_conv:
+                d["priority"] = 2
+            else:
+                d["priority"] = 3
+        else:
+            d["priority"] = 3
+
+    dispatches_data.sort(key=lambda x: x.get("priority", 3))
+
+    p3_daily_limit = 15
+    dispatch_idx = 0
+
+    for day in business_days:
+        if dispatch_idx >= total:
+            break
+        day_batch = []
+        p3_count = 0
+        for i in range(dispatch_idx, total):
+            if len(day_batch) >= daily_cap:
+                break
+            d = dispatches_data[i]
+            if d.get("priority") == 3:
+                if p3_count >= p3_daily_limit:
+                    continue
+                p3_count += 1
+            day_batch.append(d)
+
+        times = _build_daily_schedule(len(day_batch), day)
+        fallback_time = datetime.combine(day, datetime.min.time().replace(hour=9), tzinfo=tz)
+
+        for j, d in enumerate(day_batch):
+            sched_time = times[j] if j < len(times) else fallback_time
+            dispatch = CampaignDispatch(
+                campaign_id=campaign_id,
+                assessor_id=d["assessor_id"],
+                assessor_email=d.get("assessor_email", ""),
+                assessor_phone=d["assessor_phone"],
+                assessor_name=d.get("assessor_name", ""),
+                message_content=d["message_content"],
+                status="pending",
+                scheduled_for=sched_time,
+                priority=d.get("priority", 3),
+            )
+            db.add(dispatch)
+            dispatch_idx += 1
+
+    overflow = dispatches_data[dispatch_idx:]
+    if overflow:
+        extra_day = business_days[-1] + timedelta(days=1) if business_days else today + timedelta(days=1)
+        extra_days = _get_business_days(extra_day, math.ceil(len(overflow) / daily_cap) + 1)
+        ov_idx = 0
+        for ed in extra_days:
+            if ov_idx >= len(overflow):
+                break
+            batch = overflow[ov_idx:ov_idx + daily_cap]
+            times = _build_daily_schedule(len(batch), ed)
+            fallback_time = datetime.combine(ed, datetime.min.time().replace(hour=9), tzinfo=tz)
+            for j, d in enumerate(batch):
+                sched_time = times[j] if j < len(times) else fallback_time
+                dispatch = CampaignDispatch(
+                    campaign_id=campaign_id,
+                    assessor_id=d["assessor_id"],
+                    assessor_email=d.get("assessor_email", ""),
+                    assessor_phone=d["assessor_phone"],
+                    assessor_name=d.get("assessor_name", ""),
+                    message_content=d["message_content"],
+                    status="pending",
+                    scheduled_for=sched_time,
+                    priority=d.get("priority", 3),
+                )
+                db.add(dispatch)
+            ov_idx += len(batch)
+
+    campaign.delivery_mode = "cadence"
+    campaign.daily_limit = daily_limit
+    campaign.deadline_days = deadline_days
+    campaign.status = "firing_cadence"
+    campaign.total_assessors = total
+    campaign.sent_at = now
+    db.commit()
+
+    print(f"[CADENCE] Campanha '{campaign.name}' (id={campaign_id}) agendada com cadência: {total} contatos, {deadline_days} dias, limite {daily_limit}/dia")
+
+    return {
+        "message": "Campanha agendada com cadência",
+        "total_contacts": total,
+        "daily_limit": daily_limit,
+        "deadline_days": deadline_days,
+        "plano": plan,
+        "alerta": plan.get("alerta"),
+    }
+
+
+@router.get("/{campaign_id}/cadence-status")
+async def get_cadence_status(
+    campaign_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin_or_gestao())
+):
+    from sqlalchemy import func as sql_func
+
+    campaign = db.query(Campaign).filter(Campaign.id == campaign_id).first()
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campanha não encontrada")
+
+    sent = db.query(sql_func.count(CampaignDispatch.id)).filter(
+        CampaignDispatch.campaign_id == campaign_id,
+        CampaignDispatch.status == "sent"
+    ).scalar() or 0
+
+    pending = db.query(sql_func.count(CampaignDispatch.id)).filter(
+        CampaignDispatch.campaign_id == campaign_id,
+        CampaignDispatch.status == "pending"
+    ).scalar() or 0
+
+    failed = db.query(sql_func.count(CampaignDispatch.id)).filter(
+        CampaignDispatch.campaign_id == campaign_id,
+        CampaignDispatch.status == "failed"
+    ).scalar() or 0
+
+    responded = db.query(sql_func.count(CampaignDispatch.id)).filter(
+        CampaignDispatch.campaign_id == campaign_id,
+        CampaignDispatch.status == "responded"
+    ).scalar() or 0
+
+    total_delivered = sent + responded
+    response_rate = round((responded / total_delivered * 100), 1) if total_delivered > 0 else 0.0
+
+    from zoneinfo import ZoneInfo
+    tz = ZoneInfo("America/Sao_Paulo")
+
+    daily_stats = (
+        db.query(
+            sql_func.date(CampaignDispatch.sent_at).label("day"),
+            sql_func.count(CampaignDispatch.id).label("sent"),
+        )
+        .filter(
+            CampaignDispatch.campaign_id == campaign_id,
+            CampaignDispatch.status.in_(["sent", "responded"]),
+            CampaignDispatch.sent_at.isnot(None),
+        )
+        .group_by(sql_func.date(CampaignDispatch.sent_at))
+        .order_by(sql_func.date(CampaignDispatch.sent_at).asc())
+        .all()
+    )
+
+    responded_by_day = (
+        db.query(
+            sql_func.date(CampaignDispatch.responded_at).label("day"),
+            sql_func.count(CampaignDispatch.id).label("responded"),
+        )
+        .filter(
+            CampaignDispatch.campaign_id == campaign_id,
+            CampaignDispatch.status == "responded",
+            CampaignDispatch.responded_at.isnot(None),
+        )
+        .group_by(sql_func.date(CampaignDispatch.responded_at))
+        .order_by(sql_func.date(CampaignDispatch.responded_at).asc())
+        .all()
+    )
+
+    responded_map = {str(r.day): r.responded for r in responded_by_day}
+
+    daily_log = []
+    for row in daily_stats:
+        day_str = str(row.day)
+        daily_log.append({
+            "date": day_str,
+            "sent": row.sent,
+            "responded": responded_map.get(day_str, 0),
+        })
+
+    return {
+        "id": campaign.id,
+        "name": campaign.name,
+        "status": campaign.status,
+        "delivery_mode": campaign.delivery_mode or "immediate",
+        "total_contacts": campaign.total_assessors or 0,
+        "sent": sent + responded,
+        "pending": pending,
+        "failed": failed,
+        "responded": responded,
+        "response_rate": response_rate,
+        "daily_limit": campaign.daily_limit,
+        "deadline_days": campaign.deadline_days,
+        "daily_log": daily_log,
+    }
+
+
+@router.patch("/{campaign_id}/cadence-pause")
+async def pause_cadence_campaign(
+    campaign_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin_or_gestao())
+):
+    campaign = db.query(Campaign).filter(Campaign.id == campaign_id).first()
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campanha não encontrada")
+    if campaign.status != "firing_cadence":
+        raise HTTPException(status_code=400, detail=f"Campanha não pode ser pausada (status: {campaign.status})")
+
+    campaign.status = "paused_cadence"
+    db.commit()
+    print(f"[CADENCE] Campanha '{campaign.name}' (id={campaign_id}) pausada")
+    return {"message": "Campanha pausada", "status": "paused_cadence"}
+
+
+@router.patch("/{campaign_id}/cadence-resume")
+async def resume_cadence_campaign(
+    campaign_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin_or_gestao())
+):
+    from services.campaign_planner import _get_business_days, _build_daily_schedule
+    from zoneinfo import ZoneInfo
+    from datetime import timedelta
+    import math
+
+    campaign = db.query(Campaign).filter(Campaign.id == campaign_id).first()
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campanha não encontrada")
+    if campaign.status != "paused_cadence":
+        raise HTTPException(status_code=400, detail=f"Campanha não pode ser retomada (status: {campaign.status})")
+
+    pending_dispatches = (
+        db.query(CampaignDispatch)
+        .filter(
+            CampaignDispatch.campaign_id == campaign_id,
+            CampaignDispatch.status == "pending",
+        )
+        .order_by(CampaignDispatch.priority.asc())
+        .all()
+    )
+
+    if pending_dispatches:
+        tz = ZoneInfo("America/Sao_Paulo")
+        today = datetime.now(tz).date()
+        daily_limit = campaign.daily_limit or 50
+        deadline_days = campaign.deadline_days or 5
+        business_days = _get_business_days(today, deadline_days)
+        daily_cap = min(daily_limit, math.ceil(len(pending_dispatches) / len(business_days))) if business_days else daily_limit
+
+        idx = 0
+        for day in business_days:
+            if idx >= len(pending_dispatches):
+                break
+            batch = pending_dispatches[idx:idx + daily_cap]
+            times = _build_daily_schedule(len(batch), day)
+            for j, d in enumerate(batch):
+                if j < len(times):
+                    d.scheduled_for = times[j]
+            idx += len(batch)
+
+    campaign.status = "firing_cadence"
+    db.commit()
+    print(f"[CADENCE] Campanha '{campaign.name}' (id={campaign_id}) retomada")
+    return {"message": "Campanha retomada", "status": "firing_cadence"}

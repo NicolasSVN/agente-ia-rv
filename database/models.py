@@ -306,6 +306,7 @@ class Campaign(Base):
     Campanha de disparo em massa de mensagens.
     Armazena dados do arquivo, mapeamento e status.
     Suporta estrutura de 3 blocos: cabeçalho, conteúdo repetível, rodapé.
+    Suporta dois modos de entrega: immediate (SSE) e cadence (background motor).
     """
     __tablename__ = "campaigns"
     
@@ -334,6 +335,9 @@ class Campaign(Base):
     created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     sent_at = Column(DateTime(timezone=True), nullable=True)
+    delivery_mode = Column(String(20), default="immediate")
+    daily_limit = Column(Integer, nullable=True)
+    deadline_days = Column(Integer, nullable=True)
     
     template = relationship("MessageTemplate", back_populates="campaigns")
     creator = relationship("User", foreign_keys=[created_by])
@@ -344,6 +348,7 @@ class CampaignDispatch(Base):
     """
     Registro individual de disparo de mensagem para um assessor.
     Armazena a mensagem final e status do envio.
+    Suporta agendamento via cadência (scheduled_for, priority, retry_count).
     """
     __tablename__ = "campaign_dispatches"
     
@@ -354,11 +359,15 @@ class CampaignDispatch(Base):
     assessor_phone = Column(String(20), nullable=True)
     assessor_name = Column(String(255), nullable=True)
     message_content = Column(Text, nullable=False)
-    status = Column(String(50), default="pending")
+    status = Column(String(50), default="pending", index=True)
     error_message = Column(Text, nullable=True)
     error_details = Column(Text, nullable=True)
     api_response = Column(Text, nullable=True)
     sent_at = Column(DateTime(timezone=True), nullable=True)
+    scheduled_for = Column(DateTime(timezone=True), nullable=True, index=True)
+    priority = Column(Integer, default=3)
+    responded_at = Column(DateTime(timezone=True), nullable=True)
+    retry_count = Column(Integer, default=0)
     
     campaign = relationship("Campaign", back_populates="dispatches")
 

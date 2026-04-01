@@ -10,6 +10,7 @@
     <script nonce="{{ request.state.csp_nonce }}" src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="/static/global.css">
     <script nonce="{{ request.state.csp_nonce }}" src="/static/notifications.js?v={{ now().timestamp() if now else 1706371200 }}"></script>
+    <script nonce="{{ request.state.csp_nonce }}" src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
     <style>
         .wizard-container {
             background: var(--card-bg);
@@ -734,6 +735,9 @@
         .status-processando { background: #dbeafe; color: #1e40af; }
         .status-enviada { background: #d1fae5; color: #065f46; }
         .status-falha { background: #fee2e2; color: #991b1b; }
+        .status-firing_cadence { background: #dbeafe; color: #1e40af; }
+        .status-paused_cadence { background: #fef3c7; color: #92400e; }
+        .status-cadence_done { background: #d1fae5; color: #065f46; }
 
         .file-info {
             display: flex;
@@ -1232,6 +1236,43 @@ Equipe de Gestao"></textarea>
 
                         <div id="previewMessages" style="max-height: 400px; overflow-y: auto;"></div>
 
+                        <div id="deliveryModeSection" style="margin: 24px 0; padding: 20px; background: #f8fafc; border-radius: 12px; border: 1px solid var(--border-color);">
+                            <h4 style="margin-bottom: 12px; font-size: 0.95rem;">Modo de Envio</h4>
+                            <div style="display: flex; gap: 12px;">
+                                <label style="flex: 1; display: flex; align-items: center; gap: 12px; padding: 14px 16px; background: white; border-radius: 8px; border: 2px solid var(--primary-color); cursor: pointer; transition: all 0.2s;" id="modeImmediateLabel">
+                                    <input type="radio" name="deliveryMode" value="immediate" checked style="accent-color: var(--primary-color);">
+                                    <div>
+                                        <div style="font-weight: 600; font-size: 0.9rem;">Imediato</div>
+                                        <div style="font-size: 0.8rem; color: var(--text-secondary);">Envia todas as mensagens agora (requer aba aberta)</div>
+                                    </div>
+                                </label>
+                                <label style="flex: 1; display: flex; align-items: center; gap: 12px; padding: 14px 16px; background: white; border-radius: 8px; border: 2px solid var(--border-color); cursor: pointer; transition: all 0.2s;" id="modeCadenceLabel">
+                                    <input type="radio" name="deliveryMode" value="cadence" style="accent-color: var(--primary-color);">
+                                    <div>
+                                        <div style="font-weight: 600; font-size: 0.9rem;">Com Cadencia</div>
+                                        <div style="font-size: 0.8rem; color: var(--text-secondary);">Distribui envios ao longo de dias (anti-bloqueio)</div>
+                                    </div>
+                                </label>
+                            </div>
+                            <div id="cadenceConfig" style="display: none; margin-top: 16px; padding: 16px; background: white; border-radius: 8px; border: 1px solid var(--border-color);">
+                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                                    <div>
+                                        <label style="font-size: 0.85rem; font-weight: 600; display: block; margin-bottom: 6px;">Limite Diario</label>
+                                        <input type="number" id="cadenceDailyLimit" value="50" min="5" max="200" class="form-input" style="width: 100%;">
+                                        <span style="font-size: 0.75rem; color: var(--text-secondary);">Max de mensagens por dia</span>
+                                    </div>
+                                    <div>
+                                        <label style="font-size: 0.85rem; font-weight: 600; display: block; margin-bottom: 6px;">Prazo (dias uteis)</label>
+                                        <input type="number" id="cadenceDeadlineDays" value="5" min="1" max="30" class="form-input" style="width: 100%;">
+                                        <span style="font-size: 0.75rem; color: var(--text-secondary);">Distribuir envios neste periodo</span>
+                                    </div>
+                                </div>
+                                <div style="margin-top: 12px; padding: 10px 14px; background: #eff6ff; border-radius: 6px; font-size: 0.85rem; color: #1e40af;">
+                                    <strong>Anti-bloqueio:</strong> Intervalo minimo de 8 minutos entre envios, somente horario comercial (09h-18h), max 15 contatos frios/dia. Prioridade: contatos recentes primeiro.
+                                </div>
+                            </div>
+                        </div>
+
                         <div class="dispatch-progress" id="dispatchProgress">
                             <div style="display: flex; justify-content: space-between; align-items: center;">
                                 <h4 style="margin: 0;">Enviando mensagens...</h4>
@@ -1337,6 +1378,27 @@ Equipe de Gestao"></textarea>
             </div>
             <div class="modal-footer">
                 <button class="btn btn-secondary" id="closeFailuresModalBtn2">Fechar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de Dashboard de Cadencia -->
+    <div class="modal-overlay" id="cadenceDashboardModal" style="display: none;">
+        <div class="modal" style="max-width: 900px;">
+            <div class="modal-header" style="background: #eff6ff; border-bottom: 1px solid #bfdbfe;">
+                <h3 id="cadenceDashboardTitle" style="color: #1e40af;">
+                    <svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="vertical-align: middle; margin-right: 8px;">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                    </svg>
+                    Dashboard de Cadencia
+                </h3>
+                <button class="modal-close" id="closeCadenceDashboardBtn">&times;</button>
+            </div>
+            <div class="modal-body" id="cadenceDashboardBody" style="max-height: 75vh; overflow-y: auto;">
+                <div style="text-align: center; padding: 40px;">Carregando...</div>
+            </div>
+            <div class="modal-footer" style="display: flex; gap: 8px;">
+                <button class="btn btn-secondary" id="closeCadenceDashboardBtn2">Fechar</button>
             </div>
         </div>
     </div>
@@ -2576,6 +2638,12 @@ Equipe de Gestao"></textarea>
         let currentEventSource = null;
         
         async function dispatchCampaign() {
+            var deliveryMode = document.querySelector('input[name="deliveryMode"]:checked').value;
+
+            if (deliveryMode === 'cadence') {
+                return dispatchCadence();
+            }
+
             const confirmed = await toast.confirm({
                 title: 'Disparar Campanha',
                 message: 'Tem certeza que deseja disparar esta campanha? As mensagens serão enviadas para todos os assessores com intervalo de 3-10 segundos entre cada envio.',
@@ -2811,6 +2879,211 @@ Equipe de Gestao"></textarea>
             logDiv.scrollTop = logDiv.scrollHeight;
         }
 
+        async function dispatchCadence() {
+            var dailyLimit = parseInt(document.getElementById('cadenceDailyLimit').value) || 50;
+            var deadlineDays = parseInt(document.getElementById('cadenceDeadlineDays').value) || 5;
+
+            var confirmed = await toast.confirm({
+                title: 'Agendar Campanha com Cadencia',
+                message: 'A campanha sera distribuida ao longo de ' + deadlineDays + ' dias uteis, com limite de ' + dailyLimit + ' envios/dia. O motor de cadencia enviara automaticamente em segundo plano.',
+                confirmText: 'Agendar',
+                type: 'warning'
+            });
+            if (!confirmed) return;
+
+            var btn = document.getElementById('dispatchBtn');
+            btn.disabled = true;
+            btn.innerHTML = '<div class="spinner" style="width: 20px; height: 20px;"></div> Agendando...';
+
+            try {
+                var response = await fetch(API_BASE + '/' + campaignId + '/dispatch-cadence', {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ daily_limit: dailyLimit, deadline_days: deadlineDays })
+                });
+
+                if (!response.ok) {
+                    var err = await response.json();
+                    throw new Error(err.detail || 'Erro ao agendar campanha');
+                }
+
+                var result = await response.json();
+
+                document.getElementById('deliveryModeSection').style.display = 'none';
+                var actionsDiv = document.getElementById('dispatchActions');
+                actionsDiv.innerHTML = '<div style="padding: 20px; background: #f0fdf4; border-radius: 12px; border: 1px solid #bbf7d0; text-align: center;">' +
+                    '<svg width="48" height="48" fill="none" stroke="#16a34a" viewBox="0 0 24 24" style="margin-bottom: 8px;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>' +
+                    '<h3 style="color: #16a34a; margin-bottom: 8px;">Campanha Agendada!</h3>' +
+                    '<p style="color: #166534; margin-bottom: 4px;">' + result.total_contacts + ' contatos distribuidos em ' + deadlineDays + ' dias uteis</p>' +
+                    '<p style="color: #166534; margin-bottom: 16px;">Limite: ' + dailyLimit + ' envios/dia</p>' +
+                    (result.alerta ? '<p style="color: #ca8a04; font-size: 0.85rem; margin-bottom: 16px;">' + result.alerta + '</p>' : '') +
+                    '<div style="display: flex; gap: 8px; justify-content: center;">' +
+                    '<button class="btn btn-primary" data-action="openCadenceDashboard" data-id="' + campaignId + '">Ver Dashboard</button>' +
+                    '<button class="btn btn-secondary" data-action="reloadPage">Voltar ao Historico</button>' +
+                    '</div></div>';
+
+                toast.success('Campanha agendada com cadencia!');
+            } catch (error) {
+                btn.disabled = false;
+                btn.innerHTML = '<svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/></svg> Disparar Campanha';
+                toast.error('Erro: ' + error.message);
+            }
+        }
+
+        var cadenceRefreshInterval = null;
+
+        async function openCadenceDashboard(campaignId) {
+            document.getElementById('cadenceDashboardModal').style.display = 'flex';
+            document.getElementById('cadenceDashboardBody').innerHTML = '<div style="text-align: center; padding: 40px;">Carregando...</div>';
+
+            await renderCadenceDashboard(campaignId);
+
+            if (cadenceRefreshInterval) clearInterval(cadenceRefreshInterval);
+            cadenceRefreshInterval = setInterval(function() {
+                renderCadenceDashboard(campaignId);
+            }, 60000);
+        }
+
+        async function renderCadenceDashboard(cId) {
+            try {
+                var response = await fetch(API_BASE + '/' + cId + '/cadence-status', { credentials: 'include' });
+                if (!response.ok) throw new Error('Erro ao carregar status');
+                var data = await response.json();
+
+                var total = data.total_contacts || 0;
+                var sent = data.sent || 0;
+                var pending = data.pending || 0;
+                var failed = data.failed || 0;
+                var responded = data.responded || 0;
+                var pct = total > 0 ? Math.round((sent / total) * 100) : 0;
+
+                var statusLabel = data.status === 'firing_cadence' ? 'Em andamento' :
+                    data.status === 'paused_cadence' ? 'Pausada' :
+                    data.status === 'cadence_done' ? 'Concluida' : data.status;
+
+                var statusColor = data.status === 'firing_cadence' ? '#2563eb' :
+                    data.status === 'paused_cadence' ? '#f59e0b' :
+                    data.status === 'cadence_done' ? '#16a34a' : '#6b7280';
+
+                var html = '<div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 24px;">';
+                html += '<div style="background: #eff6ff; padding: 14px; border-radius: 8px; text-align: center;"><div style="font-size: 22px; font-weight: 700; color: #2563eb;">' + total + '</div><div style="font-size: 11px; color: #1e40af;">Total</div></div>';
+                html += '<div style="background: #f0fdf4; padding: 14px; border-radius: 8px; text-align: center;"><div style="font-size: 22px; font-weight: 700; color: #16a34a;">' + sent + '</div><div style="font-size: 11px; color: #166534;">Enviadas</div></div>';
+                html += '<div style="background: #f8fafc; padding: 14px; border-radius: 8px; text-align: center;"><div style="font-size: 22px; font-weight: 700; color: #6b7280;">' + pending + '</div><div style="font-size: 11px; color: #374151;">Pendentes</div></div>';
+                html += '<div style="background: #fef2f2; padding: 14px; border-radius: 8px; text-align: center;"><div style="font-size: 22px; font-weight: 700; color: #dc2626;">' + failed + '</div><div style="font-size: 11px; color: #991b1b;">Falhas</div></div>';
+                html += '<div style="background: #fefce8; padding: 14px; border-radius: 8px; text-align: center;"><div style="font-size: 22px; font-weight: 700; color: #ca8a04;">' + responded + '</div><div style="font-size: 11px; color: #854d0e;">Respostas</div></div>';
+                html += '</div>';
+
+                html += '<div style="margin-bottom: 24px;">';
+                html += '<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">';
+                html += '<span style="font-weight: 600;">Progresso</span>';
+                html += '<span style="font-weight: 700; color: ' + statusColor + ';">' + pct + '% - ' + statusLabel + '</span>';
+                html += '</div>';
+                html += '<div style="height: 12px; background: #e5e7eb; border-radius: 6px; overflow: hidden;">';
+                html += '<div style="height: 100%; width: ' + pct + '%; background: ' + statusColor + '; border-radius: 6px; transition: width 0.3s;"></div>';
+                html += '</div></div>';
+
+                if (data.response_rate > 0) {
+                    html += '<div style="margin-bottom: 24px; padding: 12px 16px; background: #fefce8; border-radius: 8px; font-size: 0.9rem;">';
+                    html += '<strong>Taxa de resposta:</strong> ' + data.response_rate + '%';
+                    html += '</div>';
+                }
+
+                if (data.daily_log && data.daily_log.length > 0) {
+                    html += '<div style="margin-bottom: 24px;"><h4 style="margin-bottom: 12px;">Envios por Dia</h4>';
+                    html += '<canvas id="cadenceDailyChart" height="200"></canvas></div>';
+                }
+
+                html += '<div style="display: flex; gap: 8px; justify-content: center;">';
+                if (data.status === 'firing_cadence') {
+                    html += '<button class="btn" style="background: #f59e0b; color: white; border: none;" data-action="pauseCadence" data-id="' + cId + '">Pausar Campanha</button>';
+                } else if (data.status === 'paused_cadence') {
+                    html += '<button class="btn btn-primary" data-action="resumeCadence" data-id="' + cId + '">Retomar Campanha</button>';
+                }
+                html += '</div>';
+
+                document.getElementById('cadenceDashboardBody').innerHTML = html;
+
+                if (data.daily_log && data.daily_log.length > 0) {
+                    var canvas = document.getElementById('cadenceDailyChart');
+                    if (canvas && typeof Chart !== 'undefined') {
+                        var ctx = canvas.getContext('2d');
+                        var labels = data.daily_log.map(function(d) { return d.date; });
+                        var sentData = data.daily_log.map(function(d) { return d.sent; });
+                        var respondedData = data.daily_log.map(function(d) { return d.responded; });
+
+                        new Chart(ctx, {
+                            type: 'bar',
+                            data: {
+                                labels: labels,
+                                datasets: [
+                                    { label: 'Enviadas', data: sentData, backgroundColor: '#22c55e' },
+                                    { label: 'Respostas', data: respondedData, backgroundColor: '#eab308' }
+                                ]
+                            },
+                            options: {
+                                responsive: true,
+                                plugins: { legend: { position: 'bottom' } },
+                                scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } }
+                            }
+                        });
+                    }
+                }
+
+                if (data.status === 'cadence_done' || data.status === 'cancelled') {
+                    if (cadenceRefreshInterval) {
+                        clearInterval(cadenceRefreshInterval);
+                        cadenceRefreshInterval = null;
+                    }
+                }
+
+            } catch (error) {
+                document.getElementById('cadenceDashboardBody').innerHTML = '<div class="alert alert-danger">' + error.message + '</div>';
+            }
+        }
+
+        function closeCadenceDashboard() {
+            document.getElementById('cadenceDashboardModal').style.display = 'none';
+            if (cadenceRefreshInterval) {
+                clearInterval(cadenceRefreshInterval);
+                cadenceRefreshInterval = null;
+            }
+        }
+
+        async function pauseCadenceCampaign(cId) {
+            try {
+                var response = await fetch(API_BASE + '/' + cId + '/cadence-pause', {
+                    method: 'PATCH',
+                    credentials: 'include'
+                });
+                if (!response.ok) {
+                    var err = await response.json();
+                    throw new Error(err.detail || 'Erro ao pausar');
+                }
+                toast.success('Campanha pausada');
+                await renderCadenceDashboard(cId);
+            } catch (error) {
+                toast.error(error.message);
+            }
+        }
+
+        async function resumeCadenceCampaign(cId) {
+            try {
+                var response = await fetch(API_BASE + '/' + cId + '/cadence-resume', {
+                    method: 'PATCH',
+                    credentials: 'include'
+                });
+                if (!response.ok) {
+                    var err = await response.json();
+                    throw new Error(err.detail || 'Erro ao retomar');
+                }
+                toast.success('Campanha retomada');
+                await renderCadenceDashboard(cId);
+            } catch (error) {
+                toast.error(error.message);
+            }
+        }
+
         async function loadHistory() {
             try {
                 const response = await fetch(`${API_BASE}/`, { credentials: 'include' });
@@ -2823,39 +3096,44 @@ Equipe de Gestao"></textarea>
                     return;
                 }
 
-                tbody.innerHTML = campaigns.map(c => `
-                    <tr>
-                        <td>
-                            <a href="#" data-action="openCampaign" data-id="${c.id}" data-status="${c.status}" style="color: var(--primary-color); text-decoration: none; font-weight: 600;">
-                                ${c.name}
-                            </a>
-                            <br><small style="color: var(--text-secondary);">${c.original_filename || ''}</small>
-                        </td>
-                        <td>${c.created_at ? new Date(c.created_at).toLocaleDateString('pt-BR') : '-'}</td>
-                        <td>${c.total_assessors}</td>
-                        <td>${c.messages_sent}</td>
-                        <td style="color: ${c.messages_failed > 0 ? '#dc2626' : 'inherit'}; font-weight: ${c.messages_failed > 0 ? '600' : 'normal'};">
-                            ${c.messages_failed}
-                            ${c.messages_failed > 0 ? `<button data-action="openFailures" data-id="${c.id}" class="btn" style="margin-left: 8px; padding: 2px 8px; font-size: 11px; background: #fef2f2; color: #dc2626; border: 1px solid #fecaca;">Ver Falhas</button>` : ''}
-                        </td>
-                        <td><span class="status-badge status-${c.status}">${c.status}</span></td>
-                        <td>
-                            <div style="position: relative;">
-                                <button class="btn btn-secondary" style="padding: 4px 8px; font-size: 12px;" data-action="toggleOptions" data-id="${c.id}">
-                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                        <circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/>
-                                    </svg>
-                                </button>
-                                <div id="optionsMenu-${c.id}" class="options-menu" style="display: none; position: absolute; right: 0; top: 100%; background: white; border: 1px solid var(--border-color); border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); z-index: 100; min-width: 120px;">
-                                    ${c.messages_failed > 0 ? `<button data-action="openFailures" data-id="${c.id}" style="display: block; width: 100%; padding: 10px 16px; text-align: left; border: none; background: none; cursor: pointer; color: #dc2626; font-size: 14px;">Analisar Falhas</button>` : ''}
-                                    <button data-action="deleteCampaign" data-id="${c.id}" style="display: block; width: 100%; padding: 10px 16px; text-align: left; border: none; background: none; cursor: pointer; color: #dc2626; font-size: 14px;">
-                                        Excluir
-                                    </button>
-                                </div>
-                            </div>
-                        </td>
-                    </tr>
-                `).join('');
+                tbody.innerHTML = campaigns.map(c => {
+                    var isCadence = c.delivery_mode === 'cadence' || c.status === 'firing_cadence' || c.status === 'paused_cadence' || c.status === 'cadence_done';
+                    var statusDisplay = c.status;
+                    if (c.status === 'firing_cadence') statusDisplay = 'Em cadencia';
+                    else if (c.status === 'paused_cadence') statusDisplay = 'Pausada';
+                    else if (c.status === 'cadence_done') statusDisplay = 'Cadencia concluida';
+
+                    var cadenceBadge = isCadence ? '<span style="font-size: 10px; padding: 2px 6px; background: #eff6ff; color: #1e40af; border-radius: 4px; margin-left: 4px;">Cadencia</span>' : '';
+
+                    return '<tr>' +
+                        '<td>' +
+                            '<a href="#" data-action="openCampaign" data-id="' + c.id + '" data-status="' + c.status + '" style="color: var(--primary-color); text-decoration: none; font-weight: 600;">' +
+                                c.name +
+                            '</a>' + cadenceBadge +
+                            '<br><small style="color: var(--text-secondary);">' + (c.original_filename || '') + '</small>' +
+                        '</td>' +
+                        '<td>' + (c.created_at ? new Date(c.created_at).toLocaleDateString('pt-BR') : '-') + '</td>' +
+                        '<td>' + c.total_assessors + '</td>' +
+                        '<td>' + c.messages_sent + '</td>' +
+                        '<td style="color: ' + (c.messages_failed > 0 ? '#dc2626' : 'inherit') + '; font-weight: ' + (c.messages_failed > 0 ? '600' : 'normal') + ';">' +
+                            c.messages_failed +
+                            (c.messages_failed > 0 ? '<button data-action="openFailures" data-id="' + c.id + '" class="btn" style="margin-left: 8px; padding: 2px 8px; font-size: 11px; background: #fef2f2; color: #dc2626; border: 1px solid #fecaca;">Ver Falhas</button>' : '') +
+                        '</td>' +
+                        '<td><span class="status-badge status-' + c.status + '">' + statusDisplay + '</span></td>' +
+                        '<td>' +
+                            '<div style="position: relative;">' +
+                                (isCadence ? '<button class="btn" style="padding: 4px 8px; font-size: 11px; background: #eff6ff; color: #1e40af; border: 1px solid #bfdbfe; margin-right: 4px;" data-action="openCadenceDashboard" data-id="' + c.id + '">Dashboard</button>' : '') +
+                                '<button class="btn btn-secondary" style="padding: 4px 8px; font-size: 12px;" data-action="toggleOptions" data-id="' + c.id + '">' +
+                                    '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg>' +
+                                '</button>' +
+                                '<div id="optionsMenu-' + c.id + '" class="options-menu" style="display: none; position: absolute; right: 0; top: 100%; background: white; border: 1px solid var(--border-color); border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); z-index: 100; min-width: 120px;">' +
+                                    (c.messages_failed > 0 ? '<button data-action="openFailures" data-id="' + c.id + '" style="display: block; width: 100%; padding: 10px 16px; text-align: left; border: none; background: none; cursor: pointer; color: #dc2626; font-size: 14px;">Analisar Falhas</button>' : '') +
+                                    '<button data-action="deleteCampaign" data-id="' + c.id + '" style="display: block; width: 100%; padding: 10px 16px; text-align: left; border: none; background: none; cursor: pointer; color: #dc2626; font-size: 14px;">Excluir</button>' +
+                                '</div>' +
+                            '</div>' +
+                        '</td>' +
+                    '</tr>';
+                }).join('');
 
             } catch (error) {
                 console.error('Erro ao carregar historico:', error);
@@ -2879,6 +3157,8 @@ Equipe de Gestao"></textarea>
         async function openCampaign(id, status) {
             if (status === 'rascunho') {
                 await resumeCampaign(id);
+            } else if (status === 'firing_cadence' || status === 'paused_cadence' || status === 'cadence_done') {
+                openCadenceDashboard(id);
             } else {
                 await openCampaignSummary(id);
             }
@@ -3318,6 +3598,25 @@ Equipe de Gestao"></textarea>
         document.getElementById('closeSummaryModalBtn2').addEventListener('click', function() { closeSummaryModal(); });
         document.getElementById('closeFailuresModalBtn').addEventListener('click', function() { closeFailuresModal(); });
         document.getElementById('closeFailuresModalBtn2').addEventListener('click', function() { closeFailuresModal(); });
+        document.getElementById('closeCadenceDashboardBtn').addEventListener('click', function() { closeCadenceDashboard(); });
+        document.getElementById('closeCadenceDashboardBtn2').addEventListener('click', function() { closeCadenceDashboard(); });
+
+        document.querySelectorAll('input[name="deliveryMode"]').forEach(function(radio) {
+            radio.addEventListener('change', function() {
+                var cadenceConfig = document.getElementById('cadenceConfig');
+                var immLabel = document.getElementById('modeImmediateLabel');
+                var cadLabel = document.getElementById('modeCadenceLabel');
+                if (this.value === 'cadence') {
+                    cadenceConfig.style.display = 'block';
+                    cadLabel.style.borderColor = 'var(--primary-color)';
+                    immLabel.style.borderColor = 'var(--border-color)';
+                } else {
+                    cadenceConfig.style.display = 'none';
+                    immLabel.style.borderColor = 'var(--primary-color)';
+                    cadLabel.style.borderColor = 'var(--border-color)';
+                }
+            });
+        });
         document.getElementById('closeTemplateModalBtn').addEventListener('click', function() { closeTemplateModal(); });
         document.getElementById('cancelTemplateModalBtn').addEventListener('click', function() { closeTemplateModal(); });
 
@@ -3351,6 +3650,12 @@ Equipe de Gestao"></textarea>
                 toggleOptionsMenu(parseInt(actionEl.dataset.id));
             } else if (action === 'deleteCampaign') {
                 deleteCampaign(parseInt(actionEl.dataset.id));
+            } else if (action === 'openCadenceDashboard') {
+                openCadenceDashboard(parseInt(actionEl.dataset.id));
+            } else if (action === 'pauseCadence') {
+                pauseCadenceCampaign(parseInt(actionEl.dataset.id));
+            } else if (action === 'resumeCadence') {
+                resumeCadenceCampaign(parseInt(actionEl.dataset.id));
             } else if (action === 'editTemplate') {
                 editTemplate(parseInt(actionEl.dataset.id));
             } else if (action === 'deleteTemplate') {
