@@ -371,10 +371,14 @@ async def _execute_search_knowledge_base(args: dict, db=None, conversation_id=No
             seen_material_ids = {r.get("material_id") for r in results if r.get("material_id")}
             seen_block_ids = {r.get("block_id") for r in results if r.get("block_id")}
             if seen_material_ids:
-                from database.models import ContentBlock as CB3, Material as Mat3
+                from database.models import ContentBlock as CB3, Material as Mat3, Product as Prod3
                 graphic_blocks = (
-                    db.query(CB3.id, CB3.source_page, CB3.visual_description, CB3.material_id, Mat3.name.label("mat_name"))
+                    db.query(
+                        CB3.id, CB3.source_page, CB3.visual_description, CB3.material_id,
+                        Mat3.name.label("mat_name"), Prod3.ticker.label("prod_ticker")
+                    )
                     .join(Mat3, Mat3.id == CB3.material_id)
+                    .outerjoin(Prod3, Prod3.id == Mat3.product_id)
                     .filter(CB3.material_id.in_([int(mid) for mid in seen_material_ids if mid]))
                     .filter(CB3.block_type == "grafico")
                     .filter(CB3.id.notin_(list(seen_block_ids) if seen_block_ids else [0]))
@@ -388,6 +392,7 @@ async def _execute_search_knowledge_base(args: dict, db=None, conversation_id=No
                         "visual_description": gb.visual_description,
                         "material_name": gb.mat_name,
                         "material_id": gb.material_id,
+                        "ticker": gb.prod_ticker or "",
                         "score": 0,
                     })
                 if visual_candidates:

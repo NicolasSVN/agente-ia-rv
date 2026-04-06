@@ -4,6 +4,8 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
+TICKER_PATTERN = re.compile(r'\b([A-Z]{4}[0-9]{1,2})\b', re.IGNORECASE)
+
 VISUAL_TRIGGERS = {
     "histórico", "historico", "performance", "distribuição", "distribuicao",
     "rentabilidade", "comparativo", "evolução", "evolucao", "retorno",
@@ -116,6 +118,47 @@ INSTITUTIONAL_PENALTY_TERMS = [
 MIN_RELEVANCE_THRESHOLD = 0.15
 
 
+def _extract_query_ticker(query: str) -> Optional[str]:
+    match = TICKER_PATTERN.search(query)
+    if match:
+        ticker = match.group(1).upper()
+        logger.info(f"[VISUAL_TICKER] Ticker extraído da query: {ticker}")
+        return ticker
+    return None
+
+
+def _block_matches_ticker(block_metadata: dict, query_ticker: str) -> bool:
+    if not query_ticker:
+        return True
+
+    ticker_upper = query_ticker.upper()
+    ticker_base = re.sub(r'[0-9]+$', '', ticker_upper)
+
+    block_ticker = (block_metadata.get("ticker") or "").upper().strip()
+    if block_ticker:
+        if ticker_upper in block_ticker or ticker_base in block_ticker:
+            return True
+
+    product_ticker = (block_metadata.get("product_ticker") or "").upper().strip()
+    if product_ticker:
+        if ticker_upper in product_ticker or ticker_base in product_ticker:
+            return True
+
+    material_name = (block_metadata.get("material_name") or "").upper()
+    if ticker_upper in material_name or ticker_base in material_name:
+        return True
+
+    visual_desc = (block_metadata.get("visual_description") or "").upper()
+    if ticker_upper in visual_desc or ticker_base in visual_desc:
+        return True
+
+    product_name = (block_metadata.get("product") or "").upper()
+    if product_name and (ticker_upper in product_name or ticker_base in product_name):
+        return True
+
+    return False
+
+
 def should_send_visual(block_metadata: dict, query: str) -> bool:
     if not block_metadata:
         return False
@@ -223,22 +266,48 @@ def select_best_visual_block(visual_blocks: list, query: str) -> Optional[dict]:
     if not visual_blocks:
         return None
 
+    query_ticker = _extract_query_ticker(query)
+
     eligible = [b for b in visual_blocks if should_send_visual(b, query)]
     if not eligible:
         return None
+
+    if query_ticker:
+        ticker_matched = [b for b in eligible if _block_matches_ticker(b, query_ticker)]
+        discarded_count = len(eligible) - len(ticker_matched)
+        if discarded_count > 0:
+            logger.info(
+                f"[VISUAL_TICKER] Descartados {discarded_count} blocos visuais por mismatch de ticker "
+                f"(query_ticker={query_ticker}, total_eligible={len(eligible)})"
+            )
+        if not ticker_matched:
+            logger.info(
+                f"[VISUAL_TICKER] Nenhum bloco visual corresponde ao ticker {query_ticker} — "
+                f"suprimindo envio de imagem para evitar confusão"
+            )
+            return None
+        eligible = ticker_matched
 
     scored = []
     for b in eligible:
         desc = b.get("visual_description", "")
         relevance = _query_relevance_score(desc, query)
         search_score = b.get("score") or 0
-        combined = relevance + (search_score * 0.3)
+
+        ticker_bonus = 0.0
+        if query_ticker:
+            if _block_matches_ticker(b, query_ticker):
+                ticker_bonus = 2.0
+            else:
+                ticker_bonus = -5.0
+
+        combined = relevance + (search_score * 0.3) + ticker_bonus
         b["_combined_score"] = combined
         scored.append(b)
         logger.debug(
             f"Visual block {b.get('block_id')} p.{b.get('source_page')}: "
-            f"relevance={relevance:.3f} search={search_score:.3f} combined={combined:.3f} "
-            f"desc={desc[:80]}"
+            f"relevance={relevance:.3f} search={search_score:.3f} ticker_bonus={ticker_bonus:.1f} "
+            f"combined={combined:.3f} desc={desc[:80]}"
         )
 
     scored.sort(key=lambda b: b.get("_combined_score", 0), reverse=True)
@@ -253,6 +322,7 @@ def select_best_visual_block(visual_blocks: list, query: str) -> Optional[dict]:
 
     logger.info(
         f"Selected visual block {selected.get('block_id')} p.{selected.get('source_page')} "
-        f"(combined={selected['_combined_score']:.3f}, desc={selected.get('visual_description', '')[:80]})"
+        f"(combined={selected['_combined_score']:.3f}, ticker_match={'yes' if query_ticker and _block_matches_ticker(selected, query_ticker) else 'n/a'}, "
+        f"desc={selected.get('visual_description', '')[:80]})"
     )
     return selected
