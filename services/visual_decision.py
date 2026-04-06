@@ -133,6 +133,8 @@ def _block_matches_ticker(block_metadata: dict, query_ticker: str) -> bool:
 
     ticker_upper = query_ticker.upper()
     ticker_base = re.sub(r'[0-9]+$', '', ticker_upper)
+    ticker_boundary_re = re.compile(r'\b' + re.escape(ticker_upper) + r'\b', re.IGNORECASE)
+    base_boundary_re = re.compile(r'\b' + re.escape(ticker_base) + r'[0-9]{1,2}\b', re.IGNORECASE)
 
     block_ticker = (block_metadata.get("ticker") or "").upper().strip()
     if block_ticker:
@@ -144,16 +146,20 @@ def _block_matches_ticker(block_metadata: dict, query_ticker: str) -> bool:
         if ticker_upper in product_ticker or ticker_base in product_ticker:
             return True
 
-    material_name = (block_metadata.get("material_name") or "").upper()
-    if ticker_upper in material_name or ticker_base in material_name:
+    material_name = block_metadata.get("material_name") or ""
+    if material_name and (ticker_boundary_re.search(material_name) or base_boundary_re.search(material_name)):
         return True
 
-    visual_desc = (block_metadata.get("visual_description") or "").upper()
-    if ticker_upper in visual_desc or ticker_base in visual_desc:
+    visual_desc = block_metadata.get("visual_description") or ""
+    if visual_desc and (ticker_boundary_re.search(visual_desc) or base_boundary_re.search(visual_desc)):
         return True
 
-    product_name = (block_metadata.get("product") or "").upper()
-    if product_name and (ticker_upper in product_name or ticker_base in product_name):
+    product_name = block_metadata.get("product") or ""
+    if product_name and (ticker_boundary_re.search(product_name) or base_boundary_re.search(product_name)):
+        return True
+
+    source_material = block_metadata.get("source_material") or ""
+    if source_material and (ticker_boundary_re.search(source_material) or base_boundary_re.search(source_material)):
         return True
 
     return False
