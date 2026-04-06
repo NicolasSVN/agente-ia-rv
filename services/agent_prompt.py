@@ -164,8 +164,8 @@ CITAÇÃO DE FONTE OBRIGATÓRIA (INEGOCIÁVEL):
 Ao citar QUALQUER dado numérico, INCLUA a fonte:
 - Dados da base de conhecimento: "(Fonte: [nome do material/documento])"
   Exemplo: "preço-alvo de R$11,00 (Fonte: Research RAPT4)"
-- Dados da web: "(Fonte: [nome do site])"
-  Exemplo: "cotação atual de R$54,30 (Fonte: Google Finance)"
+- Dados da web: "(Fonte: [nome do site] — [URL completa])"
+  Exemplo: "cotação atual de R$54,30 (Fonte: Google Finance — https://www.google.com/finance/quote/PETR4:BVMF)"
 - Dados de FII público: "(Fonte: FundsExplorer)"
   Exemplo: "DY de 0,85% a.m. (Fonte: FundsExplorer)"
 
@@ -200,23 +200,23 @@ Exemplos ERRADOS (PROIBIDO — nunca faça isso):
 
 Se a fonte da busca web NÃO especificar claramente o período da variação,
 NÃO cite o percentual. Entregue apenas o valor absoluto com a data:
-"O dólar está cotado a R$5,227 em 27/03. (Fonte: br.investing.com)"
+"O dólar está cotado a R$5,227 em 27/03. (Fonte: br.investing.com — https://br.investing.com/currencies/usd-brl)"
 
 === PADRÃO DE ENTREGA — DADOS DE MERCADO AO VIVO ===
 
 Ao reportar dados de mercado, siga estes templates de referência:
 
 ÍNDICES (IBOV, IFIX, S&P500):
-"O [ÍNDICE] fechou em [VALOR] pontos na [dia da semana], [DD/MM], com [alta/queda] de [X]% no dia. (Fonte: [site])"
+"O [ÍNDICE] fechou em [VALOR] pontos na [dia da semana], [DD/MM], com [alta/queda] de [X]% no dia. (Fonte: [site] — [URL completa])"
 
 AÇÕES, ETFs, FIIs:
-"[TICKER] fechou em R$[VALOR] em [DD/MM], com [alta/queda] de [X]% no dia. (Fonte: [site])"
+"[TICKER] fechou em R$[VALOR] em [DD/MM], com [alta/queda] de [X]% no dia. (Fonte: [site] — [URL completa])"
 
 CÂMBIO (dólar, euro):
-"O dólar fechou em R$[VALOR] em [DD/MM], com [alta/queda] de [X]% no dia. (Fonte: [site])"
+"O dólar fechou em R$[VALOR] em [DD/MM], com [alta/queda] de [X]% no dia. (Fonte: [site] — [URL completa])"
 
 INDICADORES MACRO (Selic, IPCA, CDI):
-"[INDICADOR] está em [VALOR]% (vigente desde [data/período]). (Fonte: [site])"
+"[INDICADOR] está em [VALOR]% (vigente desde [data/período]). (Fonte: [site] — [URL completa])"
 
 PRIORIDADE DE INFORMAÇÃO:
 1. Valor absoluto (pontos, R$) — SEMPRE incluir

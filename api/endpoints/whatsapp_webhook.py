@@ -678,14 +678,10 @@ async def process_text_message(phone: str, message: str, db: Session, message_re
                 broker_name = escalation_result.get("broker_name") if escalation_result else None
                 assessor_first_name = escalation_result.get("assessor_name") if escalation_result else None
                 
-                if assessor_first_name and broker_name:
-                    response = f"{assessor_first_name}, registrado! O {broker_name} já tá sendo avisado e responde em breve."
-                elif broker_name:
-                    response = f"Registrado! O {broker_name} já tá sendo avisado e responde em breve."
-                elif assessor_first_name:
-                    response = f"{assessor_first_name}, registrado! O broker que te acompanha já tá sendo avisado e responde em breve."
+                if assessor_first_name:
+                    response = f"{assessor_first_name}, registrado! Um especialista da equipe já tá sendo avisado e responde em breve."
                 else:
-                    response = "Registrado! O broker responsável já tá sendo avisado e responde em breve."
+                    response = "Registrado! Um especialista da equipe já tá sendo avisado e responde em breve."
                 
                 if created_ticket_id:
                     response += f"\n\nChamado #{created_ticket_id} criado com sucesso!"
@@ -701,7 +697,7 @@ async def process_text_message(phone: str, message: str, db: Session, message_re
                 conversation.transfer_reason = "no_progress"
                 conversation.transferred_at = datetime.utcnow()
                 db.commit()
-                response = "Registrado! O broker responsável já tá sendo avisado e responde em breve."
+                response = "Registrado! Um especialista da equipe já tá sendo avisado e responde em breve."
             
             if message_record:
                 message_record.ai_response = response
@@ -849,16 +845,12 @@ async def process_text_message(phone: str, message: str, db: Session, message_re
                 broker_name = escalation_result.get("broker_name") if escalation_result else None
                 assessor_first_name = escalation_result.get("assessor_name") if escalation_result else None
                 
-                print(f"[WEBHOOK] Escalação via OpenAI completa - ticket_status: {conversation.ticket_status}, ticket_id: {created_ticket_id}, broker: {broker_name}")
+                print(f"[WEBHOOK] Escalação via OpenAI completa - ticket_status: {conversation.ticket_status}, ticket_id: {created_ticket_id}")
                 
-                if assessor_first_name and broker_name:
-                    response = f"{assessor_first_name}, registrado! O {broker_name} já tá sendo avisado e responde em breve."
-                elif broker_name:
-                    response = f"Registrado! O {broker_name} já tá sendo avisado e responde em breve."
-                elif assessor_first_name:
-                    response = f"{assessor_first_name}, registrado! O broker que te acompanha já tá sendo avisado e responde em breve."
+                if assessor_first_name:
+                    response = f"{assessor_first_name}, registrado! Um especialista da equipe já tá sendo avisado e responde em breve."
                 else:
-                    response = "Registrado! O broker responsável já tá sendo avisado e responde em breve."
+                    response = "Registrado! Um especialista da equipe já tá sendo avisado e responde em breve."
                 
                 if created_ticket_id:
                     response += f"\n\nChamado #{created_ticket_id} criado com sucesso!"
@@ -902,9 +894,9 @@ async def process_text_message(phone: str, message: str, db: Session, message_re
                     
                     created_ticket_id = fallback_ticket.id
                     print(f"[WEBHOOK] Fallback ticket #{fallback_ticket.id} criado com sucesso")
-                    response = f"Registrado! O broker responsável já tá sendo avisado e responde em breve.\n\nChamado #{fallback_ticket.id} criado com sucesso!"
+                    response = f"Registrado! Um especialista da equipe já tá sendo avisado e responde em breve.\n\nChamado #{fallback_ticket.id} criado com sucesso!"
                 else:
-                    response = "Registrado! O broker responsável já tá sendo avisado e responde em breve."
+                    response = "Registrado! Um especialista da equipe já tá sendo avisado e responde em breve."
         
         append_to_history(phone, "user", normalized_message)
         

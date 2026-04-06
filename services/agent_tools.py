@@ -439,18 +439,23 @@ async def _execute_search_web(args: dict, db=None) -> Dict[str, Any]:
 
     formatted_results = []
     for r in result["results"][:5]:
-        source_name = r.get("url", "")
+        full_url = r.get("url", "")
+        source_domain = full_url
         try:
             from urllib.parse import urlparse
-            source_name = urlparse(r.get("url", "")).netloc or r.get("url", "")
+            source_domain = urlparse(full_url).netloc or full_url
         except Exception:
             pass
+        if full_url:
+            citation = f"Ao citar dados deste resultado, inclua a URL completa: (Fonte: {source_domain} — {full_url})"
+        else:
+            citation = f"Ao citar dados deste resultado, inclua: (Fonte: {source_domain})"
         formatted_results.append({
             "title": r.get("title", ""),
             "content": r.get("content", "")[:500],
-            "url": r.get("url", ""),
+            "url": full_url,
             "published_date": r.get("published_date", ""),
-            "source_note": f"Ao citar dados deste resultado, inclua: (Fonte: {source_name})",
+            "source_note": citation,
         })
 
     return {"results": formatted_results, "count": len(formatted_results)}
