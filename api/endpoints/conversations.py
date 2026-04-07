@@ -168,9 +168,12 @@ async def list_conversations(
     if search:
         search_normalized = normalize_phone(search)
         query = query.outerjoin(Assessor, Conversation.assessor_id == Assessor.id)
+        phone_conditions = []
+        if search_normalized:
+            phone_conditions.append(Conversation.phone.contains(search_normalized))
         query = query.filter(
             or_(
-                Conversation.phone.contains(search_normalized),
+                *phone_conditions,
                 Conversation.contact_name.ilike(f"%{search}%"),
                 Assessor.nome.ilike(f"%{search}%")
             )
