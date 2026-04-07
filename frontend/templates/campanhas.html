@@ -2938,7 +2938,9 @@ Equipe de Gestao"></textarea>
         var cadenceRefreshInterval = null;
 
         async function openCadenceDashboard(campaignId) {
-            document.getElementById('cadenceDashboardModal').style.display = 'flex';
+            var modal = document.getElementById('cadenceDashboardModal');
+            modal.style.display = 'flex';
+            modal.classList.add('active');
             document.getElementById('cadenceDashboardBody').innerHTML = '<div style="text-align: center; padding: 40px;">Carregando...</div>';
 
             await renderCadenceDashboard(campaignId);
@@ -3047,7 +3049,9 @@ Equipe de Gestao"></textarea>
         }
 
         function closeCadenceDashboard() {
-            document.getElementById('cadenceDashboardModal').style.display = 'none';
+            var modal = document.getElementById('cadenceDashboardModal');
+            modal.classList.remove('active');
+            modal.style.display = 'none';
             if (cadenceRefreshInterval) {
                 clearInterval(cadenceRefreshInterval);
                 cadenceRefreshInterval = null;
