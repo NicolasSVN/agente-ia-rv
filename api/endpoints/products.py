@@ -2092,6 +2092,8 @@ async def list_pending_unified(
         }
 
         if m.processing_status == "success" and bc > 0 and m.id not in materials_with_file:
+            if m.pdf_whatsapp_dismissed:
+                continue
             base["pending_type"] = "missing_pdf"
             missing_pdf.append(base)
 
@@ -2129,6 +2131,29 @@ async def list_pending_unified(
         "total_failed": len(failed_processing),
         "total": len(missing_pdf) + len(failed_processing),
     }
+
+
+@router.post("/materials/{material_id}/dismiss-pdf")
+async def dismiss_pdf_pending(
+    material_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Marca um material como dispensado da pendência 'Sem PDF para WhatsApp'.
+    O material continua indexado e disponível para o agente; apenas deixa de aparecer na lista de pendências.
+    """
+    if current_user.role not in ["admin", "gestao_rv", "broker"]:
+        raise HTTPException(status_code=403, detail="Acesso negado")
+
+    material = db.query(Material).filter(Material.id == material_id).first()
+    if not material:
+        raise HTTPException(status_code=404, detail="Material não encontrado")
+
+    material.pdf_whatsapp_dismissed = True
+    db.commit()
+
+    return {"ok": True, "material_id": material_id}
 
 
 @router.post("/{product_id}/materials/{material_id}/upload")

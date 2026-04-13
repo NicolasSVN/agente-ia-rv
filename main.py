@@ -338,6 +338,7 @@ def _apply_incremental_migrations():
         "ALTER TABLE campaign_dispatches ADD COLUMN IF NOT EXISTS retry_count INTEGER DEFAULT 0",
         "CREATE INDEX IF NOT EXISTS ix_campaign_dispatches_status ON campaign_dispatches(status)",
         "CREATE INDEX IF NOT EXISTS ix_campaign_dispatches_scheduled ON campaign_dispatches(scheduled_for)",
+        "ALTER TABLE materials ADD COLUMN IF NOT EXISTS pdf_whatsapp_dismissed BOOLEAN DEFAULT FALSE",
     ]
     db = SessionLocal()
     try:

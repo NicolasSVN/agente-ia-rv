@@ -89,6 +89,11 @@ export const materialsAPI = {
     }),
 
 
+  dismissPdf: (materialId) =>
+    fetchAPI(`/products/materials/${materialId}/dismiss-pdf`, {
+      method: 'POST',
+    }),
+
   uploadWithoutProduct: (file, materialData) => {
     const formData = new FormData();
     formData.append('file', file);

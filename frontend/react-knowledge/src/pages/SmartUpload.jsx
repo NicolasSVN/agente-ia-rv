@@ -118,6 +118,7 @@ export function SmartUpload() {
   const [showBulkResults, setShowBulkResults] = useState(false);
   const [bulkUploading, setBulkUploading] = useState(false);
   const [reuploadingIds, setReuploadingIds] = useState(new Set());
+  const [dismissingIds, setDismissingIds] = useState(new Set());
   const [showMissingPdf, setShowMissingPdf] = useState(false);
   const [showFailed, setShowFailed] = useState(false);
   const [campaignSlug, setCampaignSlug] = useState('');
@@ -320,6 +321,32 @@ export function SmartUpload() {
       setReuploadingIds(prev => {
         const next = new Set(prev);
         next.delete(materialId);
+        return next;
+      });
+    }
+  };
+
+  const handleDismissPdf = async (material) => {
+    const confirmed = await openConfirm({
+      title: 'Remover da lista de pendências',
+      message: `"${material.name}" não precisa de PDF para WhatsApp? O conteúdo continua indexado e disponível para o agente.`,
+      confirmText: 'Sim, remover',
+      cancelText: 'Cancelar',
+      type: 'warning',
+    });
+    if (!confirmed) return;
+
+    setDismissingIds(prev => new Set(prev).add(material.id));
+    try {
+      await materialsAPI.dismissPdf(material.id);
+      setMissingPdfMaterials(prev => prev.filter(m => m.id !== material.id));
+      addToast('Material removido da lista de pendências', 'success');
+    } catch (err) {
+      addToast(err.message || 'Erro ao dispensar material', 'error');
+    } finally {
+      setDismissingIds(prev => {
+        const next = new Set(prev);
+        next.delete(material.id);
         return next;
       });
     }
@@ -686,29 +713,42 @@ export function SmartUpload() {
                           )}
                         </div>
                       </div>
-                      <label className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg cursor-pointer transition-colors ${
-                        reuploadingIds.has(m.id)
-                          ? 'bg-slate-200 text-slate-400 cursor-wait'
-                          : 'bg-blue-600 text-white hover:bg-blue-700'
-                      }`}>
-                        {reuploadingIds.has(m.id) ? (
-                          <Loader2 className="w-3 h-3 animate-spin" />
-                        ) : (
-                          <Upload className="w-3 h-3" />
-                        )}
-                        {reuploadingIds.has(m.id) ? 'Enviando...' : 'PDF'}
-                        <input
-                          type="file"
-                          accept=".pdf"
-                          className="hidden"
-                          disabled={reuploadingIds.has(m.id)}
-                          onChange={(e) => {
-                            const f = e.target.files[0];
-                            if (f) handleSingleReupload(m.id, f);
-                            e.target.value = '';
-                          }}
-                        />
-                      </label>
+                      <div className="flex items-center gap-1.5 flex-shrink-0">
+                        <label className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg cursor-pointer transition-colors ${
+                          reuploadingIds.has(m.id)
+                            ? 'bg-slate-200 text-slate-400 cursor-wait'
+                            : 'bg-blue-600 text-white hover:bg-blue-700'
+                        }`}>
+                          {reuploadingIds.has(m.id) ? (
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                          ) : (
+                            <Upload className="w-3 h-3" />
+                          )}
+                          {reuploadingIds.has(m.id) ? 'Enviando...' : 'PDF'}
+                          <input
+                            type="file"
+                            accept=".pdf"
+                            className="hidden"
+                            disabled={reuploadingIds.has(m.id)}
+                            onChange={(e) => {
+                              const f = e.target.files[0];
+                              if (f) handleSingleReupload(m.id, f);
+                              e.target.value = '';
+                            }}
+                          />
+                        </label>
+                        <button
+                          onClick={() => handleDismissPdf(m)}
+                          disabled={dismissingIds.has(m.id)}
+                          title="Não precisa de PDF para WhatsApp"
+                          className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors disabled:opacity-40 disabled:cursor-wait"
+                        >
+                          {dismissingIds.has(m.id)
+                            ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            : <X className="w-3.5 h-3.5" />
+                          }
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>

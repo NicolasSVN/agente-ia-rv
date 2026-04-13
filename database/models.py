@@ -860,6 +860,7 @@ class Material(Base):
     extracted_metadata = Column(Text, nullable=True)  # JSON com metadados extraídos (fund_name, ticker, gestora, confidence)
     ai_summary = Column(Text, nullable=True)  # Resumo conceitual do documento gerado por GPT
     ai_themes = Column(Text, default="[]")  # JSON array de temas principais identificados por GPT
+    pdf_whatsapp_dismissed = Column(Boolean, default=False)  # Material dispensado da pendência "Sem PDF para WhatsApp"
     created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
