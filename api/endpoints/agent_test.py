@@ -206,7 +206,7 @@ async def test_agent_message(
         "metadata": context if context else {}
     })
 
-    test_conversations[user_id] = history[-20:]
+    test_conversations[user_id] = history[-30:]
 
     identified = session.get("identified_assessor")
     intent_from_context = context.get("intent") if context else None

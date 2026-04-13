@@ -2765,19 +2765,48 @@ INSTRUÇÕES IMPORTANTES:
             active_campaigns=active_campaigns,
         )
 
+        from services.query_rewriter import rewrite_query
+        from services.conversation_memory import build_conversation_state_block, build_context_dedup_instruction
+
+        _rewrite_result = None
+        try:
+            _rewrite_history = [
+                m for m in (conversation_history or [])
+                if m.get("role") in ("user", "assistant")
+            ][-10:]
+            _rewrite_result = await rewrite_query(
+                message=user_message,
+                history=_rewrite_history,
+                client=self.client,
+                timeout_seconds=3.0,
+            )
+        except Exception as _rw_err:
+            print(f"[V2] QueryRewriter falhou (não-bloqueante): {_rw_err}")
+
         messages = [{"role": "system", "content": system_prompt}]
 
-        from services.conversation_memory import build_conversation_state_block
-        state_block = build_conversation_state_block(conversation_history or [])
+        state_block = build_conversation_state_block(conversation_history or [], rewrite_result=_rewrite_result)
         if state_block:
             messages.append({"role": "system", "content": state_block})
 
+        dedup_instruction = build_context_dedup_instruction(
+            [m for m in (conversation_history or []) if m.get("role") in ("user", "assistant")],
+            user_message,
+        )
+        if dedup_instruction:
+            messages.append({"role": "system", "content": dedup_instruction})
+
         if conversation_history:
-            clean_history = [
-                {"role": m["role"], "content": m["content"]}
-                for m in conversation_history[-30:]
-                if m.get("role") in ("user", "assistant") and m.get("content")
-            ]
+            clean_history = []
+            for m in conversation_history[-30:]:
+                role = m.get("role")
+                content = m.get("content", "") or ""
+                if not content:
+                    continue
+                if role in ("user", "assistant"):
+                    clean_history.append({"role": role, "content": content})
+                elif role == "system" and "[Contexto da sessão anterior]:" not in content:
+                    clean_history.append({"role": role, "content": content})
             messages.extend(clean_history)
 
         messages.append({"role": "user", "content": user_message})
