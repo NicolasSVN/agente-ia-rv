@@ -108,7 +108,7 @@ async def test_agent_message(
         print(f"[AGENT_TEST] Erro na detecção de sessão (não-bloqueante): {e}")
 
     history_for_ai = []
-    for msg in history[-20:]:
+    for msg in history[-30:]:
         entry = {
             "role": msg["role"],
             "content": msg["content"],

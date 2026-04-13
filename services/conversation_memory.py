@@ -16,7 +16,7 @@ from sqlalchemy import desc
 
 
 SESSION_GAP_HOURS = 2
-HISTORY_WINDOW = 20
+HISTORY_WINDOW = 30
 INCREMENTAL_SUMMARY_THRESHOLD = 20
 DEBOUNCE_SECONDS = 12
 
@@ -103,51 +103,35 @@ def append_to_history(phone: str, role: str, content: str, metadata: dict = None
     _history_cache[phone] = _history_cache[phone][-HISTORY_WINDOW:]
 
 
-def build_context_dedup_instruction(history: list, current_message: str, recency_seconds: int = 60) -> Optional[str]:
+def build_context_dedup_instruction(history: list, current_message: str, recency_seconds: int = None) -> Optional[str]:
     """
-    Analisa o histórico recente de conversa para detectar respostas do bot
+    Analisa TODO o histórico da sessão ativa para detectar respostas do bot
     que já cobriram tópicos similares à pergunta atual. Retorna instrução
     para a IA focar em questões novas, ou None se não há deduplicação necessária.
 
     Condições para ativar dedup:
-    1. Deve haver pelo menos uma resposta recente do bot no histórico
-    2. A resposta deve ter timestamp e ser recente (dentro de recency_seconds, default 60s)
-       Mensagens sem timestamp são ignoradas (não elegíveis para dedup)
-    3. Deve haver sobreposição de palavras-chave entre a pergunta atual
+    1. Deve haver pelo menos uma resposta do bot no histórico da sessão ativa
+    2. Deve haver sobreposição de palavras-chave entre a pergunta atual
        e as perguntas/respostas anteriores (indicando mesmo tópico)
+
+    Nota: recency_seconds mantido como parâmetro por compatibilidade, mas ignorado.
+    A varredura cobre toda a sessão ativa.
     """
     if not history or len(history) < 2:
         return None
 
-    now = datetime.now()
-    recent_pairs = []
-    i = len(history) - 1
-    while i >= max(0, len(history) - 8):
-        msg = history[i]
+    all_pairs = []
+    for i, msg in enumerate(history):
         if msg.get("role") == "assistant" and msg.get("content"):
-            ts_str = msg.get("timestamp")
-            if not ts_str:
-                i -= 1
-                continue
-            try:
-                ts = datetime.fromisoformat(ts_str.replace("Z", "").replace("+00:00", ""))
-                if (now - ts).total_seconds() > recency_seconds:
-                    i -= 1
-                    continue
-            except (ValueError, TypeError):
-                i -= 1
-                continue
-
             user_q = None
             if i > 0 and history[i - 1].get("role") == "user":
                 user_q = history[i - 1].get("content", "")
-            recent_pairs.append({
+            all_pairs.append({
                 "user_question": user_q or "",
                 "bot_response": msg["content"][:300],
             })
-        i -= 1
 
-    if not recent_pairs:
+    if not all_pairs:
         return None
 
     def _extract_keywords(text: str) -> set:
@@ -166,7 +150,7 @@ def build_context_dedup_instruction(history: list, current_message: str, recency
         return None
 
     overlapping_responses = []
-    for pair in recent_pairs:
+    for pair in all_pairs:
         prev_kw = _extract_keywords(pair["user_question"] + " " + pair["bot_response"])
         overlap = current_kw & prev_kw
         if len(overlap) >= 2 or (len(overlap) >= 1 and len(current_kw) <= 3):
@@ -176,12 +160,12 @@ def build_context_dedup_instruction(history: list, current_message: str, recency
         print(f"[CONTEXT_DEDUP] Sem sobreposição de tópicos detectada — dedup não necessário")
         return None
 
-    bot_summary = " | ".join(overlapping_responses[:2])
+    bot_summary = " | ".join(overlapping_responses[:3])
 
     instruction = (
         f"\n\n⚠️ ATENÇÃO — CONTEXTO DE MENSAGENS ANTERIORES:\n"
-        f"Você JÁ respondeu recentemente sobre tópicos relacionados nesta conversa:\n"
-        f'"{bot_summary[:500]}"\n\n'
+        f"Você JÁ respondeu sobre tópicos relacionados nesta conversa (sessão ativa):\n"
+        f'"{bot_summary[:600]}"\n\n'
         f"REGRAS OBRIGATÓRIAS:\n"
         f"1. NÃO repita informações que você já forneceu nas respostas acima.\n"
         f"2. Foque EXCLUSIVAMENTE na nova pergunta do usuário: \"{current_message[:200]}\"\n"
@@ -191,7 +175,7 @@ def build_context_dedup_instruction(history: list, current_message: str, recency
         f"sem repetir os dados já enviados."
     )
 
-    print(f"[CONTEXT_DEDUP] Sobreposição detectada com {len(overlapping_responses)} resposta(s) recente(s) — instrução de dedup gerada")
+    print(f"[CONTEXT_DEDUP] Sobreposição detectada com {len(overlapping_responses)} resposta(s) na sessão — instrução de dedup gerada")
     return instruction
 
 
@@ -352,6 +336,168 @@ def build_context_with_summary(history: list, conversation, rewrite_result=None)
         return history
 
     return [{"role": "system", "content": f"[Contexto da sessão anterior]: {summary}"}] + history
+
+
+def _count_consecutive_turns(history: list, entities: list) -> int:
+    """
+    Conta turnos consecutivos no histórico que mencionam entidades do tema atual.
+    Usado por build_conversation_state_block para medir profundidade do tema.
+    """
+    import re as _re
+    if not history or not entities:
+        return 1
+
+    entity_set = set(e.upper() for e in entities if e)
+    TICKER_RE = _re.compile(r'\b([A-Z]{4}[0-9]{1,2}(?:[0-9])?)\b')
+
+    count = 0
+    for msg in reversed(history):
+        content = msg.get('content', '') or ''
+        role = msg.get('role', '')
+        if role not in ('user', 'assistant'):
+            continue
+        tickers_in_msg = set(TICKER_RE.findall(content.upper()))
+        if tickers_in_msg & entity_set:
+            count += 1
+        else:
+            stripped = content.strip()
+            if len(stripped) > 30:
+                break
+    return max(1, count)
+
+
+def build_conversation_state_block(
+    history: list,
+    rewrite_result=None,
+    conversation=None,
+) -> str:
+    """
+    Gera um bloco estruturado de estado da conversa para injeção no system prompt.
+    100% determinístico — sem chamadas de API.
+
+    Parâmetros:
+        history: Histórico ativo da conversa (lista de dicts com role/content/timestamp).
+                 Pode incluir mensagens de sistema com resumo de sessão anterior.
+        rewrite_result: Resultado do QueryRewriter (QueryRewriteResult), se disponível.
+        conversation: Objeto Conversation do banco, para acessar last_session_summary.
+
+    Retorna:
+        String formatada com o bloco de estado. Vazia se não há nada relevante a injetar.
+    """
+    import re as _re
+
+    TICKER_RE = _re.compile(r'\b([A-Z]{4}[0-9]{1,2}(?:[0-9])?)\b')
+
+    if not history:
+        history = []
+
+    user_assistant_history = [
+        m for m in history
+        if m.get('role') in ('user', 'assistant') and m.get('content')
+    ]
+
+    session_summary: Optional[str] = None
+    if conversation:
+        session_summary = getattr(conversation, 'last_session_summary', None) or None
+    if not session_summary:
+        for m in history:
+            if m.get('role') == 'system':
+                content = m.get('content', '')
+                if '[Contexto da sessão anterior]:' in content:
+                    session_summary = content.replace('[Contexto da sessão anterior]:', '').strip()
+                    break
+
+    scan_window = user_assistant_history[-15:] if len(user_assistant_history) >= 15 else user_assistant_history
+    entity_freq: Dict[str, int] = {}
+
+    for msg in scan_window:
+        content = msg.get('content', '') or ''
+        tickers = TICKER_RE.findall(content.upper())
+        for t in tickers:
+            entity_freq[t] = entity_freq.get(t, 0) + 1
+
+    if rewrite_result and getattr(rewrite_result, 'entities', None):
+        for e in rewrite_result.entities:
+            if e and e.upper() != 'COMITE':
+                entity_freq[e.upper()] = entity_freq.get(e.upper(), 0) + 5
+
+    active_entities = [e for e, _ in sorted(entity_freq.items(), key=lambda x: x[1], reverse=True)][:6]
+
+    if rewrite_result:
+        topic_switch = getattr(rewrite_result, 'topic_switch', False)
+        is_implicit_continuation = getattr(rewrite_result, 'is_implicit_continuation', False)
+        categoria = getattr(rewrite_result, 'categoria', None)
+        tone = getattr(rewrite_result, 'emotional_tone', 'neutral')
+        resolved_context = getattr(rewrite_result, 'resolved_context', '')
+
+        if topic_switch:
+            mode = "MUDANÇA DE ASSUNTO"
+        elif is_implicit_continuation:
+            mode = "APROFUNDAMENTO (continuação implícita)"
+        else:
+            mode = "NOVA PERGUNTA"
+    else:
+        topic_switch = False
+        is_implicit_continuation = False
+        categoria = None
+        tone = "neutral"
+        resolved_context = ""
+        mode = "CONTINUAÇÃO"
+
+    consecutive_turns = _count_consecutive_turns(user_assistant_history, active_entities[:3])
+
+    block_parts = []
+
+    if categoria:
+        block_parts.append(f"Categoria: {categoria}")
+
+    if active_entities:
+        block_parts.append(f"Entidades financeiras ativas nesta conversa: {', '.join(active_entities)}")
+
+    block_parts.append(f"Modo: {mode}")
+
+    if consecutive_turns > 1:
+        block_parts.append(f"Turnos consecutivos neste tema: {consecutive_turns}")
+
+    if tone and tone != "neutral":
+        label_map = {
+            "urgent": "urgente",
+            "frustrated": "frustrado",
+            "curious": "curioso",
+            "friendly": "informal/amigável",
+        }
+        block_parts.append(f"Tom emocional do assessor: {label_map.get(tone, tone)}")
+
+    if resolved_context:
+        block_parts.append(f"Contexto resolvido implicitamente: {resolved_context}")
+
+    result_parts_text = ""
+    if block_parts:
+        result_parts_text = "\n".join(f"• {p}" for p in block_parts)
+
+    if not result_parts_text and not session_summary:
+        return ""
+
+    lines = ["=== ESTADO DA CONVERSA (USE PARA CALIBRAR SUA RESPOSTA) ==="]
+
+    if session_summary and not topic_switch:
+        lines.append(f"• Sessão anterior (resumo): {session_summary}")
+
+    if result_parts_text:
+        lines.append(result_parts_text)
+
+    lines.append(
+        "→ Não repita informações já explicadas nesta sessão. "
+        "Perceba aprofundamentos e mantenha coerência temática."
+    )
+
+    result = "\n".join(lines)
+    print(
+        f"[STATE_BLOCK] Gerado — entidades={active_entities[:3]}, "
+        f"modo={mode}, turnos={consecutive_turns}, "
+        f"resumo_anterior={'sim' if session_summary else 'não'}"
+    )
+    return result
 
 
 def schedule_task(coro) -> asyncio.Task:

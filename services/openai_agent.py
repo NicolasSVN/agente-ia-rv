@@ -2455,7 +2455,7 @@ NOTA: {material_note}
         messages = [{"role": "system", "content": system_prompt}]
 
         if conversation_history:
-            messages.extend(conversation_history[-20:])
+            messages.extend(conversation_history[-30:])
 
         if categoria == "MERCADO" and web_context:
             user_content = f"""PERGUNTA SOBRE MERCADO - PRIORIZE AS INFORMAÇÕES DA WEB:
@@ -2767,11 +2767,16 @@ INSTRUÇÕES IMPORTANTES:
 
         messages = [{"role": "system", "content": system_prompt}]
 
+        from services.conversation_memory import build_conversation_state_block
+        state_block = build_conversation_state_block(conversation_history or [])
+        if state_block:
+            messages.append({"role": "system", "content": state_block})
+
         if conversation_history:
             clean_history = [
                 {"role": m["role"], "content": m["content"]}
-                for m in conversation_history[-20:]
-                if m.get("role") in ("user", "assistant", "system") and m.get("content")
+                for m in conversation_history[-30:]
+                if m.get("role") in ("user", "assistant") and m.get("content")
             ]
             messages.extend(clean_history)
 
