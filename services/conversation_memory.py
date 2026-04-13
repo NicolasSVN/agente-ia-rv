@@ -338,31 +338,49 @@ def build_context_with_summary(history: list, conversation, rewrite_result=None)
     return [{"role": "system", "content": f"[Contexto da sessão anterior]: {summary}"}] + history
 
 
-def _count_consecutive_turns(history: list, entities: list) -> int:
+def _count_consecutive_turns(history: list, topic_keywords: set) -> int:
     """
-    Conta turnos consecutivos no histórico que mencionam entidades do tema atual.
-    Usado por build_conversation_state_block para medir profundidade do tema.
+    Conta turnos consecutivos relacionados ao tema atual.
+    Usa interseção de palavras-chave relevantes (tickers + keywords) em vez de apenas tickers.
+    Tolerante a mensagens curtas de continuação (ok, beleza, sim, ...).
     """
     import re as _re
-    if not history or not entities:
+    if not history:
         return 1
 
-    entity_set = set(e.upper() for e in entities if e)
-    TICKER_RE = _re.compile(r'\b([A-Z]{4}[0-9]{1,2}(?:[0-9])?)\b')
+    STOPWORDS = {
+        'que', 'qual', 'como', 'para', 'com', 'por', 'uma', 'dos', 'das', 'nos', 'nas',
+        'esse', 'essa', 'sobre', 'mais', 'pode', 'tem', 'não', 'sim', 'são', 'foi',
+        'está', 'ser', 'ter', 'fala', 'isso', 'aqui', 'ali', 'dele', 'dela', 'meu',
+        'sua', 'nos', 'nós', 'eles', 'ok', 'blz', 'certo', 'tá', 'ótimo', 'show',
+        'legal', 'boa', 'bom', 'obrigado', 'obrigada', 'valeu', 'entendi',
+    }
 
+    def _kw(text: str) -> set:
+        words = set(_re.findall(r'[a-záàâãéêíóôõúüça-z0-9]{3,}', text.lower()))
+        return words - STOPWORDS
+
+    if not topic_keywords:
+        return 1
+
+    SHORT_MSG_THRESHOLD = 25
     count = 0
     for msg in reversed(history):
         content = msg.get('content', '') or ''
         role = msg.get('role', '')
         if role not in ('user', 'assistant'):
             continue
-        tickers_in_msg = set(TICKER_RE.findall(content.upper()))
-        if tickers_in_msg & entity_set:
+        stripped = content.strip()
+        if not stripped:
+            continue
+        if len(stripped) <= SHORT_MSG_THRESHOLD:
+            count += 1
+            continue
+        msg_kw = _kw(stripped)
+        if msg_kw & topic_keywords:
             count += 1
         else:
-            stripped = content.strip()
-            if len(stripped) > 30:
-                break
+            break
     return max(1, count)
 
 
@@ -387,6 +405,16 @@ def build_conversation_state_block(
     import re as _re
 
     TICKER_RE = _re.compile(r'\b([A-Z]{4}[0-9]{1,2}(?:[0-9])?)\b')
+    STOPWORDS_INNER = {
+        'que', 'qual', 'como', 'para', 'com', 'por', 'uma', 'dos', 'das', 'nos', 'nas',
+        'esse', 'essa', 'sobre', 'mais', 'pode', 'tem', 'não', 'sim', 'são', 'foi',
+        'está', 'ser', 'ter', 'fala', 'isso', 'aqui', 'ali', 'dele', 'dela', 'meu',
+        'sua', 'nós', 'eles', 'você', 'seu', 'minha',
+    }
+
+    def _extract_kw(text: str) -> set:
+        words = set(_re.findall(r'[a-záàâãéêíóôõúüça-z0-9]{3,}', text.lower()))
+        return words - STOPWORDS_INNER
 
     if not history:
         history = []
@@ -407,10 +435,8 @@ def build_conversation_state_block(
                     session_summary = content.replace('[Contexto da sessão anterior]:', '').strip()
                     break
 
-    scan_window = user_assistant_history[-15:] if len(user_assistant_history) >= 15 else user_assistant_history
     entity_freq: Dict[str, int] = {}
-
-    for msg in scan_window:
+    for msg in user_assistant_history:
         content = msg.get('content', '') or ''
         tickers = TICKER_RE.findall(content.upper())
         for t in tickers:
@@ -429,6 +455,7 @@ def build_conversation_state_block(
         categoria = getattr(rewrite_result, 'categoria', None)
         tone = getattr(rewrite_result, 'emotional_tone', 'neutral')
         resolved_context = getattr(rewrite_result, 'resolved_context', '')
+        rewritten_query = getattr(rewrite_result, 'rewritten_query', '') or ''
 
         if topic_switch:
             mode = "MUDANÇA DE ASSUNTO"
@@ -442,11 +469,21 @@ def build_conversation_state_block(
         categoria = None
         tone = "neutral"
         resolved_context = ""
+        rewritten_query = ""
         mode = "CONTINUAÇÃO"
 
-    consecutive_turns = _count_consecutive_turns(user_assistant_history, active_entities[:3])
+    topic_keywords: set = set(e.lower() for e in active_entities)
+    if rewritten_query:
+        topic_keywords |= _extract_kw(rewritten_query)
+
+    consecutive_turns = _count_consecutive_turns(user_assistant_history, topic_keywords)
+    if is_implicit_continuation or (user_assistant_history and consecutive_turns == 1):
+        consecutive_turns = max(consecutive_turns, 2 if is_implicit_continuation else 1)
 
     block_parts = []
+
+    if rewritten_query and rewritten_query.strip():
+        block_parts.append(f"Tema atual: {rewritten_query.strip()[:120]}")
 
     if categoria:
         block_parts.append(f"Categoria: {categoria}")
