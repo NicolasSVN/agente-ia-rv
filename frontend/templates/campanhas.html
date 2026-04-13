@@ -4192,7 +4192,9 @@ Equipe de Gestao"></textarea>
 
         // Inicializar aba a partir da URL
         (function() {
-            const urlTab = new URLSearchParams(window.location.search).get('tab') || 'campanhas';
+            const validTabs = ['campanhas', 'estruturas'];
+            const rawTab = new URLSearchParams(window.location.search).get('tab') || 'campanhas';
+            const urlTab = validTabs.includes(rawTab) ? rawTab : 'campanhas';
             if (urlTab !== 'campanhas') {
                 switchPageTab(urlTab);
             }

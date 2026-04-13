@@ -1189,7 +1189,7 @@ async def cadence_campaigns_redirect(request: Request):
 
 @app.get("/estruturas-campanha")
 async def estruturas_campanha_redirect():
-    return RedirectResponse(url="/campanhas?tab=estruturas", status_code=301)
+    return RedirectResponse(url="/campanhas?tab=estruturas", status_code=302)
 
 
 @app.get("/teste-agente", response_class=HTMLResponse)
