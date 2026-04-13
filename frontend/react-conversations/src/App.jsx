@@ -676,6 +676,7 @@ function App() {
   const eventSourceRef = useRef(null);
   const shouldScrollRef = useRef(true);
   const sentinelRef = useRef(null);
+  const hasActiveFiltersRef = useRef(false);
   const PAGE_SIZE = 20;
   
   const showToast = useCallback((message, type = 'info') => {
@@ -953,10 +954,11 @@ function App() {
         if (idx !== -1) {
           const updated = prev.map(c => c.id === conversationId ? { ...c, ...freshConv } : c);
           return [...updated].sort((a, b) => new Date(b.last_message_at || 0) - new Date(a.last_message_at || 0));
-        } else {
+        } else if (!hasActiveFiltersRef.current) {
           setTotalCount(t => t + 1);
           return [freshConv, ...prev];
         }
+        return prev;
       });
     } catch (e) {
       console.warn('[SSE] Erro ao atualizar conversa in-place:', e.message);
@@ -1167,6 +1169,14 @@ function App() {
       fetchFilterCounts();
     }, 300);
     return () => clearTimeout(timer);
+  }, [searchQuery, ticketFilter, advancedFilters]);
+
+  useEffect(() => {
+    hasActiveFiltersRef.current = !!(
+      searchQuery ||
+      (ticketFilter && ticketFilter !== 'all') ||
+      Object.values(advancedFilters).some(v => !!v)
+    );
   }, [searchQuery, ticketFilter, advancedFilters]);
 
   useEffect(() => {
