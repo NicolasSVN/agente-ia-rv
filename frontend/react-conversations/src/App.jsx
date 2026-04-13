@@ -677,6 +677,7 @@ function App() {
   const shouldScrollRef = useRef(true);
   const sentinelRef = useRef(null);
   const hasActiveFiltersRef = useRef(false);
+  const fetchConversationsRef = useRef(null);
   const PAGE_SIZE = 20;
   
   const showToast = useCallback((message, type = 'info') => {
@@ -818,6 +819,10 @@ function App() {
       setIsLoading(false);
     }
   }, [searchQuery, ticketFilter, advancedFilters]);
+
+  useEffect(() => {
+    fetchConversationsRef.current = fetchConversations;
+  }, [fetchConversations]);
 
   const fetchMessages = async (conversationId, isInitialLoad = false) => {
     try {
@@ -1141,7 +1146,7 @@ function App() {
       try {
         await fetch(`${API_BASE}/conversations/sync`, { method: 'POST', credentials: 'include' });
       } catch (e) { console.warn('[Conversas] Sync falhou:', e.message); }
-      fetchConversations(0, false);
+      fetchConversationsRef.current?.(0, false);
       fetchFilterCounts();
     };
     syncAndLoad();
