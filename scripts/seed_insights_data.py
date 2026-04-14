@@ -2,6 +2,8 @@
 Script para gerar dados fictícios para o Dashboard de Insights.
 NÃO inclui dados para a Base de Conhecimento (products, materials, blocks).
 
+⚠️  USO EXCLUSIVO EM DESENVOLVIMENTO LOCAL — NUNCA RODAR EM PRODUÇÃO ⚠️
+
 Gera:
 - Assessores (40)
 - Conversations (120)
@@ -11,6 +13,27 @@ Gera:
 import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+PRODUCTION_INDICATORS = [
+    "RAILWAY_ENVIRONMENT",
+    "RAILWAY_PROJECT_ID",
+    "RAILWAY_SERVICE_ID",
+    "RAILWAY_DEPLOYMENT_ID",
+]
+
+def _abort_if_production():
+    for var in PRODUCTION_INDICATORS:
+        if os.environ.get(var):
+            print("\n" + "!"*60)
+            print("❌ EXECUÇÃO BLOQUEADA: ambiente de produção detectado.")
+            print(f"   Variável de ambiente encontrada: {var}={os.environ.get(var)[:8]}...")
+            print("   Este script NÃO pode ser executado em produção.")
+            print("   Para limpar dados fictícios use o endpoint:")
+            print("   POST /api/insights/admin/purge-fictitious")
+            print("!"*60 + "\n")
+            sys.exit(1)
+
+_abort_if_production()
 
 import random
 from datetime import datetime, timedelta
