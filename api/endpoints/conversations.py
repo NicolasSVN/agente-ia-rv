@@ -917,6 +917,135 @@ async def sync_conversation_messages(
     }
 
 
+@router.post("/admin/bulk-sync")
+async def bulk_sync_conversations(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Importa histórico do Z-API para todas as conversas com phone válido.
+    Útil para restaurar mensagens que existem no WhatsApp mas não no banco local.
+    Requer autenticação de admin.
+    """
+    from services.whatsapp_client import zapi_client
+    from database.models import UserRole
+
+    if current_user.role not in [UserRole.ADMIN.value]:
+        raise HTTPException(status_code=403, detail="Acesso restrito a administradores")
+
+    if not zapi_client.instance_id or not zapi_client.token:
+        raise HTTPException(status_code=500, detail="Z-API não configurada")
+
+    conversations = db.query(Conversation).filter(
+        Conversation.phone.isnot(None),
+        Conversation.phone.notlike('%@%'),
+    ).all()
+
+    total = len(conversations)
+    success_count = 0
+    failed_count = 0
+    imported_total = 0
+
+    for conv in conversations:
+        try:
+            result = await zapi_client.get_chat_messages(conv.phone, amount=100)
+            if not result.get("success"):
+                failed_count += 1
+                continue
+
+            messages = result.get("messages", [])
+            imported_count = 0
+
+            existing_ids = set(
+                row[0] for row in db.query(WhatsAppMessage.message_id).filter(
+                    WhatsAppMessage.message_id.in_([
+                        m.get("messageId") or m.get("id")
+                        for m in messages
+                        if m.get("messageId") or m.get("id")
+                    ])
+                ).all()
+            )
+
+            for msg_data in messages:
+                msg_id = msg_data.get("messageId") or msg_data.get("id")
+                if not msg_id or msg_id in existing_ids:
+                    continue
+
+                is_from_me = msg_data.get("fromMe", False)
+                direction = "outbound" if is_from_me else "inbound"
+
+                body = ""
+                msg_type = "text"
+                if msg_data.get("text"):
+                    body = msg_data["text"].get("message", "") if isinstance(msg_data["text"], dict) else str(msg_data["text"])
+                elif msg_data.get("audio"):
+                    msg_type = "audio"
+                    body = "[Áudio]"
+                elif msg_data.get("image"):
+                    msg_type = "image"
+                    body = msg_data["image"].get("caption", "[Imagem]")
+                elif msg_data.get("document"):
+                    msg_type = "document"
+                    body = msg_data["document"].get("fileName", "[Documento]")
+                elif msg_data.get("video"):
+                    msg_type = "video"
+                    body = msg_data["video"].get("caption", "[Vídeo]")
+
+                timestamp = msg_data.get("momment") or msg_data.get("timestamp")
+                created_at = datetime.utcnow()
+                if timestamp:
+                    try:
+                        if timestamp > 10000000000:
+                            timestamp = timestamp / 1000
+                        created_at = datetime.fromtimestamp(timestamp)
+                    except Exception:
+                        pass
+
+                phone_from_msg = msg_data.get("phone", "")
+                chat_id_from_msg = msg_data.get("chatLid") or msg_data.get("phone", conv.phone)
+
+                new_msg = WhatsAppMessage(
+                    conversation_id=conv.id,
+                    message_id=msg_id,
+                    zaap_id=msg_data.get("zaapId"),
+                    chat_id=chat_id_from_msg,
+                    phone=phone_from_msg or conv.phone,
+                    from_me=is_from_me,
+                    direction=direction,
+                    message_type=msg_type,
+                    sender_type="human" if is_from_me else "contact",
+                    body=body,
+                    created_at=created_at
+                )
+                db.add(new_msg)
+                imported_count += 1
+
+            if imported_count > 0:
+                db.commit()
+                last_msg = db.query(WhatsAppMessage).filter(
+                    WhatsAppMessage.conversation_id == conv.id
+                ).order_by(WhatsAppMessage.created_at.desc()).first()
+                if last_msg:
+                    conv.last_message_at = last_msg.created_at
+                    conv.last_message_preview = last_msg.body[:100] if last_msg.body else ""
+                    db.commit()
+
+            imported_total += imported_count
+            success_count += 1
+
+        except Exception as e:
+            print(f"[BULK-SYNC] Erro na conversa {conv.id} ({conv.phone}): {e}")
+            failed_count += 1
+
+    return {
+        "success": True,
+        "total_conversations": total,
+        "synced": success_count,
+        "failed": failed_count,
+        "imported_messages": imported_total
+    }
+
+
 @router.get("/{conversation_id}/history")
 async def get_conversation_history_zapi(
     conversation_id: int,

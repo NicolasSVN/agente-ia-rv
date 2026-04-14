@@ -671,6 +671,7 @@ function App() {
   const [zapiHealth, setZapiHealth] = useState(null);
   const [zapiExpanded, setZapiExpanded] = useState(false);
   const [zapiDismissed, setZapiDismissed] = useState(false);
+  const [isSyncingHistory, setIsSyncingHistory] = useState(false);
   const messagesEndRef = useRef(null);
   const messagesContainerRef = useRef(null);
   const eventSourceRef = useRef(null);
@@ -850,6 +851,30 @@ function App() {
       }
     } catch (err) {
       console.error('Erro ao carregar mensagens:', err);
+    }
+  };
+
+  const syncAllHistory = async () => {
+    setIsSyncingHistory(true);
+    try {
+      const res = await fetch(`${API_BASE}/conversations/admin/bulk-sync`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setToast({
+          message: `Sincronização concluída: ${data.imported_messages} mensagens importadas de ${data.synced} conversas.`,
+          type: 'success'
+        });
+        fetchConversations(true);
+      } else {
+        setToast({ message: data.detail || 'Erro ao sincronizar histórico.', type: 'error' });
+      }
+    } catch {
+      setToast({ message: 'Erro ao conectar ao servidor.', type: 'error' });
+    } finally {
+      setIsSyncingHistory(false);
     }
   };
 
@@ -1337,13 +1362,24 @@ function App() {
           <h1 className="text-xl font-bold text-gray-900">Conversas</h1>
           <p className="text-gray-500 text-sm mt-1">Visualize e gerencie todas as conversas do agente</p>
         </div>
-        <button
-          onClick={() => setShowNewModal(true)}
-          className="flex items-center gap-2 px-5 py-2.5 bg-primary text-white rounded-lg font-medium hover:bg-primary-dark transition-colors shadow-sm"
-        >
-          <Plus className="w-5 h-5" />
-          Nova Conversa
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={syncAllHistory}
+            disabled={isSyncingHistory}
+            title="Importa o histórico de mensagens de todas as conversas a partir do WhatsApp"
+            className="flex items-center gap-2 px-4 py-2.5 bg-white text-gray-700 border border-gray-200 rounded-lg font-medium hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            {isSyncingHistory ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+            {isSyncingHistory ? 'Sincronizando...' : 'Sincronizar Histórico'}
+          </button>
+          <button
+            onClick={() => setShowNewModal(true)}
+            className="flex items-center gap-2 px-5 py-2.5 bg-primary text-white rounded-lg font-medium hover:bg-primary-dark transition-colors shadow-sm"
+          >
+            <Plus className="w-5 h-5" />
+            Nova Conversa
+          </button>
+        </div>
       </div>
 
       <div className="flex-1 flex min-h-0 overflow-hidden">

@@ -339,6 +339,13 @@ def _apply_incremental_migrations():
         "CREATE INDEX IF NOT EXISTS ix_campaign_dispatches_status ON campaign_dispatches(status)",
         "CREATE INDEX IF NOT EXISTS ix_campaign_dispatches_scheduled ON campaign_dispatches(scheduled_for)",
         "ALTER TABLE materials ADD COLUMN IF NOT EXISTS pdf_whatsapp_dismissed BOOLEAN DEFAULT FALSE",
+        """UPDATE whatsapp_messages
+           SET conversation_id = c.id
+           FROM conversations c
+           WHERE whatsapp_messages.conversation_id IS NULL
+             AND whatsapp_messages.chat_id LIKE '%@%'
+             AND c.phone = REGEXP_REPLACE(whatsapp_messages.chat_id, '@[a-z.]+$', '', 'g')
+        """,
     ]
     db = SessionLocal()
     try:
