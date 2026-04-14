@@ -937,7 +937,7 @@ async def insights_page(request: Request):
             nonce = getattr(request.state, "csp_nonce", "")
             admin_snippet = f"""
 <div id="admin-purge-panel" style="position:fixed;bottom:24px;right:24px;z-index:9999;">
-  <button id="btnAdminPurge" title="Limpar dados fictícios (Admin)"
+  <button id="btnAdminPurge"
     style="background:#8b4513;color:#fff;border:none;border-radius:12px;padding:10px 18px;
            font-size:0.85rem;font-weight:600;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,0.2);
            display:flex;align-items:center;gap:8px;">
@@ -948,7 +948,7 @@ async def insights_page(request: Request):
     Limpar dados fictícios
   </button>
 </div>
-<div id="admin-purge-modal" style="display:none;position:fixed;inset:0;z-index:10000;
+<div id="admin-purge-confirm-modal" style="display:none;position:fixed;inset:0;z-index:10000;
      background:rgba(0,0,0,0.5);align-items:center;justify-content:center;">
   <div style="background:#fff;border-radius:16px;padding:32px;max-width:440px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,0.3);">
     <h3 style="margin:0 0 12px;font-size:1.1rem;font-weight:700;color:#1a1a2e;">Limpar dados fictícios</h3>
@@ -969,33 +969,72 @@ async def insights_page(request: Request):
     </div>
   </div>
 </div>
+<div id="admin-purge-result-modal" style="display:none;position:fixed;inset:0;z-index:10000;
+     background:rgba(0,0,0,0.5);align-items:center;justify-content:center;">
+  <div style="background:#fff;border-radius:16px;padding:32px;max-width:480px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,0.3);">
+    <h3 id="purgeResultTitle" style="margin:0 0 16px;font-size:1.1rem;font-weight:700;color:#1a1a2e;"></h3>
+    <div id="purgeResultBody" style="margin:0 0 24px;font-size:0.9rem;line-height:1.6;color:#444;"></div>
+    <div style="display:flex;justify-content:flex-end;">
+      <button id="btnPurgeResultClose"
+        style="padding:10px 24px;border:none;border-radius:8px;background:#8b4513;color:#fff;cursor:pointer;font-size:0.9rem;font-weight:600;">
+        OK
+      </button>
+    </div>
+  </div>
+</div>
 <script nonce="{nonce}">
 (function() {{
-  var btn = document.getElementById('btnAdminPurge');
-  var modal = document.getElementById('admin-purge-modal');
+  var openBtn = document.getElementById('btnAdminPurge');
+  var confirmModal = document.getElementById('admin-purge-confirm-modal');
+  var resultModal = document.getElementById('admin-purge-result-modal');
   var cancelBtn = document.getElementById('btnPurgeCancel');
   var confirmBtn = document.getElementById('btnPurgeConfirm');
-  if (!btn) return;
-  btn.addEventListener('click', function() {{
-    modal.style.display = 'flex';
+  var resultClose = document.getElementById('btnPurgeResultClose');
+  var resultTitle = document.getElementById('purgeResultTitle');
+  var resultBody = document.getElementById('purgeResultBody');
+
+  function showResult(isSuccess, data) {{
+    confirmModal.style.display = 'none';
+    if (isSuccess) {{
+      resultTitle.textContent = 'Limpeza concluída';
+      resultTitle.style.color = '#15803d';
+      resultBody.innerHTML =
+        '<p style="margin:0 0 12px">' + (data.message || 'Dados fictícios removidos com sucesso.') + '</p>' +
+        '<table style="width:100%;border-collapse:collapse;font-size:0.85rem">' +
+          '<tr style="color:#666"><th style="text-align:left;padding:4px 8px">Tabela</th><th style="text-align:right;padding:4px 8px">Removidos</th></tr>' +
+          '<tr><td style="padding:4px 8px;border-top:1px solid #eee">Insights</td><td style="text-align:right;padding:4px 8px;border-top:1px solid #eee">' + (data.insights_deleted || 0) + '</td></tr>' +
+          '<tr><td style="padding:4px 8px;border-top:1px solid #eee">Tickets</td><td style="text-align:right;padding:4px 8px;border-top:1px solid #eee">' + (data.tickets_deleted || 0) + '</td></tr>' +
+          '<tr><td style="padding:4px 8px;border-top:1px solid #eee">Conversas</td><td style="text-align:right;padding:4px 8px;border-top:1px solid #eee">' + (data.conversations_deleted || 0) + '</td></tr>' +
+          '<tr><td style="padding:4px 8px;border-top:1px solid #eee">Assessores</td><td style="text-align:right;padding:4px 8px;border-top:1px solid #eee">' + (data.assessors_deleted || 0) + '</td></tr>' +
+        '</table>';
+    }} else {{
+      resultTitle.textContent = 'Erro na limpeza';
+      resultTitle.style.color = '#dc2626';
+      resultBody.innerHTML = '<p style="margin:0">' + (data.detail || data.message || 'Erro desconhecido.') + '</p>';
+    }}
+    resultModal.style.display = 'flex';
+  }}
+
+  openBtn.addEventListener('click', function() {{
+    confirmModal.style.display = 'flex';
   }});
   cancelBtn.addEventListener('click', function() {{
-    modal.style.display = 'none';
+    confirmModal.style.display = 'none';
+  }});
+  resultClose.addEventListener('click', function() {{
+    resultModal.style.display = 'none';
+    window.location.reload();
   }});
   confirmBtn.addEventListener('click', function() {{
     confirmBtn.textContent = 'Limpando...';
     confirmBtn.disabled = true;
     fetch('/api/insights/admin/purge-fictitious', {{method: 'POST', credentials: 'include'}})
-      .then(function(r) {{ return r.json(); }})
-      .then(function(data) {{
-        modal.style.display = 'none';
-        var msg = data.message || 'Limpeza concluída.';
-        alert(msg);
-        window.location.reload();
+      .then(function(r) {{ return r.json().then(function(d) {{ return {{ok: r.ok, data: d}}; }}); }})
+      .then(function(res) {{
+        showResult(res.ok, res.data);
       }})
       .catch(function(e) {{
-        modal.style.display = 'none';
-        alert('Erro ao executar limpeza: ' + e.message);
+        showResult(false, {{message: e.message}});
       }})
       .finally(function() {{
         confirmBtn.textContent = 'Confirmar limpeza';

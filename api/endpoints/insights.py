@@ -30,6 +30,16 @@ def require_gestao_or_admin(current_user: User = Depends(get_current_user)):
     return current_user
 
 
+def require_admin_only(current_user: User = Depends(get_current_user)):
+    """Verifica se o usuário é exclusivamente admin (para ações destrutivas)."""
+    if current_user.role != UserRole.ADMIN.value:
+        raise HTTPException(
+            status_code=403,
+            detail="Acesso restrito a administradores"
+        )
+    return current_user
+
+
 def parse_date_filter(period: str, start_date: Optional[str], end_date: Optional[str]):
     """Converte filtro de período em datas."""
     now = datetime.utcnow()
@@ -734,7 +744,7 @@ async def get_ticket_metrics(
 @router.post("/admin/purge-fictitious")
 async def purge_fictitious_insights(
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_gestao_or_admin)
+    current_user: User = Depends(require_admin_only)
 ):
     """
     Remove todos os dados fictícios gerados pelo seed script.
