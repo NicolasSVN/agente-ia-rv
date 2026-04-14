@@ -80,24 +80,28 @@ async def get_metrics(
     
     WINDOW_SECS = 43200  # 12 horas
 
-    assessor_identity = func.coalesce(
-        ConversationInsight.assessor_phone,
-        func.cast(ConversationInsight.assessor_id, String)
-    )
-    active_assessors = db.query(
-        func.count(distinct(assessor_identity))
+    active_q = db.query(
+        func.count(distinct(WhatsAppMessage.conversation_id))
     ).filter(
-        ConversationInsight.created_at >= date_start,
-        ConversationInsight.created_at <= date_end,
-        or_(
-            ConversationInsight.assessor_phone.isnot(None),
-            ConversationInsight.assessor_id.isnot(None),
-        ),
-        *([ConversationInsight.macro_area == macro_area] if macro_area else []),
-        *([ConversationInsight.unidade == unidade] if unidade else []),
-        *([ConversationInsight.broker_responsavel == broker] if broker else []),
-        *([ConversationInsight.equipe == equipe] if equipe else []),
-    ).scalar() or 0
+        WhatsAppMessage.created_at >= date_start,
+        WhatsAppMessage.created_at <= date_end,
+        WhatsAppMessage.conversation_id.isnot(None)
+    )
+    if any([macro_area, unidade, broker, equipe]):
+        active_q = active_q.join(
+            Conversation, WhatsAppMessage.conversation_id == Conversation.id
+        ).join(
+            Assessor, Conversation.assessor_id == Assessor.id
+        )
+        if macro_area:
+            active_q = active_q.filter(Assessor.macro_area == macro_area)
+        if unidade:
+            active_q = active_q.filter(Assessor.unidade == unidade)
+        if broker:
+            active_q = active_q.filter(Assessor.broker_responsavel == broker)
+        if equipe:
+            active_q = active_q.filter(Assessor.equipe == equipe)
+    active_assessors = active_q.scalar() or 0
 
     window_col = func.floor(
         func.extract('epoch', WhatsAppMessage.created_at) / WINDOW_SECS
