@@ -862,9 +862,12 @@ function App() {
         credentials: 'include',
       });
       const data = await res.json();
-      if (res.ok && data.success) {
+      if (res.status === 403) {
+        setToast({ message: 'Acesso restrito: apenas administradores podem sincronizar o histórico.', type: 'error' });
+      } else if (res.ok && data.success) {
+        const skipped = data.skipped_invalid_phone ? ` (${data.skipped_invalid_phone} ignoradas por phone inválido)` : '';
         setToast({
-          message: `Sincronização concluída: ${data.imported_messages} mensagens importadas de ${data.synced} conversas.`,
+          message: `Sincronização concluída: ${data.imported_messages} mensagens importadas de ${data.synced} conversas.${skipped}`,
           type: 'success'
         });
         fetchConversations(true);

@@ -936,10 +936,12 @@ async def bulk_sync_conversations(
     if not zapi_client.instance_id or not zapi_client.token:
         raise HTTPException(status_code=500, detail="Z-API não configurada")
 
-    conversations = db.query(Conversation).filter(
+    all_conversations = db.query(Conversation).filter(
         Conversation.phone.isnot(None),
-        Conversation.phone.notlike('%@%'),
     ).all()
+
+    conversations = [c for c in all_conversations if "@" not in c.phone]
+    skipped_invalid = len(all_conversations) - len(conversations)
 
     total = len(conversations)
     success_count = 0
@@ -1035,6 +1037,7 @@ async def bulk_sync_conversations(
 
         except Exception as e:
             print(f"[BULK-SYNC] Erro na conversa {conv.id} ({conv.phone}): {e}")
+            db.rollback()
             failed_count += 1
 
     return {
@@ -1042,7 +1045,8 @@ async def bulk_sync_conversations(
         "total_conversations": total,
         "synced": success_count,
         "failed": failed_count,
-        "imported_messages": imported_total
+        "imported_messages": imported_total,
+        "skipped_invalid_phone": skipped_invalid
     }
 
 
