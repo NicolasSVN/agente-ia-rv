@@ -762,13 +762,18 @@ async def purge_fictitious_insights(
 
     insights_before = db.query(func.count(ConversationInsight.id)).scalar() or 0
     db.execute(text(f"DELETE FROM conversation_insights WHERE conversation_id::integer IN ({subq})"))
+    insights_after = db.query(func.count(ConversationInsight.id)).scalar() or 0
 
-    db.execute(text(f"DELETE FROM ticket_history WHERE conversation_id IN ({subq})"))
-    db.execute(text(f"DELETE FROM whatsapp_messages WHERE conversation_id IN ({subq})"))
+    th_result = db.execute(text(f"DELETE FROM ticket_history WHERE conversation_id IN ({subq})"))
+    ticket_history_deleted = th_result.rowcount if hasattr(th_result, 'rowcount') else 0
+
+    wm_result = db.execute(text(f"DELETE FROM whatsapp_messages WHERE conversation_id IN ({subq})"))
+    whatsapp_messages_deleted = wm_result.rowcount if hasattr(wm_result, 'rowcount') else 0
 
     tickets_before = db.query(func.count(ConversationTicket.id)).scalar() or 0
     db.execute(text("UPDATE conversations SET active_ticket_id = NULL WHERE assessor_id > 22"))
     db.execute(text(f"DELETE FROM conversation_tickets WHERE conversation_id IN ({subq})"))
+    tickets_after = db.query(func.count(ConversationTicket.id)).scalar() or 0
 
     convs_before = db.query(
         func.count(Conversation.id)
@@ -782,19 +787,23 @@ async def purge_fictitious_insights(
 
     db.commit()
 
-    insights_after = db.query(func.count(ConversationInsight.id)).scalar() or 0
-    tickets_after = db.query(func.count(ConversationTicket.id)).scalar() or 0
+    insights_deleted = insights_before - insights_after
+    tickets_deleted = tickets_before - tickets_after
 
     return {
-        "insights_deleted": insights_before - insights_after,
-        "tickets_deleted": tickets_before - tickets_after,
+        "insights_deleted": insights_deleted,
+        "ticket_history_deleted": ticket_history_deleted,
+        "whatsapp_messages_deleted": whatsapp_messages_deleted,
+        "tickets_deleted": tickets_deleted,
         "conversations_deleted": convs_before,
         "assessors_deleted": assessors_before,
         "insights_remaining": insights_after,
         "tickets_remaining": tickets_after,
         "message": (
-            f"Limpeza concluída: {insights_before - insights_after} insights, "
-            f"{tickets_before - tickets_after} tickets, "
+            f"Limpeza concluída: {insights_deleted} insights, "
+            f"{ticket_history_deleted} histórico de tickets, "
+            f"{whatsapp_messages_deleted} mensagens WhatsApp, "
+            f"{tickets_deleted} tickets, "
             f"{convs_before} conversas e {assessors_before} assessores fictícios removidos."
         )
     }
