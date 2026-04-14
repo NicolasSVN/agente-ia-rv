@@ -749,28 +749,26 @@ async def purge_fictitious_insights(
     """
     Remove todos os dados fictícios gerados pelo seed script.
     Critério: assessor_id > 22 (IDs acima dos usuários reais cadastrados).
-    Apaga em ordem segura (respeitando FKs):
-      1. conversation_insights vinculados às conversas fictícias
-      2. conversation_tickets vinculados às conversas fictícias
-      3. conversations com assessor_id > 22
-      4. assessors com id > 22
+    Apaga em ordem FK-safe:
+      1. conversation_insights
+      2. ticket_history
+      3. whatsapp_messages
+      4. Zera active_ticket_id nas conversas fictícias
+      5. conversation_tickets
+      6. conversations
+      7. assessores (tabela correta com 'e')
     """
-    fictitious_conv_subquery = "SELECT id FROM conversations WHERE assessor_id > 22"
+    subq = "SELECT id FROM conversations WHERE assessor_id > 22"
 
     insights_before = db.query(func.count(ConversationInsight.id)).scalar() or 0
-    db.execute(text(f"""
-        DELETE FROM conversation_insights
-        WHERE conversation_id::integer IN ({fictitious_conv_subquery})
-    """))
+    db.execute(text(f"DELETE FROM conversation_insights WHERE conversation_id::integer IN ({subq})"))
+
+    db.execute(text(f"DELETE FROM ticket_history WHERE conversation_id IN ({subq})"))
+    db.execute(text(f"DELETE FROM whatsapp_messages WHERE conversation_id IN ({subq})"))
 
     tickets_before = db.query(func.count(ConversationTicket.id)).scalar() or 0
-    db.execute(text(f"""
-        UPDATE conversations SET active_ticket_id = NULL WHERE assessor_id > 22
-    """))
-    db.execute(text(f"""
-        DELETE FROM conversation_tickets
-        WHERE conversation_id IN ({fictitious_conv_subquery})
-    """))
+    db.execute(text("UPDATE conversations SET active_ticket_id = NULL WHERE assessor_id > 22"))
+    db.execute(text(f"DELETE FROM conversation_tickets WHERE conversation_id IN ({subq})"))
 
     convs_before = db.query(
         func.count(Conversation.id)
@@ -780,7 +778,7 @@ async def purge_fictitious_insights(
     assessors_before = db.query(
         func.count(Assessor.id)
     ).filter(Assessor.id > 22).scalar() or 0
-    db.execute(text("DELETE FROM assessors WHERE id > 22"))
+    db.execute(text("DELETE FROM assessores WHERE id > 22"))
 
     db.commit()
 

@@ -159,10 +159,12 @@ def _purge_fictitious_data_if_needed():
 
         subq = "SELECT id FROM conversations WHERE assessor_id > 22"
         db.execute(sql_text(f"DELETE FROM conversation_insights WHERE conversation_id::integer IN ({subq})"))
-        db.execute(sql_text(f"UPDATE conversations SET active_ticket_id = NULL WHERE assessor_id > 22"))
+        db.execute(sql_text(f"DELETE FROM ticket_history WHERE conversation_id IN ({subq})"))
+        db.execute(sql_text(f"DELETE FROM whatsapp_messages WHERE conversation_id IN ({subq})"))
+        db.execute(sql_text("UPDATE conversations SET active_ticket_id = NULL WHERE assessor_id > 22"))
         db.execute(sql_text(f"DELETE FROM conversation_tickets WHERE conversation_id IN ({subq})"))
         db.execute(sql_text("DELETE FROM conversations WHERE assessor_id > 22"))
-        db.execute(sql_text("DELETE FROM assessors WHERE id > 22"))
+        db.execute(sql_text("DELETE FROM assessores WHERE id > 22"))
         db.commit()
 
         print(f"[INIT] Purge concluído: {fictitious_count} conversas fictícias e dados relacionados removidos.")
