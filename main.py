@@ -128,6 +128,47 @@ async def run_init_background():
     except Exception as e:
         print(f"[INIT] Erro no cleanup de jobs travados: {e}")
 
+    if os.environ.get("RAILWAY_ENVIRONMENT") or os.environ.get("RAILWAY_PROJECT_ID"):
+        try:
+            _purge_fictitious_data_if_needed()
+        except Exception as e:
+            print(f"[INIT] Erro no purge de dados fictícios: {e}")
+
+
+def _purge_fictitious_data_if_needed():
+    """
+    Remove dados fictícios (assessor_id > 22) criados pelo seed script.
+    Roda apenas em produção (Railway). Idempotente — se não houver dados fictícios,
+    não faz nada. Garante que cada deploy inicie com dados limpos.
+    """
+    from database.database import SessionLocal
+    from database.models import Conversation, ConversationInsight, ConversationTicket, Assessor
+    from sqlalchemy import func as sql_func, text as sql_text
+
+    db = SessionLocal()
+    try:
+        fictitious_count = db.query(sql_func.count(Conversation.id)).filter(
+            Conversation.assessor_id > 22
+        ).scalar() or 0
+
+        if fictitious_count == 0:
+            print("[INIT] Purge: nenhum dado fictício encontrado — banco já está limpo.")
+            return
+
+        print(f"[INIT] Purge: encontradas {fictitious_count} conversas fictícias (assessor_id > 22). Iniciando limpeza...")
+
+        subq = "SELECT id FROM conversations WHERE assessor_id > 22"
+        db.execute(sql_text(f"DELETE FROM conversation_insights WHERE conversation_id::integer IN ({subq})"))
+        db.execute(sql_text(f"UPDATE conversations SET active_ticket_id = NULL WHERE assessor_id > 22"))
+        db.execute(sql_text(f"DELETE FROM conversation_tickets WHERE conversation_id IN ({subq})"))
+        db.execute(sql_text("DELETE FROM conversations WHERE assessor_id > 22"))
+        db.execute(sql_text("DELETE FROM assessors WHERE id > 22"))
+        db.commit()
+
+        print(f"[INIT] Purge concluído: {fictitious_count} conversas fictícias e dados relacionados removidos.")
+    finally:
+        db.close()
+
 
 def _cleanup_stale_processing_jobs():
     """Marca jobs travados em 'processing' (>30min sem update) como 'failed'."""
@@ -892,6 +933,78 @@ async def insights_page(request: Request):
     if os.path.exists(react_insights_index):
         with open(react_insights_index, "r") as f:
             content = f.read()
+        if user_role == "admin":
+            nonce = getattr(request.state, "csp_nonce", "")
+            admin_snippet = f"""
+<div id="admin-purge-panel" style="position:fixed;bottom:24px;right:24px;z-index:9999;">
+  <button id="btnAdminPurge" title="Limpar dados fictícios (Admin)"
+    style="background:#8b4513;color:#fff;border:none;border-radius:12px;padding:10px 18px;
+           font-size:0.85rem;font-weight:600;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,0.2);
+           display:flex;align-items:center;gap:8px;">
+    <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+    </svg>
+    Limpar dados fictícios
+  </button>
+</div>
+<div id="admin-purge-modal" style="display:none;position:fixed;inset:0;z-index:10000;
+     background:rgba(0,0,0,0.5);align-items:center;justify-content:center;">
+  <div style="background:#fff;border-radius:16px;padding:32px;max-width:440px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,0.3);">
+    <h3 style="margin:0 0 12px;font-size:1.1rem;font-weight:700;color:#1a1a2e;">Limpar dados fictícios</h3>
+    <p style="margin:0 0 24px;color:#666;font-size:0.9rem;line-height:1.5;">
+      Esta ação remove <strong>permanentemente</strong> todos os registros gerados pelo seed script
+      (assessor_id &gt; 22): insights, tickets, conversas e assessores fictícios.<br><br>
+      Esta operação é <strong>irreversível</strong>. Confirmar?
+    </p>
+    <div style="display:flex;gap:12px;justify-content:flex-end;">
+      <button id="btnPurgeCancel"
+        style="padding:10px 20px;border:1px solid #ddd;border-radius:8px;background:#fff;cursor:pointer;font-size:0.9rem;">
+        Cancelar
+      </button>
+      <button id="btnPurgeConfirm"
+        style="padding:10px 20px;border:none;border-radius:8px;background:#8b4513;color:#fff;cursor:pointer;font-size:0.9rem;font-weight:600;">
+        Confirmar limpeza
+      </button>
+    </div>
+  </div>
+</div>
+<script nonce="{nonce}">
+(function() {{
+  var btn = document.getElementById('btnAdminPurge');
+  var modal = document.getElementById('admin-purge-modal');
+  var cancelBtn = document.getElementById('btnPurgeCancel');
+  var confirmBtn = document.getElementById('btnPurgeConfirm');
+  if (!btn) return;
+  btn.addEventListener('click', function() {{
+    modal.style.display = 'flex';
+  }});
+  cancelBtn.addEventListener('click', function() {{
+    modal.style.display = 'none';
+  }});
+  confirmBtn.addEventListener('click', function() {{
+    confirmBtn.textContent = 'Limpando...';
+    confirmBtn.disabled = true;
+    fetch('/api/insights/admin/purge-fictitious', {{method: 'POST', credentials: 'include'}})
+      .then(function(r) {{ return r.json(); }})
+      .then(function(data) {{
+        modal.style.display = 'none';
+        var msg = data.message || 'Limpeza concluída.';
+        alert(msg);
+        window.location.reload();
+      }})
+      .catch(function(e) {{
+        modal.style.display = 'none';
+        alert('Erro ao executar limpeza: ' + e.message);
+      }})
+      .finally(function() {{
+        confirmBtn.textContent = 'Confirmar limpeza';
+        confirmBtn.disabled = false;
+      }});
+  }});
+}})();
+</script>"""
+            content = content.replace("</body>", admin_snippet + "\n</body>")
         return HTMLResponse(content=content)
     else:
         return templates.TemplateResponse("insights.html", {"request": request, "user_role": user_role})

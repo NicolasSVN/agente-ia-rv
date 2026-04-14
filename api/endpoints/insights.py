@@ -12,7 +12,8 @@ import json
 from database.database import get_db
 from database.models import (
     ConversationInsight, Assessor, Campaign, CampaignDispatch,
-    Ticket, User, UserRole, Conversation, TicketStatusV2, EscalationLevel
+    Ticket, User, UserRole, Conversation, TicketStatusV2, EscalationLevel,
+    ConversationTicket
 )
 from api.endpoints.auth import get_current_user
 
@@ -736,25 +737,56 @@ async def purge_fictitious_insights(
     current_user: User = Depends(require_gestao_or_admin)
 ):
     """
-    Remove registros fictícios de conversation_insights.
-    Critério: conversas vinculadas a assessor_id > 22 (usuários não existentes).
-    Retorna o número de registros deletados e o total restante.
+    Remove todos os dados fictícios gerados pelo seed script.
+    Critério: assessor_id > 22 (IDs acima dos usuários reais cadastrados).
+    Apaga em ordem segura (respeitando FKs):
+      1. conversation_insights vinculados às conversas fictícias
+      2. conversation_tickets vinculados às conversas fictícias
+      3. conversations com assessor_id > 22
+      4. assessors com id > 22
     """
-    count_before = db.query(func.count(ConversationInsight.id)).scalar() or 0
+    fictitious_conv_subquery = "SELECT id FROM conversations WHERE assessor_id > 22"
 
-    db.execute(text("""
+    insights_before = db.query(func.count(ConversationInsight.id)).scalar() or 0
+    db.execute(text(f"""
         DELETE FROM conversation_insights
-        WHERE conversation_id::integer IN (
-            SELECT id FROM conversations WHERE assessor_id > 22
-        )
+        WHERE conversation_id::integer IN ({fictitious_conv_subquery})
     """))
+
+    tickets_before = db.query(func.count(ConversationTicket.id)).scalar() or 0
+    db.execute(text(f"""
+        UPDATE conversations SET active_ticket_id = NULL WHERE assessor_id > 22
+    """))
+    db.execute(text(f"""
+        DELETE FROM conversation_tickets
+        WHERE conversation_id IN ({fictitious_conv_subquery})
+    """))
+
+    convs_before = db.query(
+        func.count(Conversation.id)
+    ).filter(Conversation.assessor_id > 22).scalar() or 0
+    db.execute(text("DELETE FROM conversations WHERE assessor_id > 22"))
+
+    assessors_before = db.query(
+        func.count(Assessor.id)
+    ).filter(Assessor.id > 22).scalar() or 0
+    db.execute(text("DELETE FROM assessors WHERE id > 22"))
+
     db.commit()
 
-    count_after = db.query(func.count(ConversationInsight.id)).scalar() or 0
-    deleted = count_before - count_after
+    insights_after = db.query(func.count(ConversationInsight.id)).scalar() or 0
+    tickets_after = db.query(func.count(ConversationTicket.id)).scalar() or 0
 
     return {
-        "deleted": deleted,
-        "remaining": count_after,
-        "message": f"{deleted} registros fictícios removidos. {count_after} registros reais preservados."
+        "insights_deleted": insights_before - insights_after,
+        "tickets_deleted": tickets_before - tickets_after,
+        "conversations_deleted": convs_before,
+        "assessors_deleted": assessors_before,
+        "insights_remaining": insights_after,
+        "tickets_remaining": tickets_after,
+        "message": (
+            f"Limpeza concluída: {insights_before - insights_after} insights, "
+            f"{tickets_before - tickets_after} tickets, "
+            f"{convs_before} conversas e {assessors_before} assessores fictícios removidos."
+        )
     }
