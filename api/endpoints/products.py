@@ -345,7 +345,12 @@ async def list_products(
         )
     
     if category:
-        query = query.filter(Product.category == category)
+        query = query.filter(
+            or_(
+                Product.category == category,
+                Product.categories.like(f'%"{category}"%')
+            )
+        )
     
     if status:
         query = query.filter(Product.status == status)
@@ -569,7 +574,7 @@ async def update_product(
     if data.categories is not None:
         product.set_categories(data.categories)
     elif data.category is not None:
-        product.category = data.category
+        product.set_categories([data.category])
     if data.status is not None:
         product.status = data.status
     if data.description is not None:
