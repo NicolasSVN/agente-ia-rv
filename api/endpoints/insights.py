@@ -148,17 +148,56 @@ async def get_metrics(
     ai_windows = total_windows - human_windows
     ai_resolution_rate = (ai_windows / total_windows * 100) if total_windows > 0 else 0
 
-    campaign_query = db.query(Campaign).filter(
-        Campaign.created_at >= date_start,
-        Campaign.created_at <= date_end
-    )
-    total_campaigns = campaign_query.count()
+    demo_filters_active = any([macro_area, unidade, broker, equipe])
 
-    dispatch_query = db.query(CampaignDispatch).join(Campaign).filter(
-        Campaign.created_at >= date_start,
-        Campaign.created_at <= date_end,
-        CampaignDispatch.status == "sent"
-    )
+    if demo_filters_active:
+        camp_sq = db.query(distinct(CampaignDispatch.campaign_id)).join(
+            Assessor, CampaignDispatch.assessor_email == Assessor.email
+        ).join(
+            Campaign, CampaignDispatch.campaign_id == Campaign.id
+        ).filter(
+            Campaign.created_at >= date_start,
+            Campaign.created_at <= date_end
+        )
+        if macro_area:
+            camp_sq = camp_sq.filter(Assessor.macro_area == macro_area)
+        if unidade:
+            camp_sq = camp_sq.filter(Assessor.unidade == unidade)
+        if broker:
+            camp_sq = camp_sq.filter(Assessor.broker_responsavel == broker)
+        if equipe:
+            camp_sq = camp_sq.filter(Assessor.equipe == equipe)
+        total_campaigns = camp_sq.count()
+    else:
+        total_campaigns = db.query(Campaign).filter(
+            Campaign.created_at >= date_start,
+            Campaign.created_at <= date_end
+        ).count()
+
+    if demo_filters_active:
+        dispatch_query = db.query(CampaignDispatch).join(
+            Campaign, CampaignDispatch.campaign_id == Campaign.id
+        ).join(
+            Assessor, CampaignDispatch.assessor_email == Assessor.email
+        ).filter(
+            Campaign.created_at >= date_start,
+            Campaign.created_at <= date_end,
+            CampaignDispatch.status == "sent"
+        )
+        if macro_area:
+            dispatch_query = dispatch_query.filter(Assessor.macro_area == macro_area)
+        if unidade:
+            dispatch_query = dispatch_query.filter(Assessor.unidade == unidade)
+        if broker:
+            dispatch_query = dispatch_query.filter(Assessor.broker_responsavel == broker)
+        if equipe:
+            dispatch_query = dispatch_query.filter(Assessor.equipe == equipe)
+    else:
+        dispatch_query = db.query(CampaignDispatch).join(Campaign).filter(
+            Campaign.created_at >= date_start,
+            Campaign.created_at <= date_end,
+            CampaignDispatch.status == "sent"
+        )
     total_assessors_reached = dispatch_query.with_entities(
         func.count(distinct(CampaignDispatch.assessor_id))
     ).scalar() or 0
@@ -767,11 +806,16 @@ async def get_ticket_metrics(
         if time_saved_list:
             avg_time_saved = sum(time_saved_list) / len(time_saved_list) / 60
     
-    total_conversations_period = db.query(func.count(Conversation.id)).filter(
+    total_conv_q = db.query(func.count(Conversation.id)).filter(
         Conversation.created_at >= date_start,
         Conversation.created_at <= date_end
-    ).scalar() or 0
-    
+    )
+    if assessor_join_needed:
+        total_conv_q = total_conv_q.join(
+            Assessor, Conversation.assessor_id == Assessor.id
+        ).filter(*assessor_filters)
+    total_conversations_period = total_conv_q.scalar() or 0
+
     bot_resolution_rate = (bot_resolved_count / total_conversations_period * 100) if total_conversations_period > 0 else 0
     
     daily_volume_query = db.query(
