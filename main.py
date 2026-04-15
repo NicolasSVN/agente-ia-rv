@@ -68,6 +68,8 @@ async def run_init_background():
                 files, insights, search, trusted_sources, costs, health)
 
     try:
+        from api.endpoints import recommendations as recommendations_mod
+
         (auth, users, tickets, whatsapp_webhook, integrations, agent_config,
          assessores, campaigns, knowledge, agent_test, conversations, products,
          files, insights, search, trusted_sources, costs, health) = await asyncio.to_thread(_import_endpoint_modules)
@@ -91,6 +93,8 @@ async def run_init_background():
         app.include_router(trusted_sources.router)
         app.include_router(costs.router)
         app.include_router(health.router)
+        app.include_router(recommendations_mod.router)
+        app.include_router(recommendations_mod.page_router)
         print("[INIT] Routers registrados com sucesso.")
     except Exception as e:
         print(f"[INIT] Erro ao registrar routers: {e}")
@@ -353,6 +357,38 @@ def _apply_incremental_migrations():
              AND whatsapp_messages.chat_id LIKE '%@%'
              AND c.phone = REGEXP_REPLACE(whatsapp_messages.chat_id, '@[a-z.]+$', '', 'g')
         """,
+        # Sub-A: limpar gestora names incorretamente copiados para categories (Task #98)
+        """UPDATE products SET categories = '[]', category = NULL
+           WHERE categories IN (
+             '["Manatí Capital Management"]',
+             '["BTG Pactual"]',
+             '["Guardian Gestora"]',
+             '["BTG Pactual Gestora"]',
+             '["XP Asset"]',
+             '["Kinea"]',
+             '["RBR Asset"]',
+             '["Hedge"]',
+             '["Iridium"]',
+             '["Vinci"]',
+             '["TRX"]',
+             '["Habitus"]'
+           )""",
+        # Sub-B: tabela de recomendações formais do Comitê SVN (Task #98)
+        """CREATE TABLE IF NOT EXISTS recommendation_entries (
+            id SERIAL PRIMARY KEY,
+            product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+            rating VARCHAR(30),
+            target_price FLOAT,
+            rationale TEXT,
+            added_by VARCHAR(255),
+            added_at TIMESTAMPTZ DEFAULT NOW(),
+            valid_from TIMESTAMPTZ DEFAULT NOW(),
+            valid_until TIMESTAMPTZ,
+            is_active BOOLEAN DEFAULT TRUE,
+            notes TEXT
+        )""",
+        "CREATE INDEX IF NOT EXISTS ix_recommendation_entries_product ON recommendation_entries(product_id)",
+        "CREATE INDEX IF NOT EXISTS ix_recommendation_entries_active ON recommendation_entries(is_active)",
     ]
     db = SessionLocal()
     try:

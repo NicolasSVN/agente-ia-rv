@@ -812,6 +812,7 @@ class Product(Base):
     creator = relationship("User", foreign_keys=[created_by])
     materials = relationship("Material", back_populates="product", cascade="all, delete-orphan")
     scripts = relationship("WhatsAppScript", back_populates="product", cascade="all, delete-orphan")
+    recommendation_entries = relationship("RecommendationEntry", back_populates="product", cascade="all, delete-orphan")
 
     def get_aliases(self):
         import json
@@ -1396,6 +1397,30 @@ class CampaignDailyLog(Base):
     responded_count = Column(Integer, default=0)
 
     campaign = relationship("CadenceCampaign", back_populates="daily_logs")
+
+
+class RecommendationEntry(Base):
+    """
+    Registro formal de que um produto está na lista de recomendações do Comitê SVN.
+    É a fonte de verdade para 'quais produtos estão no comitê hoje'.
+    Complementa (não substitui) os materiais/content_blocks — estes continuam sendo
+    a fonte dos detalhes analíticos.
+    """
+    __tablename__ = "recommendation_entries"
+
+    id = Column(Integer, primary_key=True, index=True)
+    product_id = Column(Integer, ForeignKey("products.id", ondelete="CASCADE"), nullable=False, index=True)
+    rating = Column(String(30), nullable=True)       # "Compra" | "Manutenção" | "Venda"
+    target_price = Column(Float, nullable=True)      # Preço-alvo (opcional)
+    rationale = Column(Text, nullable=True)          # Justificativa curta
+    added_by = Column(String(255), nullable=True)    # email do gestor
+    added_at = Column(DateTime, default=datetime.utcnow)
+    valid_from = Column(DateTime, default=datetime.utcnow)
+    valid_until = Column(DateTime, nullable=True)    # None = sem expiração definida
+    is_active = Column(Boolean, default=True)
+    notes = Column(Text, nullable=True)
+
+    product = relationship("Product", back_populates="recommendation_entries")
 
 
 class RevokedToken(Base):

@@ -11,10 +11,15 @@ def build_system_prompt_v2(
     assessor_data: dict = None,
     available_materials: list = None,
     active_campaigns: list = None,
+    committee_entries: list = None,
 ) -> str:
     """
     Monta o system prompt completo para o Pipeline V2.
     Dados do assessor e materiais vão no system prompt (não no user turn).
+    
+    Args:
+        committee_entries: Lista de dicts com produtos no comitê ativo SVN.
+                          Cada item: {product_name, ticker, manager, rating, target_price, valid_until, rationale}
     """
     parts = [
         _get_identity(),
@@ -25,6 +30,9 @@ def build_system_prompt_v2(
         _get_derivatives_rules(),
         _get_temporal_context(),
     ]
+
+    if committee_entries is not None:
+        parts.append(_get_committee_context(committee_entries))
 
     if config:
         parts.append(_get_config_additions(config))
@@ -39,6 +47,78 @@ def build_system_prompt_v2(
         parts.append(_get_active_campaigns_context(active_campaigns))
 
     return "\n\n".join(p for p in parts if p)
+
+
+def _get_committee_context(committee_entries: list) -> str:
+    """
+    Injeta a lista atual de produtos no Comitê SVN ativo no system prompt.
+    Permite que o agente responda corretamente sobre qualquer produto sem precisar
+    de keywords de ativação — o conhecimento do comitê é proativo.
+    """
+    if not committee_entries:
+        return """=== CARTEIRA DO COMITÊ SVN ===
+SITUAÇÃO ATUAL: Não há produtos formalmente cadastrados no Comitê SVN neste momento.
+
+REGRA CRÍTICA: Não existe nenhum produto formalmente recomendado pelo Comitê SVN no sistema.
+É PROIBIDO usar linguagem de recomendação formal ("a SVN recomenda", "está no comitê", "produto do mês") para qualquer ativo.
+Qualquer informação sobre ativos deve ser apresentada como analítica/informativa, não como recomendação oficial.
+Se perguntado sobre recomendações, informe que o comitê não tem recomendações ativas cadastradas e sugira contato com o broker responsável.
+=============================="""
+
+    lines = []
+    for e in committee_entries:
+        name = e.get("product_name", "")
+        ticker = e.get("ticker", "")
+        manager = e.get("manager", "")
+        rating = e.get("rating", "")
+        target_price = e.get("target_price")
+        valid_until = e.get("valid_until", "")
+        rationale = e.get("rationale", "")
+
+        display = f"• {name}"
+        if ticker:
+            display += f" ({ticker})"
+        if manager:
+            display += f" — Gestora: {manager}"
+        if rating:
+            display += f" | Rating: {rating}"
+        if target_price:
+            display += f" | Preço-alvo: R${target_price:.2f}"
+        if valid_until:
+            display += f" | Válido até: {valid_until}"
+        else:
+            display += " | Vigente (sem prazo)"
+        if rationale:
+            display += f"\n  Tese: {rationale}"
+        lines.append(display)
+
+    committee_list = "\n".join(lines)
+
+    return f"""=== CARTEIRA DO COMITÊ SVN (RECOMENDAÇÕES ATIVAS) ===
+Os produtos abaixo são as recomendações FORMAIS e VIGENTES do Comitê de Investimentos da SVN:
+
+{committee_list}
+
+REGRAS DE USO DESTA LISTA (ABSOLUTAS E INVIOLÁVEIS):
+
+1. PRODUTOS NESTA LISTA → use framing de recomendação formal:
+   - Sempre mencione que é uma recomendação do Comitê SVN ao responder sobre qualquer um desses ativos
+   - Use o rating e preço-alvo cadastrados quando disponíveis
+   - Formato de resposta: "✅ [PRODUTO] — Recomendação do Comitê SVN | Rating: [X] | Preço-alvo: R$[Y] | [análise]"
+   - Isso se aplica MESMO que o assessor não use a palavra "recomendação" — se perguntar qualquer coisa sobre um desses ativos, informe que é uma recomendação formal
+
+2. PRODUTOS FORA DESTA LISTA → use framing informativo explícito:
+   - Nunca use linguagem de recomendação formal para produtos não listados
+   - Ao responder, inclua: "ℹ️ [PRODUTO] — este ativo não está na lista de recomendações formais do Comitê SVN. As informações abaixo são analíticas e não constituem recomendação de investimento."
+   - Você pode informar, analisar e fazer pitch — mas não pode recomendar formalmente
+
+3. QUANDO PERGUNTADO "o que vocês recomendam?" ou similar:
+   - Liste todos os produtos desta carteira com seus ratings e preços-alvo
+   - Nunca invente produtos que não estejam nesta lista
+
+4. FONTE DE VERDADE: Esta lista é a única fonte de verdade para recomendações formais.
+   Documentos analíticos (research, one_page, apresentações) são informativos, não conferem status de recomendação.
+======================================================"""
 
 
 def _get_identity() -> str:

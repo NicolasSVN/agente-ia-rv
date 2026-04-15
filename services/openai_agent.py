@@ -2157,6 +2157,32 @@ REGRAS PARA INFORMAÇÕES DA INTERNET:
                 else False
             )
 
+            # Proatividade: verificar se os produtos mencionados estão no comitê
+            # (sem precisar de keywords explícitas como "recomendação")
+            if not is_comite_query and extracted_products:
+                try:
+                    committee_ids = vs.get_active_committee_product_ids()
+                    if committee_ids:
+                        from database.database import SessionLocal as _SL_check
+                        _db_check = _SL_check()
+                        try:
+                            from database.models import Product as _PCheck
+                            from sqlalchemy import or_ as _or_check
+                            matched = _db_check.query(_PCheck).filter(
+                                _PCheck.id.in_(committee_ids),
+                                _or_check(
+                                    *[_PCheck.name.ilike(f"%{p}%") for p in extracted_products] +
+                                    [_PCheck.ticker.ilike(p) for p in extracted_products if len(p) >= 4]
+                                )
+                            ).first()
+                            if matched:
+                                is_comite_query = True
+                                print(f"[OpenAI] Proativo: '{matched.name}' está no Comitê — ativando busca de recomendações")
+                        finally:
+                            _db_check.close()
+                except Exception as e_proactive:
+                    print(f"[OpenAI] Erro na verificação proativa do comitê: {e_proactive}")
+
             if not is_comite_query:
                 comite_keywords = [
                     # Comitê explícito
@@ -2908,11 +2934,26 @@ INSTRUÇÕES IMPORTANTES:
             except Exception as e:
                 print(f"[V2] Erro ao buscar campanhas ativas: {e}")
 
+        # Carregar comitê ativo — injetado no system prompt para proatividade bidirecional
+        committee_entries = []
+        try:
+            from services.vector_store import get_vector_store as _get_vs_committee
+            vs_for_committee = _get_vs_committee()
+            committee_entries = vs_for_committee.get_committee_summary()
+            if committee_entries:
+                print(f"[V2] Comitê ativo: {len(committee_entries)} produtos injetados no system prompt")
+            else:
+                print("[V2] Comitê vazio — agente informará ausência de recomendações formais")
+        except Exception as e:
+            print(f"[V2] Erro ao carregar comitê: {e}")
+            committee_entries = []
+
         system_prompt = build_system_prompt_v2(
             config=config,
             assessor_data=assessor_data,
             available_materials=available_materials,
             active_campaigns=active_campaigns,
+            committee_entries=committee_entries,
         )
 
         from services.conversation_memory import build_conversation_state_block, build_context_dedup_instruction

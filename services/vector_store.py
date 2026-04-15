@@ -1449,95 +1449,283 @@ class VectorStore:
         finally:
             db.close()
     
+    def get_active_committee_product_ids(self) -> List[int]:
+        """
+        Retorna product_ids de produtos atualmente no Comitê SVN (via recommendation_entries).
+        Usado para verificação proativa no pipeline do agente.
+        """
+        from database.database import SessionLocal
+        from datetime import datetime
+        db = SessionLocal()
+        try:
+            from sqlalchemy import text as sql_text, or_
+            now = datetime.utcnow()
+            try:
+                from database.models import RecommendationEntry
+                entries = db.query(RecommendationEntry.product_id).filter(
+                    RecommendationEntry.is_active == True,
+                ).filter(
+                    or_(
+                        RecommendationEntry.valid_until == None,
+                        RecommendationEntry.valid_until >= now
+                    )
+                ).all()
+                ids_from_entries = [row[0] for row in entries]
+            except Exception:
+                ids_from_entries = []
+
+            # Fallback: produtos com "Comitê" em categories (marcação manual)
+            from database.models import Product
+            manual = db.query(Product.id).filter(
+                or_(
+                    Product.categories.like('%"Comitê"%'),
+                    Product.categories.like('%"comite"%'),
+                )
+            ).all()
+            ids_from_cats = [row[0] for row in manual]
+
+            return list(set(ids_from_entries + ids_from_cats))
+        except Exception as e:
+            print(f"[VECTOR_STORE] Erro ao buscar product_ids do Comitê: {e}")
+            return []
+        finally:
+            db.close()
+
+    def get_committee_summary(self) -> List[dict]:
+        """
+        Retorna resumo estruturado do comitê ativo para injeção no system prompt.
+        Cada item: {product_name, ticker, manager, rating, target_price, valid_until}
+        """
+        from database.database import SessionLocal
+        from datetime import datetime
+        from sqlalchemy import or_
+        db = SessionLocal()
+        try:
+            now = datetime.utcnow()
+            try:
+                from database.models import RecommendationEntry, Product
+                entries = db.query(RecommendationEntry).filter(
+                    RecommendationEntry.is_active == True,
+                ).filter(
+                    or_(
+                        RecommendationEntry.valid_until == None,
+                        RecommendationEntry.valid_until >= now
+                    )
+                ).all()
+
+                result = []
+                seen = set()
+                for e in entries:
+                    if e.product_id in seen:
+                        continue
+                    seen.add(e.product_id)
+                    prod = db.query(Product).filter(Product.id == e.product_id).first()
+                    if not prod:
+                        continue
+                    result.append({
+                        "product_name": prod.name,
+                        "ticker": prod.ticker or "",
+                        "manager": prod.manager or "",
+                        "rating": e.rating or "",
+                        "target_price": e.target_price,
+                        "valid_until": e.valid_until.strftime("%d/%m/%Y") if e.valid_until else "",
+                        "rationale": e.rationale or "",
+                    })
+
+                # Fallback: produtos com "Comitê" em categories mas sem entry formal
+                from database.models import Product
+                manual = db.query(Product).filter(
+                    or_(
+                        Product.categories.like('%"Comitê"%'),
+                        Product.categories.like('%"comite"%'),
+                    )
+                ).all()
+                for p in manual:
+                    if p.id not in seen:
+                        result.append({
+                            "product_name": p.name,
+                            "ticker": p.ticker or "",
+                            "manager": p.manager or "",
+                            "rating": "",
+                            "target_price": None,
+                            "valid_until": "",
+                            "rationale": "",
+                        })
+                return result
+            except Exception as inner_e:
+                print(f"[VECTOR_STORE] Erro ao buscar resumo do comitê: {inner_e}")
+                return []
+        except Exception as e:
+            print(f"[VECTOR_STORE] Erro ao buscar comitê summary: {e}")
+            return []
+        finally:
+            db.close()
+
     def search_comite_vigent(self, query: str = "", n_results: int = 20) -> List[dict]:
         """
-        Busca materiais de tipo 'comite' vigentes (dentro da data de validade).
-        Retorna EXCLUSIVAMENTE materiais com material_type='comite' — não inclui
-        research, one_page, apresentação ou outros tipos informativos.
+        Busca materiais vigentes de produtos que estão no Comitê SVN ativo.
         
-        Returns:
-            Lista de documentos do Comitê vigentes com marcação [COMITÊ]
+        Fonte de verdade primária: tabela `recommendation_entries` (is_active=True, não expirado).
+        Fallback: Product.categories contendo 'Comitê' (para produtos marcados manualmente).
+        
+        Retorna content_blocks de todos os materiais publicados dos produtos no comitê,
+        enriquecidos com metadados da recomendação (rating, preço-alvo, vigência).
         """
         from database.database import SessionLocal
         from database.models import Product, Material, ContentBlock, MaterialStatus
         from datetime import datetime
+        from sqlalchemy import or_
         
         db = SessionLocal()
         try:
             now = datetime.utcnow()
-            from sqlalchemy import or_
-            
-            vigent_materials = db.query(Material).join(Product).filter(
+
+            # 1. Obter product_ids do comitê via recommendation_entries (fonte primária)
+            committee_product_ids = []
+            recommendation_map = {}  # product_id → entry metadata
+            try:
+                from database.models import RecommendationEntry
+                entries = db.query(RecommendationEntry).filter(
+                    RecommendationEntry.is_active == True,
+                ).filter(
+                    or_(
+                        RecommendationEntry.valid_until == None,
+                        RecommendationEntry.valid_until >= now
+                    )
+                ).all()
+                for e in entries:
+                    committee_product_ids.append(e.product_id)
+                    recommendation_map[e.product_id] = {
+                        "rating": e.rating or "",
+                        "target_price": e.target_price,
+                        "valid_until": e.valid_until.strftime("%d/%m/%Y") if e.valid_until else "",
+                        "rationale": e.rationale or "",
+                    }
+            except Exception as inner_e:
+                print(f"[VECTOR_STORE] recommendation_entries não disponível: {inner_e}")
+
+            # 2. Fallback: Product.categories com "Comitê" (marcação manual)
+            manual_products = db.query(Product).filter(
                 or_(
-                    Material.material_type == 'comite',
                     Product.categories.like('%"Comitê"%'),
                     Product.categories.like('%"comite"%'),
-                    Product.categories.like('%"Comite"%'),
-                ),
+                )
+            ).all()
+            for p in manual_products:
+                if p.id not in committee_product_ids:
+                    committee_product_ids.append(p.id)
+                    if p.id not in recommendation_map:
+                        recommendation_map[p.id] = {
+                            "rating": "", "target_price": None, "valid_until": "", "rationale": ""
+                        }
+
+            # 3. Backward compat: materiais com material_type='comite' (legado)
+            legacy_mats = db.query(Material).filter(
+                Material.material_type == 'comite',
+                Material.publish_status == MaterialStatus.PUBLISHED.value,
+            ).all()
+            for m in legacy_mats:
+                if m.product_id and m.product_id not in committee_product_ids:
+                    committee_product_ids.append(m.product_id)
+                    if m.product_id not in recommendation_map:
+                        recommendation_map[m.product_id] = {
+                            "rating": "", "target_price": None,
+                            "valid_until": m.valid_until.strftime("%d/%m/%Y") if m.valid_until else "",
+                            "rationale": ""
+                        }
+
+            committee_product_ids = list(set(committee_product_ids))
+
+            if not committee_product_ids:
+                print("[VECTOR_STORE] Nenhum produto no Comitê ativo encontrado")
+                return []
+
+            print(f"[VECTOR_STORE] Comitê: {len(committee_product_ids)} produtos ativos")
+
+            # 3. Buscar materiais publicados desses produtos
+            vigent_materials = db.query(Material).filter(
+                Material.product_id.in_(committee_product_ids),
                 Material.publish_status == MaterialStatus.PUBLISHED.value,
                 or_(
                     Material.valid_until.is_(None),
                     Material.valid_until >= now
                 )
             ).all()
-            
+
             if not vigent_materials:
-                print("[VECTOR_STORE] Nenhum material do Comitê vigente encontrado")
+                print("[VECTOR_STORE] Produtos no Comitê encontrados, mas sem materiais publicados vigentes")
                 return []
-            
+
             material_ids = [m.id for m in vigent_materials]
-            material_map = {}
-            for m in vigent_materials:
-                material_map[m.id] = m
-            
+            material_map = {m.id: m for m in vigent_materials}
+
+            # 4. Buscar content_blocks aprovados
             blocks = db.query(ContentBlock).filter(
                 ContentBlock.material_id.in_(material_ids),
                 ContentBlock.status.in_(['auto_approved', 'approved'])
             ).order_by(ContentBlock.material_id, ContentBlock.order).all()
-            
+
             if not blocks:
-                print("[VECTOR_STORE] Materiais vigentes encontrados, mas sem blocos de conteúdo")
+                print("[VECTOR_STORE] Materiais vigentes do Comitê sem blocos aprovados")
                 return []
-            
+
+            # 5. Montar documentos enriquecidos
             documents = []
             for block in blocks:
                 material = material_map.get(block.material_id)
                 if not material:
                     continue
-                
+
                 product = material.product
-                is_comite_type = True  # garantido pelo filtro material_type == 'comite'
-                
-                valid_until_str = material.valid_until.strftime("%d/%m/%Y") if material.valid_until else ""
-                
+                product_id = product.id if product else None
+                rec_meta = recommendation_map.get(product_id, {})
+
+                rating = rec_meta.get("rating", "")
+                target_price = rec_meta.get("target_price")
+                valid_until_str = rec_meta.get("valid_until") or (
+                    material.valid_until.strftime("%d/%m/%Y") if material.valid_until else ""
+                )
+                rationale = rec_meta.get("rationale", "")
+
+                rating_str = f" | Rating: {rating}" if rating else ""
+                price_str = f" | Preço-alvo: R${target_price:.2f}" if target_price else ""
+                valid_str = f" | Válido até {valid_until_str}" if valid_until_str else " | Vigente sem prazo"
+                rationale_str = f" | Tese: {rationale}" if rationale else ""
+
                 content = block.content or ""
-                enriched_content = f"[COMITÊ] (Válido até {valid_until_str}) {content}"
-                
+                enriched_content = (
+                    f"[COMITÊ]{rating_str}{price_str}{valid_str}{rationale_str}\n{content}"
+                )
+
                 metadata = {
                     "product_name": product.name if product else "",
                     "product_ticker": product.ticker if product else "",
+                    "product_id": product_id,
                     "gestora": product.manager if product else "",
-                    "category": product.category if product else "",
                     "material_type": material.material_type,
                     "material_name": material.name or "",
                     "valid_until": valid_until_str,
-                    "is_comite": is_comite_type,
+                    "rating": rating,
+                    "target_price": target_price,
+                    "is_comite": True,
                     "block_type": block.block_type,
                     "publish_status": material.publish_status,
                 }
-                
+
                 documents.append({
                     "content": enriched_content,
                     "metadata": metadata,
-                    "distance": 0.1,
+                    "distance": 0.05,
                     "source": "comite_vigent"
                 })
-            
-            print(f"[VECTOR_STORE] Comitê: {len(documents)} blocos vigentes de {len(vigent_materials)} materiais")
+
+            print(f"[VECTOR_STORE] Comitê: {len(documents)} blocos de {len(vigent_materials)} materiais de {len(committee_product_ids)} produtos")
             return documents[:n_results]
-            
+
         except Exception as e:
             print(f"[VECTOR_STORE] Erro na busca de Comitê vigente: {e}")
+            import traceback
+            traceback.print_exc()
             return []
         finally:
             db.close()
