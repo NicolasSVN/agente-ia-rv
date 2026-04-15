@@ -1469,7 +1469,7 @@ class VectorStore:
                         RecommendationEntry.valid_until == None,
                         RecommendationEntry.valid_until >= now
                     )
-                ).all()
+                ).order_by(RecommendationEntry.added_at.desc()).distinct().all()
                 ids_from_entries = [row[0] for row in entries]
             except Exception:
                 ids_from_entries = []
@@ -1511,7 +1511,7 @@ class VectorStore:
                         RecommendationEntry.valid_until == None,
                         RecommendationEntry.valid_until >= now
                     )
-                ).all()
+                ).order_by(RecommendationEntry.added_at.desc()).all()
 
                 result = []
                 seen = set()

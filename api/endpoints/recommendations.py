@@ -99,7 +99,9 @@ async def list_recommendations(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Lista recomendações do comitê. Por padrão retorna apenas ativas e vigentes."""
+    """Lista recomendações do comitê. Restrito a admin e gestão RV."""
+    if current_user.role not in ["admin", "gestao_rv"]:
+        raise HTTPException(status_code=403, detail="Acesso restrito a admin e gestão RV")
     now = datetime.utcnow()
     q = db.query(RecommendationEntry)
 
@@ -121,7 +123,9 @@ async def check_recommendation(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Verifica se um produto está atualmente no comitê."""
+    """Verifica se um produto está atualmente no comitê. Restrito a admin e gestão RV."""
+    if current_user.role not in ["admin", "gestao_rv"]:
+        raise HTTPException(status_code=403, detail="Acesso restrito a admin e gestão RV")
     now = datetime.utcnow()
     entry = db.query(RecommendationEntry).filter(
         RecommendationEntry.product_id == product_id,

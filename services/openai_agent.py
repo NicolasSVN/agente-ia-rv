@@ -2157,29 +2157,24 @@ REGRAS PARA INFORMAÇÕES DA INTERNET:
                 else False
             )
 
-            # Proatividade: verificar se os produtos mencionados estão no comitê
-            # (sem precisar de keywords explícitas como "recomendação")
-            if not is_comite_query and extracted_products:
+            # Proatividade: EntityResolver resolve os produtos da query para product_ids,
+            # interseccionamos com os IDs do comitê ativo para detecção sem keywords explícitas.
+            if not is_comite_query:
                 try:
                     committee_ids = vs.get_active_committee_product_ids()
                     if committee_ids:
-                        from database.database import SessionLocal as _SL_check
-                        _db_check = _SL_check()
+                        from services.semantic_search import EntityResolver as _ER
+                        from database.database import SessionLocal as _SL_proactive
+                        _db_proactive = _SL_proactive()
                         try:
-                            from database.models import Product as _PCheck
-                            from sqlalchemy import or_ as _or_check
-                            matched = _db_check.query(_PCheck).filter(
-                                _PCheck.id.in_(committee_ids),
-                                _or_check(
-                                    *[_PCheck.name.ilike(f"%{p}%") for p in extracted_products] +
-                                    [_PCheck.ticker.ilike(p) for p in extracted_products if len(p) >= 4]
-                                )
-                            ).first()
-                            if matched:
+                            resolved = _ER.resolve(enriched_query, db=_db_proactive)
+                            resolved_ids = [p["product_id"] for p in resolved if p.get("product_id")]
+                            overlap = [pid for pid in resolved_ids if pid in committee_ids]
+                            if overlap:
                                 is_comite_query = True
-                                print(f"[OpenAI] Proativo: '{matched.name}' está no Comitê — ativando busca de recomendações")
+                                print(f"[OpenAI] Proativo (EntityResolver): produto(s) {overlap} estão no Comitê — ativando busca de recomendações")
                         finally:
-                            _db_check.close()
+                            _db_proactive.close()
                 except Exception as e_proactive:
                     print(f"[OpenAI] Erro na verificação proativa do comitê: {e_proactive}")
 
