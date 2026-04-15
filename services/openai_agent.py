@@ -2148,24 +2148,95 @@ REGRAS PARA INFORMAÇÕES DA INTERNET:
 
             if not is_comite_query:
                 comite_keywords = [
+                    # Comitê explícito
                     "comitê",
                     "comite",
+                    # Produto do mês
                     "produto do mês",
                     "produto do mes",
                     "produtos do mês",
                     "produtos do mes",
+                    "produto do mes",
+                    # Recomendação — variações com/sem acento, singular/plural
+                    "recomendação",
+                    "recomendacao",
+                    "recomendações",
+                    "recomendacoes",
+                    "recomendações da svn",
+                    "recomendacoes da svn",
                     "recomendações atuais",
                     "recomendacoes atuais",
-                    "o que a svn tá recomendando",
-                    "o que a svn ta recomendando",
                     "recomendação do mês",
                     "recomendacao do mes",
+                    "quais as recomendações",
+                    "quais as recomendacoes",
+                    "quais são as recomendações",
+                    "quais sao as recomendacoes",
+                    # Sugestão
+                    "sugestão",
+                    "sugestao",
+                    "sugestões",
+                    "sugestoes",
+                    "alguma sugestão",
+                    "alguma sugestao",
+                    "tem alguma sugestão",
+                    "tem alguma sugestao",
+                    # O que você/vocês indicam/recomendam/sugerem
+                    "o que você indica",
+                    "o que voce indica",
+                    "o que vocês indicam",
+                    "o que voces indicam",
+                    "o que você recomenda",
+                    "o que voce recomenda",
+                    "o que vocês recomendam",
+                    "o que voces recomendam",
+                    "o que você sugere",
+                    "o que voce sugere",
+                    "o que vocês sugerem",
+                    "o que voces sugerem",
+                    # O que a SVN recomenda/indica/sugere
+                    "o que a svn tá recomendando",
+                    "o que a svn ta recomendando",
+                    "o que a svn recomenda",
+                    "o que a svn indica",
+                    "o que a svn sugere",
+                    "o que a svn está recomendando",
+                    "o que a svn esta recomendando",
+                    # Qual ativo / qual produto
+                    "qual ativo",
+                    "qual produto",
+                    "quais ativos",
+                    "quais produtos",
+                    "qual devo ofertar",
+                    "qual ativo devo ofertar",
+                    "qual produto devo ofertar",
+                    "qual ativo indicar",
+                    "qual produto indicar",
+                    "qual devo recomendar",
+                    "qual eu oferto",
+                    "qual oferto",
+                    # Qual é o melhor
+                    "qual é o melhor",
+                    "qual e o melhor",
+                    "quais são os melhores",
+                    "quais sao os melhores",
+                    "qual o melhor ativo",
+                    "qual o melhor produto",
+                    "qual o melhor fundo",
+                    "qual o melhor fii",
+                    # Para este mês / para o mês
+                    "para este mês",
+                    "para este mes",
+                    "para o mês",
+                    "para o mes",
+                    "deste mês",
+                    "deste mes",
                 ]
                 msg_lower = user_message.lower()
                 if any(kw in msg_lower for kw in comite_keywords):
                     is_comite_query = True
                     print(
-                        f"[OpenAI] Fallback: detectada palavra-chave de Comitê na mensagem"
+                        f"[OpenAI] Fallback: detectada palavra-chave de Comitê/recomendação na mensagem"
                     )
 
             if is_comite_query:

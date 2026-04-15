@@ -16,8 +16,14 @@ TOOL_SEARCH_KNOWLEDGE_BASE = {
         "description": (
             "Busca na base de conhecimento interna da SVN sobre produtos financeiros "
             "(fundos, COEs, derivativos, FIIs, materiais de research). Use para dados ESTRATÉGICOS: "
-            "preço-alvo, recomendação de compra/venda, racional de investimento, tese, análise "
-            "fundamentalista, estratégias, diferenciais, riscos, campanhas. "
+            "preço-alvo, racional de investimento, tese, análise fundamentalista, estratégias, "
+            "diferenciais, riscos, campanhas. "
+            "IMPORTANTE: cada resultado retornado inclui o campo 'comite_tag' que pode ser "
+            "'[COMITÊ]' (recomendação formal aprovada pelo Comitê de Investimentos da SVN) ou "
+            "'[NÃO-COMITÊ]' (material informativo — research, análise, apresentação, campanha). "
+            "Use linguagem de recomendação formal SOMENTE para resultados '[COMITÊ]'. "
+            "Para '[NÃO-COMITÊ]', você PODE informar, analisar e explicar o ativo, mas deve "
+            "deixar claro que não é uma recomendação formal da SVN. "
             "Ao citar dados desta tool, SEMPRE inclua o nome do documento como fonte. "
             "Para cotações e dados ao vivo, use search_web ou lookup_fii_public."
         ),
@@ -334,9 +340,18 @@ async def _execute_search_knowledge_base(args: dict, db=None, conversation_id=No
             except Exception:
                 pass
 
+        material_type = meta.get("material_type", "")
+        comite_tag = "[COMITÊ]" if material_type == "comite" else "[NÃO-COMITÊ]"
+        if comite_tag == "[COMITÊ]":
+            source_note = f"Ao citar dados deste resultado, inclua: (Fonte: {material_name}). Este material é uma recomendação formal do Comitê de Investimentos da SVN — use framing de recomendação oficial."
+        else:
+            source_note = f"Ao citar dados deste resultado, inclua: (Fonte: {material_name}). Este material é INFORMATIVO, não é uma recomendação formal da SVN — ao responder sobre recomendação, deixe claro que o ativo não está no Comitê ativo da SVN."
+
         results.append({
             "title": meta.get("document_title", "Documento"),
             "material_name": material_name,
+            "material_type": material_type,
+            "comite_tag": comite_tag,
             "product": meta.get("product_name", ""),
             "ticker": meta.get("products", ""),
             "content": content[:800],
@@ -346,7 +361,7 @@ async def _execute_search_knowledge_base(args: dict, db=None, conversation_id=No
             "block_type": meta.get("block_type", ""),
             "source_page": source_page,
             "visual_description": visual_desc,
-            "source_note": f"Ao citar dados deste resultado, inclua: (Fonte: {material_name})",
+            "source_note": source_note,
         })
 
     if db and seen_product_ids:
