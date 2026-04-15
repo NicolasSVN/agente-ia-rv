@@ -1451,11 +1451,12 @@ class VectorStore:
     
     def search_comite_vigent(self, query: str = "", n_results: int = 20) -> List[dict]:
         """
-        Busca produtos/materiais vigentes do Comitê (dentro da data de validade).
-        Prioriza materiais do tipo 'comite' e produtos com valid_until >= hoje.
+        Busca materiais de tipo 'comite' vigentes (dentro da data de validade).
+        Retorna EXCLUSIVAMENTE materiais com material_type='comite' — não inclui
+        research, one_page, apresentação ou outros tipos informativos.
         
         Returns:
-            Lista de documentos vigentes do Comitê com marcação especial
+            Lista de documentos do Comitê vigentes com marcação [COMITÊ]
         """
         from database.database import SessionLocal
         from database.models import Product, Material, ContentBlock, MaterialStatus
@@ -1467,6 +1468,7 @@ class VectorStore:
             from sqlalchemy import or_
             
             vigent_materials = db.query(Material).filter(
+                Material.material_type == 'comite',
                 Material.publish_status == MaterialStatus.PUBLISHED.value,
                 or_(
                     Material.valid_until.is_(None),
@@ -1475,28 +1477,7 @@ class VectorStore:
             ).all()
             
             if not vigent_materials:
-                vigent_products = db.query(Product).filter(
-                    Product.status == 'ativo',
-                    
-                    or_(
-                        Product.valid_until >= now,
-                        Product.valid_until.is_(None)
-                    )
-                ).all()
-                
-                if vigent_products:
-                    product_ids = [p.id for p in vigent_products]
-                    vigent_materials = db.query(Material).filter(
-                        Material.product_id.in_(product_ids),
-                        Material.publish_status == MaterialStatus.PUBLISHED.value,
-                        or_(
-                            Material.valid_until.is_(None),
-                            Material.valid_until >= now
-                        )
-                    ).all()
-            
-            if not vigent_materials:
-                print("[VECTOR_STORE] Nenhum material vigente encontrado para Comitê")
+                print("[VECTOR_STORE] Nenhum material do Comitê vigente encontrado")
                 return []
             
             material_ids = [m.id for m in vigent_materials]
@@ -1520,13 +1501,12 @@ class VectorStore:
                     continue
                 
                 product = material.product
-                is_comite_type = material.material_type == 'comite'
+                is_comite_type = True  # garantido pelo filtro material_type == 'comite'
                 
-                vigent_label = "[COMITÊ] " if is_comite_type else "[PRODUTO_VIGENTE] "
                 valid_until_str = material.valid_until.strftime("%d/%m/%Y") if material.valid_until else ""
                 
                 content = block.content or ""
-                enriched_content = f"{vigent_label}(Válido até {valid_until_str}) {content}"
+                enriched_content = f"[COMITÊ] (Válido até {valid_until_str}) {content}"
                 
                 metadata = {
                     "product_name": product.name if product else "",
