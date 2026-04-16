@@ -56,8 +56,9 @@ async def lifespan(app: FastAPI):
     Inicialização pesada (banco, upload queue) roda em background.
     """
     # Registrar routers antes do yield — garante disponibilidade imediata de todas as rotas
+    # Executado diretamente (sem to_thread) pois app.include_router deve rodar no event loop principal
     try:
-        await asyncio.to_thread(_register_routers)
+        _register_routers()
     except Exception as e:
         print(f"[INIT] Erro ao registrar routers: {e}")
         import traceback
