@@ -1756,7 +1756,7 @@ async def deduplicate_conversations(
     if current_user.role not in ["admin", "gestao_rv"]:
         raise HTTPException(status_code=403, detail="Apenas administradores podem executar esta ação")
 
-    from services.conversation_flow import normalize_phone_variants
+    from services.conversation_flow import conversation_phone_keys
 
     all_convs = db.query(Conversation).filter(
         Conversation.phone.isnot(None),
@@ -1770,7 +1770,7 @@ async def deduplicate_conversations(
         if conv.id in visited_ids:
             continue
 
-        variants = set(normalize_phone_variants(conv.phone))
+        variants = set(conversation_phone_keys(conv.phone))
         if not variants:
             visited_ids.add(conv.id)
             continue
@@ -1780,7 +1780,7 @@ async def deduplicate_conversations(
             if c.id != conv.id
             and c.id not in visited_ids
             and c.phone
-            and bool(set(normalize_phone_variants(c.phone)) & variants)
+            and bool(set(conversation_phone_keys(c.phone)) & variants)
         ]
 
         if duplicates:

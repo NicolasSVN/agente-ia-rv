@@ -157,6 +157,54 @@ def normalize_phone_variants(phone: str) -> list:
     return list(variants)
 
 
+def conversation_phone_keys(phone: str) -> list:
+    """
+    Gera variantes seguras de um telefone para busca de conversas, preservando sempre o DDD.
+    Ao contrário de normalize_phone_variants (usada para assessores), esta função
+    NUNCA gera sufixos curtos (8/9 dígitos) que poderiam colidir entre diferentes DDDs.
+
+    Variantes geradas (todas preservam o DDD):
+    - 55DDXXXXXXXXX  (13 dígitos — com código do país e dígito 9)
+    - 55DDXXXXXXXX   (12 dígitos — com código do país, sem dígito 9)
+    - DDXXXXXXXXX    (11 dígitos — sem código do país, com dígito 9)
+    - DDXXXXXXXX     (10 dígitos — sem código do país, sem dígito 9)
+    """
+    if not phone:
+        return []
+
+    clean = re.sub(r'\D', '', phone)
+    if len(clean) < 10:
+        return [clean] if clean else []
+
+    variants = set()
+
+    has_country_code = clean.startswith('55') and len(clean) >= 12
+    if has_country_code:
+        ddd = clean[2:4]
+        rest = clean[4:]
+    else:
+        ddd = clean[0:2]
+        rest = clean[2:]
+
+    if len(rest) == 9 and rest.startswith('9'):
+        rest_without_9 = rest[1:]
+        variants.add('55' + ddd + rest)
+        variants.add('55' + ddd + rest_without_9)
+        variants.add(ddd + rest)
+        variants.add(ddd + rest_without_9)
+    elif len(rest) == 8 and not rest.startswith('9'):
+        rest_with_9 = '9' + rest
+        variants.add('55' + ddd + rest_with_9)
+        variants.add('55' + ddd + rest)
+        variants.add(ddd + rest_with_9)
+        variants.add(ddd + rest)
+    else:
+        variants.add('55' + ddd + rest)
+        variants.add(ddd + rest)
+
+    return list(variants)
+
+
 def canonicalize_phone(phone: str) -> str:
     """
     Converte um número de telefone para o formato canônico brasileiro.
