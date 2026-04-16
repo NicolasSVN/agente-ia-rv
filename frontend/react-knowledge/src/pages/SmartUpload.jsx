@@ -1367,7 +1367,7 @@ export function SmartUpload() {
         </Button>
         <Button 
           onClick={handleUpload} 
-          disabled={!materialType}
+          disabled={!files.length}
           className="flex-1"
         >
           <Sparkles className="w-4 h-4" />
