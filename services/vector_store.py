@@ -1695,6 +1695,29 @@ class VectorStore:
                 mat_ids = [m.id for m in active_committee_mats]
                 mat_map = {m.id: m for m in active_committee_mats}
 
+                # Pré-computar produtos derivados por material (primário + junction links)
+                mat_derived_products: dict = {}  # material_id → list of Product
+                all_link_rows = db.query(MaterialProductLink).filter(
+                    MaterialProductLink.material_id.in_(mat_ids)
+                ).all()
+                link_map: dict = {}  # material_id → [product_id, ...]
+                for lnk in all_link_rows:
+                    link_map.setdefault(lnk.material_id, []).append(lnk.product_id)
+
+                for mat in active_committee_mats:
+                    derived_pids = []
+                    if mat.product_id:
+                        derived_pids.append(mat.product_id)
+                    for pid in link_map.get(mat.id, []):
+                        if pid not in derived_pids:
+                            derived_pids.append(pid)
+                    derived_prods = []
+                    for pid in derived_pids:
+                        p = db.query(Product).filter(Product.id == pid).first()
+                        if p:
+                            derived_prods.append(p)
+                    mat_derived_products[mat.id] = derived_prods
+
                 blocks = db.query(ContentBlock).filter(
                     ContentBlock.material_id.in_(mat_ids),
                     ContentBlock.status.in_(['auto_approved', 'approved'])
@@ -1706,9 +1729,17 @@ class VectorStore:
                     if not material:
                         continue
 
-                    product = material.product
-                    product_id = product.id if product else None
-                    rec = rec_map.get(product_id) if product_id else None
+                    derived_prods = mat_derived_products.get(material.id, [])
+                    # Produto primário para o enriquecimento principal (fallback ao primeiro derivado)
+                    primary_prod = material.product or (derived_prods[0] if derived_prods else None)
+                    primary_id = primary_prod.id if primary_prod else None
+                    rec = rec_map.get(primary_id) if primary_id else None
+                    # Tenta enriquecer com recommendation_entry de qualquer produto derivado
+                    if not rec:
+                        for dp in derived_prods:
+                            rec = rec_map.get(dp.id)
+                            if rec:
+                                break
 
                     rating = rec.rating if rec else ""
                     target_price = rec.target_price if rec else None
@@ -1718,21 +1749,31 @@ class VectorStore:
                     )
                     rationale = rec.rationale if rec else ""
 
+                    # Construir string de produtos derivados para contexto do agente
+                    derived_tickers = [p.ticker for p in derived_prods if p.ticker]
+                    derived_names = [p.name for p in derived_prods if p.name]
+                    derived_str = (
+                        " | Produtos: " + ", ".join(derived_tickers or derived_names)
+                        if (derived_tickers or derived_names) else ""
+                    )
+
                     rating_str = f" | Rating: {rating}" if rating else ""
                     price_str = f" | Preço-alvo: R${target_price:.2f}" if target_price else ""
                     valid_str = f" | Válido até {valid_until_str}" if valid_until_str else " | Vigente sem prazo"
                     rationale_str = f" | Tese: {rationale}" if rationale else ""
                     enriched_content = (
-                        f"[COMITÊ]{rating_str}{price_str}{valid_str}{rationale_str}\n{block.content or ''}"
+                        f"[COMITÊ]{derived_str}{rating_str}{price_str}{valid_str}{rationale_str}\n{block.content or ''}"
                     )
 
                     documents.append({
                         "content": enriched_content,
                         "metadata": {
-                            "product_name": product.name if product else "",
-                            "product_ticker": product.ticker if product else "",
-                            "product_id": product_id,
-                            "gestora": product.manager if product else "",
+                            "product_name": primary_prod.name if primary_prod else "",
+                            "product_ticker": primary_prod.ticker if primary_prod else "",
+                            "product_id": primary_id,
+                            "gestora": primary_prod.manager if primary_prod else "",
+                            "derived_product_ids": [p.id for p in derived_prods],
+                            "derived_tickers": derived_tickers,
                             "material_type": material.material_type,
                             "material_name": material.name or "",
                             "valid_until": valid_until_str,

@@ -416,9 +416,18 @@
         table.classList.remove('hidden');
 
         tbody.innerHTML = filtered.map(function(e) {
+            var hasMaterial = committeeMatsList.some(function(m) {
+                return (m.products || []).some(function(p) { return p.id === e.product_id; });
+            });
+            var sourceBadge = hasMaterial
+                ? '<span class="ml-1 px-1.5 py-0.5 bg-green-100 text-green-700 text-xs rounded-full font-medium" title="Coberto por material ativo do Comitê">via material</span>'
+                : '<span class="ml-1 px-1.5 py-0.5 bg-gray-100 text-gray-400 text-xs rounded-full" title="Adicionado manualmente">manual</span>';
             return '<tr class="hover:bg-gray-50">' +
                 '<td class="px-4 py-3">' +
-                    '<div class="font-medium text-gray-900">' + escapeHtml(e.product_name) + '</div>' +
+                    '<div class="flex items-center flex-wrap gap-1">' +
+                        '<span class="font-medium text-gray-900">' + escapeHtml(e.product_name) + '</span>' +
+                        sourceBadge +
+                    '</div>' +
                     (e.product_ticker ? '<div class="text-xs text-gray-400">' + escapeHtml(e.product_ticker) + '</div>' : '') +
                 '</td>' +
                 '<td class="px-4 py-3">' + ratingBadge(e.rating) + '</td>' +
@@ -680,7 +689,7 @@
         }).join('');
     }
 
-    function loadCommitteeMats() {
+    function loadCommitteeMats(reRenderEntries) {
         document.getElementById('committee-mats-loading').classList.remove('hidden');
         document.getElementById('committee-mats-list').classList.add('hidden');
         document.getElementById('committee-mats-empty').classList.add('hidden');
@@ -690,6 +699,10 @@
             .then(function(data) {
                 committeeMatsList = Array.isArray(data) ? data : [];
                 renderCommitteeMats(committeeMatsList);
+                // Re-renderiza entries para atualizar badges de fonte
+                if (reRenderEntries !== false && allEntries.length > 0) {
+                    renderEntries();
+                }
             })
             .catch(function(err) {
                 console.error('[committee-mats] Erro:', err);
