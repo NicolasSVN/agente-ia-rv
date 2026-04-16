@@ -3953,18 +3953,48 @@ def _extract_pdf_text_for_analysis(file_content: bytes, max_pages: int = None) -
             return ""
 
         def _page_to_text(page) -> str:
-            blocks = page.get_text("dict").get("blocks", [])
-            lines = []
+            page_dict = page.get_text("dict")
+            blocks = page_dict.get("blocks", [])
+
+            # Coleta todas as linhas de texto com suas coordenadas Y
+            raw_lines = []
             for b in blocks:
-                btype = b.get("type", 0)
-                if btype == 0:
-                    for line in b.get("lines", []):
-                        span_text = " ".join(s.get("text", "") for s in line.get("spans", []))
-                        if span_text.strip():
-                            lines.append(span_text.strip())
-                elif btype == 1:
-                    pass
-            return "\n".join(lines)
+                if b.get("type", 0) != 0:
+                    continue
+                for line in b.get("lines", []):
+                    span_text = " ".join(s.get("text", "") for s in line.get("spans", []))
+                    if not span_text.strip():
+                        continue
+                    y0 = line.get("bbox", [0, 0, 0, 0])[1]
+                    raw_lines.append((round(y0, 1), span_text.strip()))
+
+            if not raw_lines:
+                return ""
+
+            # Agrupa linhas com Y próximo (tolerância de 2pt) como células de tabela
+            raw_lines.sort(key=lambda x: x[0])
+            groups = []
+            current_y = None
+            current_group = []
+            for y, text in raw_lines:
+                if current_y is None or abs(y - current_y) <= 2:
+                    current_group.append(text)
+                    if current_y is None:
+                        current_y = y
+                else:
+                    groups.append(current_group)
+                    current_group = [text]
+                    current_y = y
+            if current_group:
+                groups.append(current_group)
+
+            result_lines = []
+            for group in groups:
+                if len(group) > 1:
+                    result_lines.append(" | ".join(group))
+                else:
+                    result_lines.append(group[0])
+            return "\n".join(result_lines)
 
         if total <= 20:
             indices = list(range(total))
@@ -4127,6 +4157,27 @@ def _match_products_to_db(db: Session, ai_products: list) -> list:
             if p:
                 matched_product = p
                 match_confidence = "name"
+
+        if not matched_product and name and len(name.strip()) >= 3:
+            import json as _json_alias
+            nome_lower = name.strip().lower()
+            alias_candidates = db.query(Product).filter(
+                Product.name_aliases.isnot(None),
+                Product.name_aliases != "[]",
+                Product.status == "ativo",
+            ).all()
+            for prod in alias_candidates:
+                try:
+                    aliases = _json_alias.loads(prod.name_aliases or "[]")
+                except (ValueError, TypeError):
+                    aliases = []
+                for alias in aliases:
+                    if nome_lower in alias.lower() or alias.lower() in nome_lower:
+                        matched_product = prod
+                        match_confidence = "alias"
+                        break
+                if matched_product:
+                    break
 
         result.append({
             "ticker": ticker,
@@ -4391,11 +4442,22 @@ async def link_products_and_queue(
                 }
                 category = category_map.get(product_type, "") if product_type else ""
 
+                type_to_db_field = {
+                    "FII": "fii", "FIA": "fundo_acoes", "FIC-FIA": "fundo_acoes",
+                    "ETF": "etf", "BDR": "bdr", "Ação": "acao", "Acao": "acao",
+                    "CRI": "debenture", "CRA": "debenture",
+                    "Debênture": "debenture", "Debenture": "debenture",
+                    "Fundo Multimercado": "outro", "Fundo de Renda Fixa": "outro",
+                    "POP": "estruturada", "Collar": "estruturada", "COE": "estruturada",
+                }
+                product_type_db = type_to_db_field.get(product_type, "outro") if product_type else None
+
                 import json as _json_inner
                 new_p = Product(
                     name=name or ticker,
                     ticker=ticker,
                     manager=gestora,
+                    product_type=product_type_db,
                     categories=_json_inner.dumps([category] if category else []),
                     description=f"Criado automaticamente via SmartUpload. Tipo: {product_type or 'não identificado'}.",
                     status="ativo",

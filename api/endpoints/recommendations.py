@@ -675,9 +675,9 @@ async def _analyze_products_for_material(db: Session, material: Material) -> lis
         mat_file = db.query(MaterialFile).filter(
             MaterialFile.material_id == material.id
         ).first()
-        if mat_file and mat_file.content:
+        if mat_file and mat_file.file_data:
             from api.endpoints.products import _extract_pdf_text_for_analysis
-            text = _extract_pdf_text_for_analysis(bytes(mat_file.content))
+            text = _extract_pdf_text_for_analysis(bytes(mat_file.file_data))
             logger.info(f"[COMITÊ] Extraindo produtos do PDF ({len(text)} chars)")
 
     if not text.strip():
@@ -725,7 +725,7 @@ async def activate_committee_material(
     junction_links = db.query(MaterialProductLink).filter(
         MaterialProductLink.material_id == material_id
     ).count()
-    has_links = junction_links > 0 or bool(material.product_id)
+    has_links = junction_links > 0
 
     suggested_products = []
     if not has_links:
@@ -811,10 +811,20 @@ async def link_committee_products(
                     "Fundo de Renda Fixa": "renda_fixa",
                 }
                 category = category_map.get(product_type, "") if product_type else ""
+                type_to_db_field = {
+                    "FII": "fii", "FIA": "fundo_acoes", "FIC-FIA": "fundo_acoes",
+                    "ETF": "etf", "BDR": "bdr", "Ação": "acao", "Acao": "acao",
+                    "CRI": "debenture", "CRA": "debenture",
+                    "Debênture": "debenture", "Debenture": "debenture",
+                    "Fundo Multimercado": "outro", "Fundo de Renda Fixa": "outro",
+                    "POP": "estruturada", "Collar": "estruturada", "COE": "estruturada",
+                }
+                product_type_db = type_to_db_field.get(product_type, "outro") if product_type else None
                 new_p = Product(
                     name=name or ticker,
                     ticker=ticker,
                     manager=gestora,
+                    product_type=product_type_db,
                     categories=_json_links.dumps([category] if category else []),
                     description=f"Criado automaticamente via Comitê. Tipo: {product_type or 'não identificado'}.",
                     status="ativo",
