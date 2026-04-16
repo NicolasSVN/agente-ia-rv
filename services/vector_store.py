@@ -1524,12 +1524,15 @@ class VectorStore:
             seen = set()
 
             # ── Camada 0: materiais com is_committee_active=True ──────────────
+            has_active_committee_mats = False
             try:
                 from database.models import Material, MaterialProductLink, Product as ProductModel
                 active_mats = db.query(Material).filter(
                     Material.is_committee_active == True,
                     Material.publish_status == 'publicado',
                 ).all()
+
+                has_active_committee_mats = len(active_mats) > 0
 
                 rec_map = {}
                 if active_mats:
@@ -1578,14 +1581,16 @@ class VectorStore:
                             "material_name": mat.name or "",
                         })
 
-                if result:
+                if has_active_committee_mats:
+                    # Materiais ativos são fonte exclusiva — fallback legado não executado
                     print(f"[VECTOR_STORE] committee_summary via materiais ativos: {len(result)} produto(s)")
                     return result
 
             except Exception as mat_err:
                 print(f"[VECTOR_STORE] Erro ao buscar materiais do comitê: {mat_err}")
+                has_active_committee_mats = False
 
-            # ── Camada 1: recommendation_entries (fallback) ───────────────────
+            # ── Camada 1-2: recommendation_entries + categories (somente sem materiais ativos) ─
             try:
                 from database.models import RecommendationEntry, Product as ProductModel
                 entries = db.query(RecommendationEntry).filter(
@@ -1788,11 +1793,11 @@ class VectorStore:
                         "source": "comite_vigent",
                     })
 
-                if documents:
-                    print(f"[VECTOR_STORE] Comitê Layer 0: {len(documents)} bloco(s) de {len(active_committee_mats)} material(is)")
-                    return documents[:n_results]
+                print(f"[VECTOR_STORE] Comitê Layer 0: {len(documents)} bloco(s) de {len(active_committee_mats)} material(is) ativo(s)")
+                # Materiais ativos são fonte exclusiva — não executa fallback legado
+                return documents[:n_results]
 
-            # ── Camadas 1–3: fallback (lógica original) ───────────────────────
+            # ── Camadas 1–3: fallback SOMENTE se não há materiais ativos ──────
             # 1. Obter product_ids do comitê via recommendation_entries (fonte primária)
             committee_product_ids = []
             recommendation_map = {}  # product_id → entry metadata

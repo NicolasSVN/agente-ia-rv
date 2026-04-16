@@ -124,6 +124,12 @@
                     <tbody id="entries-tbody" class="divide-y divide-gray-100"></tbody>
                 </table>
             </div>
+
+            <!-- Produtos do comitê via material sem enriquecimento -->
+            <div id="unenriched-products-section" class="hidden mt-4">
+                <p class="text-xs font-medium text-gray-500 mb-2">Produtos do comitê via material <strong>sem enriquecimento</strong> — clique em "Adicionar" para definir rating e preço-alvo:</p>
+                <div id="unenriched-products-list" class="flex flex-wrap gap-2"></div>
+            </div>
         </div>
 
     </div>
@@ -453,6 +459,7 @@
             .then(function(data) {
                 allEntries = Array.isArray(data) ? data : [];
                 renderEntries();
+                renderUnenrichedProducts();
             })
             .catch(function(err) {
                 console.error(err);
@@ -631,6 +638,31 @@
         }
     });
 
+    // Unenriched products quick-add delegation
+    document.getElementById('unenriched-products-list').addEventListener('click', function(e) {
+        var btn = e.target.closest('[data-action="quick-add-enrichment"]');
+        if (!btn) return;
+        // Pre-fill add modal with product and open it
+        document.getElementById('add-product-id').value = btn.dataset.productId;
+        document.getElementById('add-rating').value = '';
+        document.getElementById('add-target-price').value = '';
+        document.getElementById('add-valid-until').value = '';
+        document.getElementById('add-rationale').value = '';
+        // Update displayed product name in select if select2 not used
+        var select = document.getElementById('add-product-id');
+        if (select) {
+            // Try to find the option and select it
+            var opts = select.options;
+            for (var i = 0; i < opts.length; i++) {
+                if (opts[i].value === btn.dataset.productId) {
+                    select.selectedIndex = i;
+                    break;
+                }
+            }
+        }
+        openModal('modal-add');
+    });
+
     // Close modals on backdrop click
     ['modal-add', 'modal-edit', 'modal-remove', 'modal-import', 'modal-activate-material'].forEach(function(id) {
         document.getElementById(id).addEventListener('click', function(e) {
@@ -689,6 +721,37 @@
         }).join('');
     }
 
+    function renderUnenrichedProducts() {
+        var section = document.getElementById('unenriched-products-section');
+        var list = document.getElementById('unenriched-products-list');
+        if (!section || !list) return;
+
+        var enrichedIds = allEntries.map(function(e) { return e.product_id; });
+        var unenriched = [];
+        committeeMatsList.forEach(function(m) {
+            (m.products || []).forEach(function(p) {
+                if (!enrichedIds.includes(p.id) && !unenriched.find(function(u) { return u.id === p.id; })) {
+                    unenriched.push(p);
+                }
+            });
+        });
+
+        if (unenriched.length === 0) {
+            section.classList.add('hidden');
+            return;
+        }
+
+        section.classList.remove('hidden');
+        list.innerHTML = unenriched.map(function(p) {
+            return '<button class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-yellow-50 border border-yellow-200 text-yellow-800 text-xs rounded-full hover:bg-yellow-100 transition-colors" ' +
+                'data-action="quick-add-enrichment" data-product-id="' + p.id + '" data-product-name="' + escapeHtml(p.name || '') + '" ' +
+                'data-ticker="' + escapeHtml(p.ticker || '') + '">' +
+                '<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>' +
+                escapeHtml(p.ticker || p.name) + ' — Adicionar' +
+            '</button>';
+        }).join('');
+    }
+
     function loadCommitteeMats(reRenderEntries) {
         document.getElementById('committee-mats-loading').classList.remove('hidden');
         document.getElementById('committee-mats-list').classList.add('hidden');
@@ -699,10 +762,11 @@
             .then(function(data) {
                 committeeMatsList = Array.isArray(data) ? data : [];
                 renderCommitteeMats(committeeMatsList);
-                // Re-renderiza entries para atualizar badges de fonte
+                // Re-renderiza entries para atualizar badges de fonte e produtos sem enriquecimento
                 if (reRenderEntries !== false && allEntries.length > 0) {
                     renderEntries();
                 }
+                renderUnenrichedProducts();
             })
             .catch(function(err) {
                 console.error('[committee-mats] Erro:', err);
