@@ -1530,6 +1530,10 @@ class VectorStore:
                 active_mats = db.query(Material).filter(
                     Material.is_committee_active == True,
                     Material.publish_status == 'publicado',
+                    or_(
+                        Material.valid_until.is_(None),
+                        Material.valid_until >= now,
+                    ),
                 ).all()
 
                 has_active_committee_mats = len(active_mats) > 0

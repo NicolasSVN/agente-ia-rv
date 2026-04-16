@@ -66,9 +66,15 @@ def _is_product_in_committee(db: Session, product: Product) -> bool:
         return True
 
     from sqlalchemy import or_
+    from datetime import datetime as _dt
+    _now = _dt.utcnow()
     has_material = db.query(Material).filter(
         Material.is_committee_active == True,
         Material.publish_status == 'publicado',
+        or_(
+            Material.valid_until.is_(None),
+            Material.valid_until >= _now,
+        ),
         or_(
             Material.product_id == product.id,
             Material.id.in_(
