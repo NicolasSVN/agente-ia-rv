@@ -722,10 +722,14 @@ async def activate_committee_material(
 
     db.commit()
 
-    junction_links = db.query(MaterialProductLink).filter(
+    non_primary_query = db.query(MaterialProductLink).filter(
         MaterialProductLink.material_id == material_id
-    ).count()
-    has_links = junction_links > 0
+    )
+    if material.product_id:
+        non_primary_query = non_primary_query.filter(
+            MaterialProductLink.product_id != material.product_id
+        )
+    has_links = non_primary_query.count() > 0
 
     suggested_products = []
     if not has_links:
