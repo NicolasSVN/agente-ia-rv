@@ -953,12 +953,9 @@ export function SmartUpload() {
                     {item.product_name && (
                       <p className="text-xs mt-1">
                         Produto:{' '}
-                        <span className="font-medium">{item.product_ticker || item.product_name}</span>
-                        {item.additional_tickers && item.additional_tickers.length > 0 && (
-                          <span className="ml-1 text-gray-400">
-                            + {item.additional_tickers.join(', ')}
-                          </span>
-                        )}
+                        <span className="font-medium">
+                          {[item.product_ticker || item.product_name, ...(item.additional_tickers || [])].join(', ')}
+                        </span>
                       </p>
                     )}
                   </>

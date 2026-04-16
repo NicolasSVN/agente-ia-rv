@@ -540,11 +540,15 @@ class UploadQueue:
                 if not exists:
                     link = MaterialProductLink(material_id=mat.id, product_id=product.id)
                     db.add(link)
-                    created_count += 1
+                    try:
+                        db.flush()
+                        created_count += 1
+                    except Exception as flush_err:
+                        logger.warning(f"[MultiProduct] Falha ao vincular {ticker}: {flush_err}")
+                        db.rollback()
 
             except Exception as link_err:
-                logger.warning(f"[MultiProduct] Erro ao vincular ticker {ticker}: {link_err}")
-                db.rollback()
+                logger.warning(f"[MultiProduct] Erro inesperado ao processar ticker {ticker}: {link_err}")
 
         if created_count:
             try:
