@@ -13,13 +13,56 @@ import os
 from core.config import is_production
 
 
+def _register_routers():
+    """Importa e registra todos os routers da aplicação. Executado de forma síncrona antes do yield."""
+    from api.endpoints import (
+        auth, users, tickets, whatsapp_webhook, integrations, agent_config,
+        assessores, campaigns, knowledge, agent_test, conversations, products,
+        files, insights, search, trusted_sources, costs, health
+    )
+    from api.endpoints import recommendations as recommendations_mod
+
+    app.include_router(auth.router)
+    app.include_router(users.router)
+    app.include_router(tickets.router)
+    app.include_router(whatsapp_webhook.router)
+    app.include_router(integrations.router)
+    app.include_router(agent_config.router)
+    app.include_router(assessores.router)
+    app.include_router(assessores.custom_fields_router)
+    app.include_router(assessores.upload_router)
+    app.include_router(campaigns.router)
+    app.include_router(knowledge.router)
+    app.include_router(agent_test.router)
+    app.include_router(conversations.router)
+    app.include_router(products.router)
+    app.include_router(files.router)
+    app.include_router(insights.router)
+    app.include_router(search.router)
+    app.include_router(trusted_sources.router)
+    app.include_router(costs.router)
+    app.include_router(health.router)
+    app.include_router(recommendations_mod.router)
+    app.include_router(recommendations_mod.page_router)
+    print("[INIT] Routers registrados com sucesso.")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
     Gerencia o ciclo de vida da aplicação.
-    Yield imediato para responder health checks rápido.
-    Inicialização pesada (check_critical_dependencies, banco, queue) roda em background.
+    Routers são registrados de forma síncrona antes do yield para garantir que todas
+    as rotas estejam disponíveis desde o primeiro request.
+    Inicialização pesada (banco, upload queue) roda em background.
     """
+    # Registrar routers antes do yield — garante disponibilidade imediata de todas as rotas
+    try:
+        await asyncio.to_thread(_register_routers)
+    except Exception as e:
+        print(f"[INIT] Erro ao registrar routers: {e}")
+        import traceback
+        traceback.print_exc()
+
     background_tasks = []
 
     init_task = asyncio.create_task(run_init_background())
@@ -56,51 +99,7 @@ async def lifespan(app: FastAPI):
 
 
 async def run_init_background():
-    """Inicialização pesada em background: routers, dependency check, tabelas, upload queue."""
-    def _import_endpoint_modules():
-        from api.endpoints import (
-            auth, users, tickets, whatsapp_webhook, integrations, agent_config,
-            assessores, campaigns, knowledge, agent_test, conversations, products,
-            files, insights, search, trusted_sources, costs, health
-        )
-        return (auth, users, tickets, whatsapp_webhook, integrations, agent_config,
-                assessores, campaigns, knowledge, agent_test, conversations, products,
-                files, insights, search, trusted_sources, costs, health)
-
-    try:
-        from api.endpoints import recommendations as recommendations_mod
-
-        (auth, users, tickets, whatsapp_webhook, integrations, agent_config,
-         assessores, campaigns, knowledge, agent_test, conversations, products,
-         files, insights, search, trusted_sources, costs, health) = await asyncio.to_thread(_import_endpoint_modules)
-        app.include_router(auth.router)
-        app.include_router(users.router)
-        app.include_router(tickets.router)
-        app.include_router(whatsapp_webhook.router)
-        app.include_router(integrations.router)
-        app.include_router(agent_config.router)
-        app.include_router(assessores.router)
-        app.include_router(assessores.custom_fields_router)
-        app.include_router(assessores.upload_router)
-        app.include_router(campaigns.router)
-        app.include_router(knowledge.router)
-        app.include_router(agent_test.router)
-        app.include_router(conversations.router)
-        app.include_router(products.router)
-        app.include_router(files.router)
-        app.include_router(insights.router)
-        app.include_router(search.router)
-        app.include_router(trusted_sources.router)
-        app.include_router(costs.router)
-        app.include_router(health.router)
-        app.include_router(recommendations_mod.router)
-        app.include_router(recommendations_mod.page_router)
-        print("[INIT] Routers registrados com sucesso.")
-    except Exception as e:
-        print(f"[INIT] Erro ao registrar routers: {e}")
-        import traceback
-        traceback.print_exc()
-
+    """Inicialização pesada em background: dependency check, tabelas, upload queue."""
     try:
         from services.dependency_check import check_critical_dependencies
         check_critical_dependencies()

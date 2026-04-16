@@ -40,11 +40,17 @@ def get_settings() -> Settings:
 
 
 def is_production() -> bool:
-    return bool(
-        os.getenv("ENV") == "production"
-        or os.getenv("REPL_DEPLOYMENT")
-        or os.getenv("REPLIT_DEPLOYMENT")
+    # Railway sempre injeta RAILWAY_ENVIRONMENT ou RAILWAY_SERVICE_NAME em produção real
+    is_railway = bool(
+        os.getenv("RAILWAY_ENVIRONMENT")
+        or os.getenv("RAILWAY_SERVICE_NAME")
+        or os.getenv("RAILWAY_STATIC_URL")
     )
+    # ENV=production deve ser setado explicitamente apenas em produção
+    is_explicit_prod = os.getenv("ENV") == "production"
+    # REPL_DEPLOYMENT/REPLIT_DEPLOYMENT eram usados antes mas eram setados
+    # pelo workflow runner do Replit mesmo em dev, causando falsos positivos
+    return is_railway or is_explicit_prod
 
 
 def get_public_domain() -> str:
