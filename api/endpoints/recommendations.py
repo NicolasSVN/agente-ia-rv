@@ -416,7 +416,7 @@ async def bulk_import_recommendations(
                         status="ativo",
                         category=inferred_type,
                         categories=json.dumps(["Comitê", inferred_type]),
-                        created_by=added_by,
+                        created_by=current_user.id,
                     )
                     db.add(new_product)
                     db.flush()
