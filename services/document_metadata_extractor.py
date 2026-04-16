@@ -316,39 +316,38 @@ class DocumentMetadataExtractor:
                 raw_extraction=extraction
             )
 
-            if True:
-                try:
-                    doc = fitz.open(pdf_path)
-                    all_text_tickers = []
-                    for page_num, _ in page_images:
-                        text = doc[page_num - 1].get_text()
+            try:
+                doc = fitz.open(pdf_path)
+                all_text_tickers = []
+                for page_num, _ in page_images:
+                    text = doc[page_num - 1].get_text()
 
-                        page_tickers = find_all_tickers_in_text(text)
-                        for t in page_tickers:
-                            if t not in all_text_tickers:
-                                all_text_tickers.append(t)
+                    page_tickers = find_all_tickers_in_text(text)
+                    for t in page_tickers:
+                        if t not in all_text_tickers:
+                            all_text_tickers.append(t)
 
-                        if not result.gestora:
-                            gestora = find_gestora_in_text(text)
-                            if gestora:
-                                result.gestora = gestora
+                    if not result.gestora:
+                        gestora = find_gestora_in_text(text)
+                        if gestora:
+                            result.gestora = gestora
 
-                    doc.close()
+                doc.close()
 
-                    if all_text_tickers:
-                        if not result.ticker:
-                            result.ticker = all_text_tickers[0]
-                            extras = all_text_tickers[1:]
-                        else:
-                            existing = [result.ticker] + result.additional_tickers
-                            extras = [t for t in all_text_tickers if t not in existing]
+                if all_text_tickers:
+                    if not result.ticker:
+                        result.ticker = all_text_tickers[0]
+                        extras = all_text_tickers[1:]
+                    else:
+                        existing = [result.ticker] + result.additional_tickers
+                        extras = [t for t in all_text_tickers if t not in existing]
 
-                        for t in extras:
-                            if t not in result.additional_tickers:
-                                result.additional_tickers.append(t)
+                    for t in extras:
+                        if t not in result.additional_tickers:
+                            result.additional_tickers.append(t)
 
-                except Exception as e:
-                    print(f"[MetadataExtractor] Erro no fallback de texto: {e}")
+            except Exception as e:
+                print(f"[MetadataExtractor] Erro no fallback de texto: {e}")
             
             if existing_products and result.fund_name:
                 matched = self._match_to_existing_product(result, existing_products)

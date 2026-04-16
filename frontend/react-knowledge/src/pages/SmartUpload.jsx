@@ -465,7 +465,7 @@ export function SmartUpload() {
       for (const file of files) {
         formData.append('files', file);
       }
-      formData.append('material_type', materialType || 'outro');
+      formData.append('material_type', materialType || 'one_page');
       formData.append('tags', JSON.stringify(tags));
       if (validFrom) formData.append('valid_from', validFrom);
       if (validUntil) formData.append('valid_until', validUntil);

@@ -522,7 +522,6 @@ class UploadQueue:
                 ).first()
 
                 if not product:
-                    inferred_type = "FII" if ticker.endswith("11") else "Ação"
                     product = self._auto_create_product(
                         db=db,
                         fund_name=None,
