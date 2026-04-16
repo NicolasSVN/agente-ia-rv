@@ -381,13 +381,16 @@ async def bulk_import_recommendations(
     added_by = current_user.email or current_user.username
 
     for item in data.items:
+        savepoint = db.begin_nested()
         try:
             product = db.query(Product).filter(Product.id == item.product_id).first()
             if not product:
+                savepoint.rollback()
                 errors.append({"product_id": item.product_id, "error": "Produto não encontrado"})
                 continue
 
             if item.rating and item.rating not in VALID_RATINGS:
+                savepoint.rollback()
                 errors.append({"product_id": item.product_id, "error": f"Rating inválido: {item.rating}"})
                 continue
 
@@ -411,10 +414,12 @@ async def bulk_import_recommendations(
             db.add(entry)
             db.flush()
             _sync_product_categories(db, product)
+            savepoint.commit()
             created_entries.append(_entry_to_dict(entry))
             logger.info(f"[bulk-import] Produto '{product.name}' adicionado ao comitê por {added_by}")
 
         except Exception as e:
+            savepoint.rollback()
             logger.error(f"[bulk-import] Erro ao processar product_id={item.product_id}: {e}")
             errors.append({"product_id": item.product_id, "error": str(e)})
             continue

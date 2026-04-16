@@ -56,7 +56,7 @@ def _extract_text_from_blocks(blocks) -> str:
         content = block.content.strip()
         if not content:
             continue
-        if block.block_type in ('table', 'tabular') or (content.startswith('{') and content.startswith('[')):
+        if block.block_type in ('table', 'tabular', 'tabela') or (content.startswith('{') or content.startswith('[')):
             try:
                 parsed = json.loads(content)
                 if isinstance(parsed, dict) and 'headers' in parsed and 'rows' in parsed:
