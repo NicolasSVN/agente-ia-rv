@@ -4196,6 +4196,309 @@ def _match_products_to_db(db: Session, ai_products: list) -> list:
     return result
 
 
+def _extract_pdf_text_per_page(file_content: bytes, max_pages: int = 40) -> list:
+    """
+    Retorna uma lista de (page_index, text_extracted) para até max_pages páginas.
+    Usado para detectar páginas com pouco texto extraído (candidatas a Vision pass).
+    """
+    try:
+        import fitz
+        doc = fitz.open(stream=file_content, filetype="pdf")
+        pages = []
+        total = min(len(doc), max_pages)
+        for i in range(total):
+            try:
+                txt = doc[i].get_text("text") or ""
+            except Exception:
+                txt = ""
+            pages.append((i, txt.strip()))
+        doc.close()
+        return pages
+    except Exception as e:
+        print(f"[PRE_ANALYZE] Erro ao extrair texto por página: {e}")
+        return []
+
+
+async def _vision_pass_low_confidence_pages(
+    file_content: bytes,
+    low_conf_page_indices: list,
+    max_pages: int = 3,
+) -> dict:
+    """
+    Para páginas com pouco texto extraído, renderiza em 200 DPI e envia para GPT-4o Vision
+    solicitando produtos financeiros e dados-chave visíveis em tabelas/gráficos.
+    Retorna {"products_found": [...], "key_data_text": "..."}.
+    """
+    selected = low_conf_page_indices[:max_pages]
+    if not selected:
+        return {"products_found": [], "key_data_text": ""}
+
+    try:
+        import fitz
+        import base64 as _b64
+        import io as _io
+        from openai import OpenAI
+        import os as _os
+        import json as _json
+
+        client = OpenAI(api_key=_os.environ.get("OPENAI_API_KEY"))
+        doc = fitz.open(stream=file_content, filetype="pdf")
+        all_products = []
+        all_key_data = []
+
+        prompt = (
+            "This is a page from a Brazilian financial document. List ALL financial products "
+            "mentioned: tickers, fund names, structured product names. Also extract any key "
+            "data visible in tables or charts (returns, ratings, terms, prices, CNPJ). "
+            'Return ONLY valid JSON: {"products_found": [{"ticker": "XXXX11", "name": "...", '
+            '"type": "FII|Ação|ETF|Estruturada|Debênture|Fundo|Outro"}], "key_data_found": "texto livre"}.'
+        )
+
+        for page_idx in selected:
+            if page_idx >= len(doc):
+                continue
+            try:
+                page = doc[page_idx]
+                matrix = fitz.Matrix(200 / 72, 200 / 72)
+                pix = page.get_pixmap(matrix=matrix)
+                img_bytes = pix.tobytes("png")
+                b64 = _b64.b64encode(img_bytes).decode("utf-8")
+
+                resp = client.chat.completions.create(
+                    model="gpt-4o",
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": [
+                                {"type": "text", "text": prompt},
+                                {
+                                    "type": "image_url",
+                                    "image_url": {"url": f"data:image/png;base64,{b64}"},
+                                },
+                            ],
+                        }
+                    ],
+                    temperature=0,
+                    max_tokens=1200,
+                    response_format={"type": "json_object"},
+                )
+                raw = resp.choices[0].message.content or "{}"
+                parsed = _json.loads(raw)
+                found = parsed.get("products_found") or []
+                if isinstance(found, list):
+                    for p in found:
+                        if not isinstance(p, dict):
+                            continue
+                        all_products.append({
+                            "ticker": (p.get("ticker") or "").strip().upper() or None,
+                            "name": (p.get("name") or "").strip() or None,
+                            "product_type": (p.get("type") or "").strip() or None,
+                            "gestora": None,
+                            "cnpj": None,
+                        })
+                kd = parsed.get("key_data_found")
+                if isinstance(kd, str) and kd.strip():
+                    all_key_data.append(kd.strip())
+            except Exception as page_err:
+                print(f"[PRE_ANALYZE][VISION] Falha em página {page_idx}: {page_err}")
+                continue
+
+        doc.close()
+        return {
+            "products_found": all_products,
+            "key_data_text": "\n".join(all_key_data),
+        }
+    except Exception as e:
+        print(f"[PRE_ANALYZE][VISION] Erro geral: {e}")
+        return {"products_found": [], "key_data_text": ""}
+
+
+async def _extract_deep_key_info(text: str, identified_products: list) -> list:
+    """
+    Segunda chamada GPT-4o: para cada produto identificado, extrai informações estruturadas
+    de tese, retorno, prazo, risco, emissor, rating, aplicação mínima, liquidez e destaques.
+    Retorna lista de objetos (um por produto) com chave `ticker` como pivô.
+    """
+    if not text.strip() or not identified_products:
+        return []
+    try:
+        from openai import OpenAI
+        import os as _os
+        import json as _json
+
+        client = OpenAI(api_key=_os.environ.get("OPENAI_API_KEY"))
+
+        product_list_str = _json.dumps(
+            [
+                {
+                    "ticker": p.get("ticker"),
+                    "name": p.get("name"),
+                    "product_type": p.get("product_type"),
+                }
+                for p in identified_products
+            ],
+            ensure_ascii=False,
+        )
+
+        system_prompt = (
+            "You are a financial document analyst specializing in Brazilian variable "
+            "income products. Extract detailed structured information."
+        )
+        user_prompt = (
+            f"For each of the following products identified in this document: {product_list_str}\n"
+            "Extract all available information you can find. For each product return a JSON "
+            "object with these fields (use null if not found):\n"
+            "{\n"
+            '  "ticker": string,\n'
+            '  "investment_thesis": string (the main investment rationale, up to 3 sentences),\n'
+            '  "expected_return": string (ex: "IPCA + 6% a.a.", "12% a.a.", "DY ~11%"),\n'
+            '  "investment_term": string (ex: "24 meses", "longo prazo", "sem vencimento"),\n'
+            '  "main_risk": string (primary risk factor),\n'
+            '  "issuer_or_manager": string,\n'
+            '  "rating": string or null,\n'
+            '  "minimum_investment": string or null,\n'
+            '  "liquidity": string or null,\n'
+            '  "additional_highlights": array of strings (up to 3 key bullet points)\n'
+            "}\n"
+            "If a field truly does not appear in the document, return null for that field. "
+            'Respond ONLY with a JSON object in the shape: {"products": [ ... ]}. Use Portuguese (pt-BR) '
+            "in all string values.\n\n"
+            f"Document text:\n{text}"
+        )
+
+        resp = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            temperature=0,
+            max_tokens=2500,
+            response_format={"type": "json_object"},
+        )
+        raw = resp.choices[0].message.content or "{}"
+        parsed = _json.loads(raw)
+        if isinstance(parsed, list):
+            return parsed
+        for key in parsed:
+            if isinstance(parsed[key], list):
+                return parsed[key]
+        return []
+    except Exception as e:
+        print(f"[PRE_ANALYZE][DEEP_INFO] Erro: {e}")
+        return []
+
+
+async def _detect_material_nature(text: str) -> str:
+    """
+    Classifica a natureza de um material que não tem produtos identificados.
+    Retorna uma de: 'educacional', 'macro', 'regulatorio', 'outro'.
+    """
+    if not text.strip():
+        return "outro"
+    try:
+        from openai import OpenAI
+        import os as _os
+        client = OpenAI(api_key=_os.environ.get("OPENAI_API_KEY"))
+        resp = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "Classifique a natureza de um documento financeiro que NÃO menciona produtos "
+                        "específicos (tickers, fundos). Responda APENAS com uma das palavras: "
+                        "'educacional' (conceitos, glossário, treinamento), 'macro' (análise de mercado, "
+                        "cenário, PIB, juros), 'regulatorio' (norma, CVM, compliance) ou 'outro'."
+                    ),
+                },
+                {"role": "user", "content": text[:6000]},
+            ],
+            temperature=0,
+            max_tokens=10,
+        )
+        raw = (resp.choices[0].message.content or "outro").strip().lower()
+        if raw in ("educacional", "macro", "regulatorio", "outro"):
+            return raw
+        return "outro"
+    except Exception as e:
+        print(f"[PRE_ANALYZE][NATURE] Erro: {e}")
+        return "outro"
+
+
+def _merge_key_info_into_product(db: Session, product: "Product", extracted_info: dict) -> bool:
+    """
+    Faz MERGE (preserva valores existentes) entre key_info do produto e info extraída.
+    Só preenche campos que estejam ausentes/None/vazios em key_info atual.
+    Retorna True se algo foi alterado.
+    """
+    if not product or not isinstance(extracted_info, dict):
+        return False
+    import json as _json
+    try:
+        current = _json.loads(product.key_info) if product.key_info else {}
+        if not isinstance(current, dict):
+            current = {}
+    except Exception:
+        current = {}
+
+    changed = False
+    mergeable_fields = [
+        "investment_thesis", "expected_return", "investment_term", "main_risk",
+        "issuer_or_manager", "rating", "minimum_investment", "liquidity",
+        "additional_highlights", "cnpj",
+    ]
+    for field in mergeable_fields:
+        new_val = extracted_info.get(field)
+        if new_val in (None, "", [], {}):
+            continue
+        cur_val = current.get(field)
+        if cur_val in (None, "", [], {}):
+            current[field] = new_val
+            changed = True
+
+    if changed:
+        product.key_info = _json.dumps(current, ensure_ascii=False)
+    return changed
+
+
+@router.get("/search")
+async def products_search(
+    q: str = "",
+    limit: int = 20,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Busca leve de produtos por ticker ou nome (Change 3b)."""
+    if current_user.role not in ("admin", "gestao_rv", "broker"):
+        raise HTTPException(status_code=403, detail="Acesso negado")
+    q = (q or "").strip()
+    if not q:
+        return {"products": []}
+
+    qnorm = q.upper()
+    rows = db.query(Product).filter(
+        Product.status == "ativo",
+        or_(
+            Product.ticker.ilike(f"%{qnorm}%"),
+            Product.name.ilike(f"%{q}%"),
+        ),
+    ).order_by(Product.name.asc()).limit(max(1, min(limit, 50))).all()
+
+    return {
+        "products": [
+            {
+                "id": p.id,
+                "name": p.name,
+                "ticker": p.ticker,
+                "product_type": p.product_type,
+                "manager": p.manager,
+            }
+            for p in rows
+        ]
+    }
+
+
 @router.post("/pre-analyze-upload")
 async def pre_analyze_upload(
     files: list[UploadFile] = File(...),
@@ -4296,7 +4599,77 @@ async def pre_analyze_upload(
 
         text = _extract_pdf_text_for_analysis(content, max_pages=5)
         ai_products = await _identify_products_with_ai(text, file.filename)
+
+        # 1b. Vision pass para páginas com texto extraído < 200 chars
+        try:
+            per_page = _extract_pdf_text_per_page(content, max_pages=40)
+            low_conf_indices = [idx for idx, t in per_page if len(t or "") < 200]
+            vision_result = {"products_found": [], "key_data_text": ""}
+            if low_conf_indices:
+                vision_result = await _vision_pass_low_confidence_pages(
+                    content, low_conf_indices, max_pages=3
+                )
+            if vision_result.get("products_found"):
+                existing_tickers = {
+                    ((p.get("ticker") or "").strip().upper())
+                    for p in ai_products
+                }
+                for vp in vision_result["products_found"]:
+                    tk = (vp.get("ticker") or "").strip().upper()
+                    if tk and tk in existing_tickers:
+                        continue
+                    if not vp.get("ticker") and not vp.get("name"):
+                        continue
+                    ai_products.append(vp)
+                    if tk:
+                        existing_tickers.add(tk)
+        except Exception as vision_err:
+            print(f"[PRE_ANALYZE][VISION] Erro no passe visual: {vision_err}")
+
         identified = _match_products_to_db(db, ai_products)
+
+        # 1a. Deep key_info extraction (segunda chamada) + MERGE em Product.key_info
+        try:
+            if identified:
+                deep_infos = await _extract_deep_key_info(text, identified)
+                deep_by_ticker = {}
+                for di in deep_infos:
+                    if not isinstance(di, dict):
+                        continue
+                    t_key = (di.get("ticker") or "").strip().upper()
+                    if t_key:
+                        deep_by_ticker[t_key] = di
+
+                for idp in identified:
+                    tk = (idp.get("ticker") or "").strip().upper()
+                    info = deep_by_ticker.get(tk) if tk else None
+                    if info:
+                        idp["deep_info"] = {
+                            k: v for k, v in info.items() if k != "ticker"
+                        }
+                        pid = idp.get("matched_product_id") or idp.get("product_id")
+                        if pid:
+                            prod = db.query(Product).filter(Product.id == pid).first()
+                            if prod:
+                                _merge_key_info_into_product(db, prod, info)
+                db.commit()
+        except Exception as deep_err:
+            print(f"[PRE_ANALYZE][DEEP_INFO] Erro no deep extract: {deep_err}")
+
+        # 1c. Auto-detecção de material sem produtos
+        no_products_detected = False
+        material_nature_guess = None
+        confident_products = [
+            p for p in identified
+            if (p.get("match_confidence") in ("exact", "ilike", "alias"))
+            or (p.get("ticker"))
+        ]
+        if not confident_products:
+            no_products_detected = True
+            try:
+                material_nature_guess = await _detect_material_nature(text)
+            except Exception:
+                material_nature_guess = "outro"
 
         import json as _json2
         material.ai_product_analysis = _json2.dumps(identified, ensure_ascii=False)
@@ -4306,12 +4679,180 @@ async def pre_analyze_upload(
             "filename": file.filename,
             "material_id": material.id,
             "identified_products": identified,
+            "no_products_detected": no_products_detected,
+            "material_nature_guess": material_nature_guess,
             "error": None,
         })
 
     return {
         "success": True,
         "materials": results,
+    }
+
+
+@router.post("/find-missing-product")
+async def find_missing_product(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Change 2b — Vision profundo sobre TODAS as páginas do PDF buscando um produto
+    que o usuário alega não ter sido identificado.
+    Body JSON: { material_id, description, existing_products: [tickers] }
+    """
+    if current_user.role not in ["admin", "gestao_rv", "broker"]:
+        raise HTTPException(status_code=403, detail="Acesso negado")
+
+    import json as _json
+    import base64 as _b64
+    import os as _os
+    from openai import OpenAI
+
+    body = await request.json()
+    material_id = body.get("material_id")
+    description = (body.get("description") or "").strip()
+    existing_products = body.get("existing_products") or []
+
+    if not material_id or not description:
+        raise HTTPException(status_code=400, detail="material_id e description são obrigatórios")
+
+    material = db.query(Material).filter(Material.id == material_id).first()
+    if not material:
+        raise HTTPException(status_code=404, detail="Material não encontrado")
+
+    # Carrega PDF: prioriza material_files (fonte de verdade) → fallback source_file_path
+    content = None
+    from sqlalchemy import text as _sa_text
+    db_file = db.execute(
+        _sa_text("SELECT file_data FROM material_files WHERE material_id = :mid"),
+        {"mid": material_id},
+    ).fetchone()
+    if db_file:
+        content = bytes(db_file[0])
+    elif material.source_file_path and os.path.exists(material.source_file_path):
+        with open(material.source_file_path, "rb") as fh:
+            content = fh.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="Arquivo PDF não encontrado para este material")
+
+    try:
+        import fitz
+        doc = fitz.open(stream=content, filetype="pdf")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Falha ao abrir PDF: {e}")
+
+    client = OpenAI(api_key=_os.environ.get("OPENAI_API_KEY"))
+
+    existing_str = ", ".join([str(t) for t in existing_products if t]) or "nenhum"
+    prompt_text = (
+        f"The user says this product was not found in the document: '{description}'. "
+        f"Previously identified products: {existing_str}. "
+        "Search carefully through this page (inclui tabelas, rodapés, cabeçalhos, gráficos, apêndices). "
+        f"Find any information about '{description}' or products matching this description. "
+        "If found, extract: ticker, name, product_type (FII/Ação/ETF/Estruturada/Debênture/Fundo/Outro), "
+        "gestora, investment_thesis, expected_return, investment_term, main_risk, rating, "
+        "minimum_investment, liquidity. If not found at all, say so explicitly. "
+        'Return ONLY valid JSON: {"found": boolean, "product": {...} or null, '
+        '"page_has_match": boolean}. Use Portuguese for values.'
+    )
+
+    found_product = None
+    found_on_pages: list[int] = []
+
+    try:
+        total_pages = len(doc)
+        for idx in range(total_pages):
+            try:
+                page = doc[idx]
+                matrix = fitz.Matrix(150 / 72, 150 / 72)
+                pix = page.get_pixmap(matrix=matrix)
+                img_bytes = pix.tobytes("png")
+                b64 = _b64.b64encode(img_bytes).decode("utf-8")
+
+                resp = client.chat.completions.create(
+                    model="gpt-4o",
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": [
+                                {"type": "text", "text": prompt_text},
+                                {
+                                    "type": "image_url",
+                                    "image_url": {"url": f"data:image/png;base64,{b64}"},
+                                },
+                            ],
+                        }
+                    ],
+                    temperature=0,
+                    max_tokens=1500,
+                    response_format={"type": "json_object"},
+                )
+                raw = resp.choices[0].message.content or "{}"
+                parsed = _json.loads(raw)
+
+                if parsed.get("found") and isinstance(parsed.get("product"), dict):
+                    found_on_pages.append(idx + 1)
+                    if not found_product:
+                        found_product = parsed["product"]
+                    else:
+                        # Merge de info complementar encontrada em páginas posteriores
+                        for k, v in parsed["product"].items():
+                            if v in (None, "", [], {}):
+                                continue
+                            if not found_product.get(k):
+                                found_product[k] = v
+            except Exception as page_err:
+                print(f"[FIND_MISSING] erro página {idx}: {page_err}")
+                continue
+    finally:
+        doc.close()
+
+    if not found_product:
+        return {
+            "found": False,
+            "message": "Produto não encontrado no material",
+            "pages_scanned": total_pages,
+        }
+
+    # Cascade match do produto encontrado
+    ai_candidate = [{
+        "ticker": (found_product.get("ticker") or "").strip().upper() or None,
+        "name": found_product.get("name"),
+        "product_type": found_product.get("product_type"),
+        "gestora": found_product.get("gestora"),
+        "cnpj": found_product.get("cnpj"),
+    }]
+    matched = _match_products_to_db(db, ai_candidate)
+    card = matched[0] if matched else {
+        "ticker": ai_candidate[0]["ticker"],
+        "name": ai_candidate[0]["name"],
+        "product_type": ai_candidate[0]["product_type"],
+        "gestora": ai_candidate[0]["gestora"],
+        "product_id": None,
+        "exists_in_db": False,
+        "match_confidence": None,
+        "selected": True,
+    }
+
+    # Inclui deep_info retornado pela IA
+    deep_info = {
+        k: found_product.get(k)
+        for k in [
+            "investment_thesis", "expected_return", "investment_term", "main_risk",
+            "issuer_or_manager", "rating", "minimum_investment", "liquidity",
+            "additional_highlights",
+        ]
+        if found_product.get(k)
+    }
+    if deep_info:
+        card["deep_info"] = deep_info
+
+    return {
+        "found": True,
+        "product": card,
+        "found_on_pages": found_on_pages,
+        "pages_scanned": total_pages,
     }
 
 
@@ -4399,6 +4940,8 @@ async def link_products_and_queue(
     body = await request.json()
     confirmed_products = body.get("confirmed_products", [])
     primary_product_id = body.get("primary_product_id")
+    products_with_info = body.get("products_with_info", []) or []
+    is_conceptual_material = bool(body.get("is_conceptual_material", False))
 
     material = db.query(Material).filter(Material.id == material_id).first()
     if not material:
@@ -4407,6 +4950,70 @@ async def link_products_and_queue(
     file_path = getattr(material, "source_file_path", None)
     if not file_path or not os.path.exists(file_path):
         raise HTTPException(status_code=400, detail="Arquivo PDF não encontrado para processamento. Refaça o upload.")
+
+    # MERGE do key_info editado pelo usuário (Change 4)
+    if products_with_info:
+        import json as _json_pki
+        for entry in products_with_info:
+            try:
+                pid = entry.get("product_id")
+                edited_info = entry.get("key_info") or {}
+                if not pid or not isinstance(edited_info, dict):
+                    continue
+                prod = db.query(Product).filter(Product.id == pid).first()
+                if not prod:
+                    continue
+                try:
+                    current = _json_pki.loads(prod.key_info) if prod.key_info else {}
+                    if not isinstance(current, dict):
+                        current = {}
+                except Exception:
+                    current = {}
+                for k, v in edited_info.items():
+                    if v in (None, "", [], {}):
+                        continue
+                    current[k] = v
+                prod.key_info = _json_pki.dumps(current, ensure_ascii=False)
+            except Exception as merge_err:
+                print(f"[LINK_QUEUE] Erro ao mesclar key_info: {merge_err}")
+        db.commit()
+
+    # Change 2c — material conceitual: pula vinculação de produtos, enfileira mesmo assim
+    if is_conceptual_material:
+        material.product_id = None
+        db.query(MaterialProductLink).filter(
+            MaterialProductLink.material_id == material_id
+        ).delete()
+        db.commit()
+
+        upload_id = str(uuid.uuid4())
+        queue_item = UploadQueueItem(
+            upload_id=upload_id,
+            file_path=file_path,
+            filename=material.name or f"material_{material_id}",
+            material_id=material_id,
+            name=material.name or f"material_{material_id}",
+            user_id=current_user.id,
+            material_type=material.material_type or "outro",
+            categories=[],
+            tags=[],
+            selected_product_id=None,
+        )
+        upload_queue.add(queue_item)
+
+        print(
+            f"[LINK_QUEUE] Material {material_id} marcado como conceitual "
+            f"(sem produtos) e adicionado à fila (upload_id={upload_id})"
+        )
+        return {
+            "success": True,
+            "upload_id": upload_id,
+            "material_id": material_id,
+            "linked_product_ids": [],
+            "primary_product_id": None,
+            "is_conceptual_material": True,
+            "message": "Material conceitual adicionado à fila (sem produtos vinculados)",
+        }
 
     created_products = []
     for cp in confirmed_products:

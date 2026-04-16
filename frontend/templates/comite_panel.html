@@ -16,1522 +16,509 @@
 {% include '_sidebar.html' %}
 
 <div id="mainContent" class="main-content transition-all duration-300" style="margin-left: 260px;">
-    <div class="max-w-5xl mx-auto px-6 py-8">
+    <div class="max-w-6xl mx-auto px-6 py-8">
 
         <!-- Header -->
-        <div class="flex items-center justify-between mb-8">
+        <div class="flex items-start justify-between mb-6">
             <div>
                 <h1 class="text-2xl font-bold text-gray-900">Comitê Ativo</h1>
                 <p class="text-gray-500 mt-1">Fonte de verdade do agente Stevan para recomendações formais do Comitê SVN</p>
             </div>
-            <div class="flex items-center gap-2">
-                <button id="btn-open-activate-material" class="inline-flex items-center gap-2 px-4 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium text-sm">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
-                    </svg>
-                    Ativar Material
-                </button>
-                <button id="btn-open-import" class="inline-flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors font-medium text-sm">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10"></path>
-                    </svg>
-                    Importar do Material
-                </button>
-                <button id="btn-open-add" class="inline-flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors font-medium text-sm">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
-                    </svg>
-                    Adicionar Produto
-                </button>
+            <button id="btn-refresh" class="inline-flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50 font-medium text-sm">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                </svg>
+                Atualizar
+            </button>
+        </div>
+
+        <!-- Resumo / KPI -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            <div class="bg-white border border-gray-200 rounded-xl p-5">
+                <div class="text-xs text-gray-500 uppercase tracking-wide">Status</div>
+                <div id="kpi-status" class="mt-1 text-lg font-semibold text-gray-900">—</div>
+            </div>
+            <div class="bg-white border border-gray-200 rounded-xl p-5">
+                <div class="text-xs text-gray-500 uppercase tracking-wide">Materiais ativos</div>
+                <div id="kpi-materials" class="mt-1 text-2xl font-bold text-gray-900">0</div>
+            </div>
+            <div class="bg-white border border-gray-200 rounded-xl p-5">
+                <div class="text-xs text-gray-500 uppercase tracking-wide">Produtos no comitê</div>
+                <div id="kpi-products" class="mt-1 text-2xl font-bold text-gray-900">0</div>
             </div>
         </div>
 
-        <!-- Info Banner -->
+        <!-- Banner informativo -->
         <div class="bg-green-50 border border-green-200 rounded-xl p-4 mb-6 flex gap-3">
             <svg class="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
             </svg>
             <div class="text-sm text-green-900">
-                <strong>Novo fluxo:</strong> Ative um material como Comitê Ativo e o agente passa a recomendar apenas os produtos identificados naquele documento.
-                O conteúdo do material é usado diretamente pelo agente para responder perguntas detalhadas.
-                Não é mais necessário registrar produtos um a um — basta ativar o PDF da carteira.
+                Ative um ou mais materiais como Comitê Ativo — o agente passa a recomendar apenas os produtos identificados neles.
+                Dentro de cada material, você pode excluir produtos específicos do comitê sem mexer no PDF. Produtos excluídos continuam na base geral, mas deixam de ser recomendados como comitê.
             </div>
         </div>
 
-        <!-- ── Seção: Materiais do Comitê Ativo ──────────────────────────── -->
-        <div class="mb-8">
-            <div class="flex items-center justify-between mb-3">
-                <h2 class="text-base font-semibold text-gray-900 flex items-center gap-2">
-                    <span class="inline-block w-2.5 h-2.5 rounded-full bg-green-500"></span>
-                    Materiais do Comitê Ativo
-                </h2>
-                <span id="committee-mats-count" class="text-xs text-gray-400"></span>
-            </div>
-
-            <div id="committee-mats-loading" class="text-center py-8">
-                <div class="inline-block w-6 h-6 border-4 border-green-200 border-t-green-600 rounded-full animate-spin"></div>
-            </div>
-            <div id="committee-mats-empty" class="hidden bg-white rounded-xl border border-dashed border-gray-300 p-8 text-center">
-                <svg class="w-12 h-12 mx-auto text-gray-300 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
-                </svg>
-                <p class="text-gray-500 font-medium mb-1">Nenhum material ativo</p>
-                <p class="text-sm text-gray-400">Clique em <strong>Ativar Material</strong> para selecionar um PDF da carteira do comitê.</p>
-            </div>
-            <div id="committee-mats-list" class="hidden space-y-3"></div>
-        </div>
-
-        <!-- ── Seção: Enriquecimento de Recomendações ────────────────────── -->
-        <div>
-            <div class="flex items-center justify-between mb-3">
-                <h2 class="text-base font-semibold text-gray-900 flex items-center gap-2">
-                    <span class="inline-block w-2.5 h-2.5 rounded-full bg-blue-400"></span>
-                    Enriquecimento de Recomendações
-                </h2>
-                <div class="flex gap-2">
-                    <button id="filter-vigente" class="filter-btn px-3 py-1 rounded-lg text-xs font-medium bg-green-100 text-green-700" data-filter="vigente">Vigentes</button>
-                    <button id="filter-todos" class="filter-btn px-3 py-1 rounded-lg text-xs font-medium bg-gray-100 text-gray-600 hover:bg-gray-200" data-filter="todos">Todos</button>
-                    <button id="filter-expirado" class="filter-btn px-3 py-1 rounded-lg text-xs font-medium bg-gray-100 text-gray-600 hover:bg-gray-200" data-filter="expirado">Expirados</button>
+        <!-- Seção 1: Materiais ativos -->
+        <section class="bg-white border border-gray-200 rounded-xl overflow-hidden mb-6">
+            <header class="px-5 py-4 border-b border-gray-200 flex items-center justify-between">
+                <div>
+                    <h2 class="font-semibold text-gray-900">Materiais ativos</h2>
+                    <p class="text-xs text-gray-500 mt-0.5">Materiais atualmente em uso como Comitê Ativo</p>
                 </div>
+            </header>
+            <div id="active-materials" class="divide-y divide-gray-100">
+                <div class="p-5 text-sm text-gray-500">Carregando...</div>
             </div>
-            <p class="text-xs text-gray-400 mb-4">Adicione rating e preço-alvo a produtos que já fazem parte do comitê via materiais. Produtos registrados aqui mas sem material ativo também são incluídos (compatibilidade).</p>
+        </section>
 
-            <!-- Loading -->
-            <div id="entries-loading" class="text-center py-8">
-                <div class="inline-block w-6 h-6 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin"></div>
-            </div>
-
-            <!-- Empty -->
-            <div id="entries-empty" class="hidden text-center py-10 text-gray-400">
-                <p class="text-sm">Nenhuma entrada de enriquecimento encontrada</p>
-            </div>
-
-            <!-- Table -->
-            <div id="entries-table" class="hidden bg-white rounded-xl border border-gray-200 overflow-hidden">
-                <table class="w-full text-sm">
-                    <thead class="bg-gray-50 border-b border-gray-200">
-                        <tr>
-                            <th class="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Produto</th>
-                            <th class="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Rating</th>
-                            <th class="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Preço-Alvo</th>
-                            <th class="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Válido até</th>
-                            <th class="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
-                            <th class="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Adicionado por</th>
-                            <th class="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Adicionado em</th>
-                            <th class="px-4 py-3"></th>
-                        </tr>
-                    </thead>
-                    <tbody id="entries-tbody" class="divide-y divide-gray-100"></tbody>
-                </table>
-            </div>
-
-            <!-- Produtos do comitê via material sem enriquecimento -->
-            <div id="unenriched-products-section" class="hidden mt-4">
-                <p class="text-xs font-medium text-gray-500 mb-2">Produtos do comitê via material <strong>sem enriquecimento</strong> — clique em "Adicionar" para definir rating e preço-alvo:</p>
-                <div id="unenriched-products-list" class="flex flex-wrap gap-2"></div>
-            </div>
-        </div>
-
-    </div>
-</div>
-
-<!-- Modal: Ativar Material como Comitê -->
-<div id="modal-activate-material" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col">
-        <div class="p-6 border-b border-gray-100 flex items-center justify-between flex-shrink-0">
-            <div>
-                <h2 class="text-lg font-bold text-gray-900">Ativar Material como Comitê</h2>
-                <p class="text-sm text-gray-500 mt-0.5">Selecione o material da carteira do comitê — seus produtos serão recomendados pelo agente</p>
-            </div>
-            <button id="btn-close-activate-material" class="text-gray-400 hover:text-gray-600 p-1 rounded">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
-            </button>
-        </div>
-        <div class="p-5 border-b border-gray-100 flex-shrink-0">
-            <input id="activate-search" type="text" placeholder="Buscar por nome do material..." class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500">
-        </div>
-        <div class="flex-1 overflow-y-auto min-h-0">
-            <div id="activate-mat-loading" class="text-center py-10">
-                <div class="inline-block w-6 h-6 border-4 border-green-200 border-t-green-600 rounded-full animate-spin"></div>
-            </div>
-            <div id="activate-mat-empty" class="hidden text-center py-10 text-sm text-gray-400">Nenhum material publicado com conteúdo encontrado.</div>
-            <div id="activate-mat-list" class="hidden p-4 space-y-2"></div>
-        </div>
-        <div class="p-5 border-t border-gray-100 flex justify-between items-center flex-shrink-0">
-            <span id="activate-selected-label" class="text-sm text-gray-500">Nenhum material selecionado</span>
-            <div class="flex gap-2">
-                <button id="btn-cancel-activate-material" class="px-4 py-2 text-sm font-medium text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors">Cancelar</button>
-                <button id="btn-confirm-activate-material" disabled class="inline-flex items-center gap-2 px-5 py-2.5 bg-green-600 text-white rounded-lg font-medium text-sm disabled:opacity-40 disabled:cursor-not-allowed hover:bg-green-700 transition-colors">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
-                    Ativar no Comitê
-                </button>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- Modal: Adicionar ao Comitê -->
-<div id="modal-add" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg">
-        <div class="p-6 border-b border-gray-100">
-            <h2 class="text-lg font-bold text-gray-900">Adicionar ao Comitê</h2>
-            <p class="text-sm text-gray-500 mt-1">Defina o produto, rating e vigência desta recomendação</p>
-        </div>
-        <div class="p-6 space-y-4">
-            <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Produto <span class="text-red-500">*</span></label>
-                <select id="add-product-id" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-                    <option value="">Selecione o produto...</option>
-                    {% for p in products_list %}
-                    <option value="{{ p.id }}">{{ p.name }}{% if p.ticker %} ({{ p.ticker }}){% endif %}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Rating</label>
-                <select id="add-rating" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-                    <option value="">Sem rating definido</option>
-                    <option value="Compra">Compra</option>
-                    <option value="Manutenção">Manutenção</option>
-                    <option value="Venda">Venda</option>
-                </select>
-            </div>
-            <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Preço-Alvo</label>
-                <input id="add-target-price" type="number" step="0.01" placeholder="Ex: 12.50" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-            </div>
-            <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Válido até</label>
-                <input id="add-valid-until" type="date" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-                <p class="text-xs text-gray-400 mt-1">Deixe em branco para recomendação sem data de expiração</p>
-            </div>
-            <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Justificativa</label>
-                <textarea id="add-rationale" rows="3" placeholder="Tese de investimento resumida..." class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"></textarea>
-            </div>
-        </div>
-        <div class="p-6 border-t border-gray-100 flex justify-end gap-3">
-            <button id="btn-cancel-add" class="px-4 py-2 text-sm font-medium text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors">Cancelar</button>
-            <button id="btn-confirm-add" class="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors">Adicionar ao Comitê</button>
-        </div>
-    </div>
-</div>
-
-<!-- Modal: Editar -->
-<div id="modal-edit" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg">
-        <div class="p-6 border-b border-gray-100">
-            <h2 class="text-lg font-bold text-gray-900">Editar Recomendação</h2>
-        </div>
-        <div class="p-6 space-y-4">
-            <input id="edit-entry-id" type="hidden">
-            <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Rating</label>
-                <select id="edit-rating" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-                    <option value="">Sem rating definido</option>
-                    <option value="Compra">Compra</option>
-                    <option value="Manutenção">Manutenção</option>
-                    <option value="Venda">Venda</option>
-                </select>
-            </div>
-            <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Preço-Alvo</label>
-                <input id="edit-target-price" type="number" step="0.01" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-            </div>
-            <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Válido até</label>
-                <input id="edit-valid-until" type="date" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-            </div>
-            <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Justificativa</label>
-                <textarea id="edit-rationale" rows="3" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"></textarea>
-            </div>
-        </div>
-        <div class="p-6 border-t border-gray-100 flex justify-end gap-3">
-            <button id="btn-cancel-edit" class="px-4 py-2 text-sm font-medium text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors">Cancelar</button>
-            <button id="btn-confirm-edit" class="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors">Salvar Alterações</button>
-        </div>
-    </div>
-</div>
-
-<!-- Modal: Produtos Sugeridos pela IA ao Ativar Material -->
-<div id="modal-suggest-products" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col">
-        <div class="p-6 border-b border-gray-100 flex items-center justify-between flex-shrink-0">
-            <div>
-                <h2 class="text-lg font-bold text-gray-900">Produtos Identificados pela IA</h2>
-                <p class="text-sm text-gray-500 mt-0.5">A IA identificou os produtos abaixo no documento. Selecione os que deseja vincular ao material.</p>
-            </div>
-            <button id="btn-close-suggest-products" class="text-gray-400 hover:text-gray-600 p-1 rounded">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
-            </button>
-        </div>
-        <div class="flex-1 overflow-y-auto min-h-0 p-6">
-            <div class="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 mb-4 text-sm text-blue-800">
-                <strong>Dica:</strong> Clique nos chips para selecionar ou deselecionar produtos.
-                Itens com <span class="text-green-600 font-medium">✓ Cadastrado</span> já existem na base de dados.
-                Itens com <span class="text-orange-500 font-medium">+ Novo</span> serão criados automaticamente.
-            </div>
-            <div id="suggest-products-list" class="flex flex-wrap gap-2"></div>
-        </div>
-        <div class="p-5 border-t border-gray-100 flex justify-between items-center flex-shrink-0">
-            <button id="btn-skip-suggest-products" class="px-4 py-2 text-sm font-medium text-gray-500 hover:text-gray-700 transition-colors">Pular — vincular depois</button>
-            <div class="flex gap-2">
-                <button id="btn-confirm-suggest-products" class="inline-flex items-center gap-2 px-5 py-2.5 bg-green-600 text-white rounded-lg font-medium text-sm hover:bg-green-700 transition-colors">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
-                    Confirmar Produtos
-                </button>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- Modal: Importar do Material -->
-<div id="modal-import" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col">
-        <!-- Header -->
-        <div class="p-6 border-b border-gray-100 flex items-center justify-between flex-shrink-0">
-            <div>
-                <h2 class="text-lg font-bold text-gray-900">Importar do Material</h2>
-                <p class="text-sm text-gray-500 mt-0.5" id="import-subtitle">Selecione um material para analisar e importar recomendações</p>
-            </div>
-            <button id="btn-close-import" class="text-gray-400 hover:text-gray-600 p-1 rounded">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
-            </button>
-        </div>
-
-        <!-- Phase 1: Seletor de material -->
-        <div id="import-phase1" class="flex flex-col flex-1 min-h-0">
-            <div class="p-6 flex-shrink-0">
-                <input id="import-search" type="text" placeholder="Buscar por nome, ticker ou tipo de material..." class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 mb-4">
-                <div id="import-materials-loading" class="text-center py-6">
-                    <div class="inline-block w-6 h-6 border-3 border-blue-200 border-t-blue-600 rounded-full animate-spin"></div>
-                    <p class="mt-2 text-sm text-gray-400">Carregando materiais...</p>
+        <!-- Seção 2: Seleção de material (disponíveis) -->
+        <section class="bg-white border border-gray-200 rounded-xl overflow-hidden mb-6">
+            <header class="px-5 py-4 border-b border-gray-200 flex items-center justify-between">
+                <div>
+                    <h2 class="font-semibold text-gray-900">Selecionar material</h2>
+                    <p class="text-xs text-gray-500 mt-0.5">Materiais publicados e indexados disponíveis para ativação</p>
                 </div>
-                <div id="import-materials-empty" class="hidden text-center py-6 text-sm text-gray-400">Nenhum material com conteúdo indexado encontrado.</div>
+                <input
+                    id="material-search"
+                    type="text"
+                    placeholder="Buscar por nome ou tipo..."
+                    class="hidden md:block px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 w-64"
+                />
+            </header>
+            <div id="available-materials" class="divide-y divide-gray-100 max-h-96 overflow-y-auto">
+                <div class="p-5 text-sm text-gray-500">Carregando...</div>
             </div>
-            <div id="import-materials-list" class="hidden overflow-y-auto px-6 pb-4 flex-1 space-y-2 min-h-0"></div>
-            <div class="p-6 border-t border-gray-100 flex justify-between items-center flex-shrink-0">
-                <span id="import-selected-label" class="text-sm text-gray-500">Nenhum material selecionado</span>
-                <button id="btn-analyze-material" disabled class="inline-flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-lg font-medium text-sm disabled:opacity-40 disabled:cursor-not-allowed hover:bg-blue-700 transition-colors">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path></svg>
-                    Analisar Material
-                </button>
-            </div>
-        </div>
+        </section>
 
-        <!-- Phase 2: Preview das recomendações -->
-        <div id="import-phase2" class="hidden flex flex-col flex-1 min-h-0">
-            <div id="import-analyzing" class="hidden flex-col items-center justify-center py-12 text-center px-6 flex-1">
-                <div class="inline-block w-10 h-10 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mb-4"></div>
-                <p class="text-gray-600 font-medium">Analisando material com IA...</p>
-                <p class="text-sm text-gray-400 mt-1">Lendo todas as tabelas e seções do documento para identificar recomendações</p>
-                <p class="text-xs text-gray-400 mt-2">Documentos longos podem levar até 30 segundos. Aguarde.</p>
+        <!-- Seção 3: Produtos no comitê (agrupados por material) -->
+        <section class="bg-white border border-gray-200 rounded-xl overflow-hidden mb-6">
+            <header class="px-5 py-4 border-b border-gray-200">
+                <h2 class="font-semibold text-gray-900">Produtos no Comitê Ativo</h2>
+                <p class="text-xs text-gray-500 mt-0.5">Exclua produtos específicos sem desativar o material inteiro</p>
+            </header>
+            <div id="committee-products" class="p-5">
+                <div class="text-sm text-gray-500">Carregando...</div>
             </div>
-            <div id="import-preview-content" class="hidden flex-col flex-1 min-h-0">
-                <div class="px-6 pt-4 pb-2 flex-shrink-0 space-y-2">
-                    <div id="import-summary-banner" class="text-sm text-gray-600 bg-gray-50 rounded-lg px-4 py-2.5 border border-gray-200"></div>
-                    <label id="auto-create-label" class="hidden items-center gap-2 px-4 py-2 bg-blue-50 border border-blue-200 rounded-lg cursor-pointer">
-                        <input type="checkbox" id="auto-create-checkbox" class="rounded text-blue-600" checked>
-                        <span class="text-sm text-blue-800 font-medium">Criar produtos não encontrados no cadastro automaticamente</span>
-                        <span class="text-xs text-blue-600">(tipo e nome serão inferidos do documento)</span>
-                    </label>
+        </section>
+
+        <!-- Seção 4: Adicionar produto manualmente -->
+        <section class="bg-white border border-gray-200 rounded-xl overflow-hidden mb-10">
+            <header class="px-5 py-4 border-b border-gray-200">
+                <h2 class="font-semibold text-gray-900">Adicionar produto manualmente</h2>
+                <p class="text-xs text-gray-500 mt-0.5">Inclua um produto no comitê vinculando-o a um material de referência já ativo</p>
+            </header>
+            <div class="p-5 space-y-4">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-medium text-gray-700 mb-1">Produto</label>
+                        <div class="relative">
+                            <input
+                                id="manual-product-search"
+                                type="text"
+                                placeholder="Buscar ticker ou nome..."
+                                autocomplete="off"
+                                class="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20"
+                            />
+                            <div id="manual-product-results" class="hidden absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto"></div>
+                        </div>
+                        <p id="manual-product-selected" class="mt-1 text-xs text-gray-500">Nenhum produto selecionado</p>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-700 mb-1">Material de referência (ativo)</label>
+                        <select id="manual-reference-material" class="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-primary/20">
+                            <option value="">— selecione —</option>
+                        </select>
+                    </div>
                 </div>
-                <div class="overflow-auto flex-1 px-6 pb-4 min-h-0">
-                    <table class="w-full text-sm">
-                        <thead class="sticky top-0 bg-white border-b border-gray-200">
-                            <tr>
-                                <th class="text-left py-2 pr-3 w-8"><input type="checkbox" id="import-check-all" class="rounded"></th>
-                                <th class="text-left py-2 pr-3 text-xs font-semibold text-gray-500 uppercase">Produto</th>
-                                <th class="text-left py-2 pr-3 text-xs font-semibold text-gray-500 uppercase w-32">Rating</th>
-                                <th class="text-left py-2 pr-3 text-xs font-semibold text-gray-500 uppercase w-28">Preço-Alvo</th>
-                                <th class="text-left py-2 pr-3 text-xs font-semibold text-gray-500 uppercase w-32">Válido até</th>
-                                <th class="text-left py-2 text-xs font-semibold text-gray-500 uppercase">Justificativa</th>
-                            </tr>
-                        </thead>
-                        <tbody id="import-preview-tbody" class="divide-y divide-gray-100"></tbody>
-                    </table>
-                </div>
-            </div>
-            <div id="import-no-results" class="hidden flex-col items-center justify-center py-12 text-center px-6 flex-1">
-                <svg class="w-12 h-12 text-gray-300 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                <p class="text-gray-600 font-medium">Nenhuma recomendação identificada</p>
-                <p class="text-sm text-gray-400 mt-1">O material não contém recomendações formais com rating reconhecível. Tente com um relatório do Comitê.</p>
-            </div>
-            <div class="p-6 border-t border-gray-100 flex justify-between items-center flex-shrink-0">
-                <button id="btn-import-back" class="px-4 py-2 text-sm font-medium text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors">← Voltar</button>
-                <div class="flex items-center gap-3">
-                    <span id="import-confirm-label" class="text-sm text-gray-500"></span>
-                    <button id="btn-confirm-import" disabled class="inline-flex items-center gap-2 px-5 py-2.5 bg-green-600 text-white rounded-lg font-medium text-sm disabled:opacity-40 disabled:cursor-not-allowed hover:bg-green-700 transition-colors">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
-                        Importar Selecionados
+                <div class="flex justify-end">
+                    <button
+                        id="btn-manual-add"
+                        class="inline-flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:opacity-90 font-medium text-sm disabled:opacity-40 disabled:cursor-not-allowed"
+                        disabled
+                    >
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+                        </svg>
+                        Adicionar ao Comitê
                     </button>
                 </div>
             </div>
-        </div>
-    </div>
-</div>
+        </section>
 
-<!-- Modal: Confirmar remoção -->
-<div id="modal-remove" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm">
-        <div class="p-6">
-            <h2 class="text-lg font-bold text-gray-900 mb-2">Remover do Comitê</h2>
-            <p class="text-sm text-gray-600">Tem certeza? O produto <strong id="remove-product-name"></strong> será removido da lista de recomendações formais. O agente passará a tratá-lo como informativo.</p>
-        </div>
-        <div class="px-6 pb-6 flex justify-end gap-3">
-            <button id="btn-cancel-remove" class="px-4 py-2 text-sm font-medium text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors">Cancelar</button>
-            <button id="btn-confirm-remove" class="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 transition-colors">Remover</button>
-        </div>
     </div>
 </div>
 
 <script nonce="{{ request.state.csp_nonce }}">
 (function() {
-    var allEntries = [];
-    var currentFilter = 'vigente';
-    var pendingRemoveId = null;
+    'use strict';
 
-    // ── Helpers ──────────────────────────────────────────────────────────────
-    function ratingBadge(rating) {
-        if (!rating) return '<span class="text-gray-400">—</span>';
-        var cls = {
-            'Compra': 'bg-green-100 text-green-800',
-            'Manutenção': 'bg-yellow-100 text-yellow-800',
-            'Venda': 'bg-red-100 text-red-800',
-        }[rating] || 'bg-gray-100 text-gray-700';
-        return '<span class="px-2 py-0.5 rounded-full text-xs font-semibold ' + cls + '">' + rating + '</span>';
+    const token = localStorage.getItem('token');
+    if (!token) {
+        window.location.href = '/login';
+        return;
     }
 
-    function statusBadge(status) {
-        var map = {
-            'vigente':  { cls: 'bg-green-100 text-green-700', label: 'Vigente' },
-            'expirado': { cls: 'bg-red-100 text-red-700',   label: 'Expirado' },
-            'inativo':  { cls: 'bg-gray-100 text-gray-600', label: 'Inativo' },
-        };
-        var s = map[status] || map['inativo'];
-        return '<span class="px-2 py-0.5 rounded-full text-xs font-medium ' + s.cls + '">' + s.label + '</span>';
+    const authHeaders = { 'Authorization': 'Bearer ' + token };
+    const jsonHeaders = Object.assign({ 'Content-Type': 'application/json' }, authHeaders);
+
+    let state = {
+        status: { is_active: false, materials: [], products: [] },
+        availableMaterials: [],
+        manualProduct: null,
+        materialFilter: '',
+        searchDebounce: null,
+    };
+
+    function escapeHtml(s) {
+        if (s === null || s === undefined) return '';
+        return String(s)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
     }
 
-    function fmtDate(iso) {
-        if (!iso) return '—';
-        var d = new Date(iso);
-        return d.toLocaleDateString('pt-BR');
-    }
-
-    function fmtPrice(v) {
-        if (v === null || v === undefined) return '—';
-        return 'R$ ' + Number(v).toFixed(2).replace('.', ',');
-    }
-
-    function escapeHtml(str) {
-        if (!str) return '';
-        return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    }
-
-    // ── Render ────────────────────────────────────────────────────────────────
-    function renderEntries() {
-        var loading = document.getElementById('entries-loading');
-        var empty = document.getElementById('entries-empty');
-        var table = document.getElementById('entries-table');
-        var tbody = document.getElementById('entries-tbody');
-
-        var filtered = allEntries.filter(function(e) {
-            if (currentFilter === 'vigente') return e.status === 'vigente';
-            if (currentFilter === 'expirado') return e.status === 'expirado';
-            return true;
-        });
-
-        loading.classList.add('hidden');
-
-        if (filtered.length === 0) {
-            empty.classList.remove('hidden');
-            table.classList.add('hidden');
-            return;
-        }
-
-        empty.classList.add('hidden');
-        table.classList.remove('hidden');
-
-        tbody.innerHTML = filtered.map(function(e) {
-            var hasMaterial = committeeMatsList.some(function(m) {
-                return (m.products || []).some(function(p) { return p.id === e.product_id; });
-            });
-            var sourceBadge = hasMaterial
-                ? '<span class="ml-1 px-1.5 py-0.5 bg-green-100 text-green-700 text-xs rounded-full font-medium" title="Coberto por material ativo do Comitê">via material</span>'
-                : '<span class="ml-1 px-1.5 py-0.5 bg-gray-100 text-gray-400 text-xs rounded-full" title="Adicionado manualmente">manual</span>';
-            return '<tr class="hover:bg-gray-50">' +
-                '<td class="px-4 py-3">' +
-                    '<div class="flex items-center flex-wrap gap-1">' +
-                        '<span class="font-medium text-gray-900">' + escapeHtml(e.product_name) + '</span>' +
-                        sourceBadge +
-                    '</div>' +
-                    (e.product_ticker ? '<div class="text-xs text-gray-400">' + escapeHtml(e.product_ticker) + '</div>' : '') +
-                '</td>' +
-                '<td class="px-4 py-3">' + ratingBadge(e.rating) + '</td>' +
-                '<td class="px-4 py-3 text-gray-700">' + fmtPrice(e.target_price) + '</td>' +
-                '<td class="px-4 py-3 text-gray-600">' + fmtDate(e.valid_until) + '</td>' +
-                '<td class="px-4 py-3">' + statusBadge(e.status) + '</td>' +
-                '<td class="px-4 py-3 text-gray-500 text-xs">' + escapeHtml(e.added_by || '—') + '</td>' +
-                '<td class="px-4 py-3 text-gray-500 text-xs">' + fmtDate(e.added_at) + '</td>' +
-                '<td class="px-4 py-3">' +
-                    '<div class="flex gap-2 justify-end">' +
-                        '<button class="text-xs px-2 py-1 bg-gray-100 rounded hover:bg-gray-200 text-gray-600" data-action="edit" data-id="' + e.id + '">Editar</button>' +
-                        '<button class="text-xs px-2 py-1 bg-red-50 rounded hover:bg-red-100 text-red-600" data-action="remove" data-id="' + e.id + '" data-name="' + escapeHtml(e.product_name) + '">Remover</button>' +
-                    '</div>' +
-                '</td>' +
-            '</tr>';
-        }).join('');
-    }
-
-    // ── API ───────────────────────────────────────────────────────────────────
-    function loadEntries() {
-        fetch('/api/recommendations?include_inactive=true', { credentials: 'include' })
-            .then(function(r) { return r.json(); })
-            .then(function(data) {
-                allEntries = Array.isArray(data) ? data : [];
-                renderEntries();
-                renderUnenrichedProducts();
-            })
-            .catch(function(err) {
-                console.error(err);
-                document.getElementById('entries-loading').classList.add('hidden');
-                document.getElementById('entries-empty').classList.remove('hidden');
-            });
-    }
-
-    function addEntry() {
-        var productId = document.getElementById('add-product-id').value;
-        if (!productId) { alert('Selecione um produto'); return; }
-
-        var validUntilVal = document.getElementById('add-valid-until').value;
-        var body = {
-            product_id: parseInt(productId),
-            rating: document.getElementById('add-rating').value || null,
-            rationale: document.getElementById('add-rationale').value || null,
-        };
-
-        var tp = parseFloat(document.getElementById('add-target-price').value);
-        if (!isNaN(tp)) body.target_price = tp;
-        if (validUntilVal) body.valid_until = validUntilVal + 'T23:59:59';
-
-        var btn = document.getElementById('btn-confirm-add');
-        btn.disabled = true;
-        btn.textContent = 'Adicionando...';
-
-        fetch('/api/recommendations', {
-            method: 'POST',
-            credentials: 'include',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body),
-        })
-        .then(function(r) {
-            if (!r.ok) return r.json().then(function(e) { throw new Error(e.detail || 'Erro ao adicionar'); });
-            return r.json();
-        })
-        .then(function() {
-            closeModal('modal-add');
-            loadEntries();
-            if (window.showToast) window.showToast('Produto adicionado ao Comitê', 'success');
-        })
-        .catch(function(err) {
-            alert(err.message);
-        })
-        .finally(function() {
-            btn.disabled = false;
-            btn.textContent = 'Adicionar ao Comitê';
-        });
-    }
-
-    function saveEdit() {
-        var id = document.getElementById('edit-entry-id').value;
-        var validUntilVal = document.getElementById('edit-valid-until').value;
-        var body = {
-            rating: document.getElementById('edit-rating').value || null,
-            rationale: document.getElementById('edit-rationale').value || null,
-        };
-        var tp = parseFloat(document.getElementById('edit-target-price').value);
-        if (!isNaN(tp)) body.target_price = tp;
-        if (validUntilVal) body.valid_until = validUntilVal + 'T23:59:59';
-        else body.valid_until = null;
-
-        var btn = document.getElementById('btn-confirm-edit');
-        btn.disabled = true;
-        btn.textContent = 'Salvando...';
-
-        fetch('/api/recommendations/' + id, {
-            method: 'PATCH',
-            credentials: 'include',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body),
-        })
-        .then(function(r) {
-            if (!r.ok) return r.json().then(function(e) { throw new Error(e.detail || 'Erro ao salvar'); });
-            return r.json();
-        })
-        .then(function() {
-            closeModal('modal-edit');
-            loadEntries();
-            if (window.showToast) window.showToast('Recomendação atualizada', 'success');
-        })
-        .catch(function(err) { alert(err.message); })
-        .finally(function() {
-            btn.disabled = false;
-            btn.textContent = 'Salvar Alterações';
-        });
-    }
-
-    function confirmRemove() {
-        if (!pendingRemoveId) return;
-        var btn = document.getElementById('btn-confirm-remove');
-        btn.disabled = true;
-        btn.textContent = 'Removendo...';
-
-        fetch('/api/recommendations/' + pendingRemoveId, {
-            method: 'DELETE',
-            credentials: 'include',
-        })
-        .then(function(r) {
-            if (!r.ok && r.status !== 204) return r.json().then(function(e) { throw new Error(e.detail || 'Erro ao remover'); });
-            closeModal('modal-remove');
-            loadEntries();
-            if (window.showToast) window.showToast('Produto removido do Comitê', 'success');
-        })
-        .catch(function(err) { alert(err.message); })
-        .finally(function() {
-            btn.disabled = false;
-            btn.textContent = 'Remover';
-            pendingRemoveId = null;
-        });
-    }
-
-    // ── Modals ────────────────────────────────────────────────────────────────
-    function openModal(id) { document.getElementById(id).classList.remove('hidden'); }
-    function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
-
-    function openEditModal(entry) {
-        document.getElementById('edit-entry-id').value = entry.id;
-        document.getElementById('edit-rating').value = entry.rating || '';
-        document.getElementById('edit-target-price').value = entry.target_price !== null && entry.target_price !== undefined ? entry.target_price : '';
-        document.getElementById('edit-rationale').value = entry.rationale || '';
-        if (entry.valid_until) {
-            document.getElementById('edit-valid-until').value = entry.valid_until.substring(0, 10);
+    function toast(message, type) {
+        if (window.showNotification) {
+            window.showNotification(message, type || 'info');
         } else {
-            document.getElementById('edit-valid-until').value = '';
+            console.log('[' + (type || 'info') + ']', message);
         }
-        openModal('modal-edit');
     }
 
-    // ── Event Delegation ──────────────────────────────────────────────────────
-    document.getElementById('btn-open-add').addEventListener('click', function() {
-        // reset form
-        document.getElementById('add-product-id').value = '';
-        document.getElementById('add-rating').value = '';
-        document.getElementById('add-target-price').value = '';
-        document.getElementById('add-valid-until').value = '';
-        document.getElementById('add-rationale').value = '';
-        openModal('modal-add');
-    });
-
-    document.getElementById('btn-cancel-add').addEventListener('click', function() { closeModal('modal-add'); });
-    document.getElementById('btn-confirm-add').addEventListener('click', addEntry);
-    document.getElementById('btn-cancel-edit').addEventListener('click', function() { closeModal('modal-edit'); });
-    document.getElementById('btn-confirm-edit').addEventListener('click', saveEdit);
-    document.getElementById('btn-cancel-remove').addEventListener('click', function() { closeModal('modal-remove'); });
-    document.getElementById('btn-confirm-remove').addEventListener('click', confirmRemove);
-
-    // Filter buttons
-    document.querySelectorAll('.filter-btn').forEach(function(btn) {
-        btn.addEventListener('click', function() {
-            currentFilter = this.dataset.filter;
-            document.querySelectorAll('.filter-btn').forEach(function(b) {
-                b.className = 'filter-btn px-4 py-2 rounded-lg text-sm font-medium bg-gray-100 text-gray-600 hover:bg-gray-200';
-            });
-            this.className = 'filter-btn px-4 py-2 rounded-lg text-sm font-medium bg-green-100 text-green-700';
-            renderEntries();
-        });
-    });
-
-    // Table action delegation
-    document.getElementById('entries-tbody').addEventListener('click', function(e) {
-        var btn = e.target.closest('[data-action]');
-        if (!btn) return;
-        var action = btn.dataset.action;
-        var id = parseInt(btn.dataset.id);
-        var entry = allEntries.find(function(e) { return e.id === id; });
-        if (!entry) return;
-
-        if (action === 'edit') {
-            openEditModal(entry);
-        } else if (action === 'remove') {
-            pendingRemoveId = id;
-            document.getElementById('remove-product-name').textContent = btn.dataset.name;
-            openModal('modal-remove');
+    async function apiGet(url) {
+        const resp = await fetch(url, { headers: authHeaders });
+        if (!resp.ok) {
+            const err = await resp.json().catch(() => ({}));
+            throw new Error(err.detail || ('Erro ' + resp.status));
         }
-    });
-
-    // Unenriched products quick-add delegation
-    document.getElementById('unenriched-products-list').addEventListener('click', function(e) {
-        var btn = e.target.closest('[data-action="quick-add-enrichment"]');
-        if (!btn) return;
-        // Pre-fill add modal with product and open it
-        document.getElementById('add-product-id').value = btn.dataset.productId;
-        document.getElementById('add-rating').value = '';
-        document.getElementById('add-target-price').value = '';
-        document.getElementById('add-valid-until').value = '';
-        document.getElementById('add-rationale').value = '';
-        // Update displayed product name in select if select2 not used
-        var select = document.getElementById('add-product-id');
-        if (select) {
-            // Try to find the option and select it
-            var opts = select.options;
-            for (var i = 0; i < opts.length; i++) {
-                if (opts[i].value === btn.dataset.productId) {
-                    select.selectedIndex = i;
-                    break;
-                }
-            }
-        }
-        openModal('modal-add');
-    });
-
-    // Close modals on backdrop click
-    ['modal-add', 'modal-edit', 'modal-remove', 'modal-import', 'modal-activate-material', 'modal-suggest-products'].forEach(function(id) {
-        var el = document.getElementById(id);
-        if (el) el.addEventListener('click', function(e) {
-            if (e.target === this) closeModal(id);
-        });
-    });
-
-    // Suggest products modal listeners
-    document.getElementById('btn-close-suggest-products').addEventListener('click', function() { closeModal('modal-suggest-products'); });
-    document.getElementById('btn-skip-suggest-products').addEventListener('click', function() {
-        closeModal('modal-suggest-products');
-        if (window.showToast) window.showToast('Material ativado no Comitê sem produtos vinculados', 'success');
-        loadCommitteeMats();
-    });
-    document.getElementById('btn-confirm-suggest-products').addEventListener('click', confirmSuggestProducts);
-
-    document.getElementById('suggest-products-list').addEventListener('click', function(e) {
-        var btn = e.target.closest('[data-action="toggle-suggest"]');
-        if (!btn) return;
-        var idx = parseInt(btn.dataset.idx);
-        if (isNaN(idx)) return;
-        suggestProducts[idx].selected = !suggestProducts[idx].selected;
-        renderSuggestProducts();
-    });
-
-    // ── Materiais do Comitê Ativo ──────────────────────────────────────────────
-    var committeeMatsList = [];
-
-    function renderCommitteeMats(mats) {
-        var container = document.getElementById('committee-mats-list');
-        var empty = document.getElementById('committee-mats-empty');
-        var countEl = document.getElementById('committee-mats-count');
-
-        document.getElementById('committee-mats-loading').classList.add('hidden');
-
-        if (!mats || mats.length === 0) {
-            container.classList.add('hidden');
-            empty.classList.remove('hidden');
-            if (countEl) countEl.textContent = '';
-            return;
-        }
-
-        empty.classList.add('hidden');
-        container.classList.remove('hidden');
-        if (countEl) countEl.textContent = mats.length + ' material(is) ativo(s)';
-
-        container.innerHTML = mats.map(function(m) {
-            var expired = m.is_expired
-                ? '<span class="px-2 py-0.5 bg-red-100 text-red-600 text-xs rounded-full font-medium">Expirado</span>'
-                : '<span class="px-2 py-0.5 bg-green-100 text-green-700 text-xs rounded-full font-medium">Ativo</span>';
-            var validStr = m.valid_until ? 'Válido até ' + m.valid_until.substring(0, 10) : 'Sem prazo de validade';
-
-            // Produtos como chips clicáveis com estado de exclusão
-            var productsRow;
-            if (m.products && m.products.length > 0) {
-                var chips = m.products.map(function(p) {
-                    var excluded = p.excluded_from_committee;
-                    var label = escapeHtml(p.ticker || p.name);
-                    if (excluded) {
-                        return '<button class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ' +
-                            'bg-red-50 text-red-500 border border-red-200 line-through hover:bg-red-100 transition-colors" ' +
-                            'title="Excluído do Comitê — clique para reincluir" ' +
-                            'data-action="toggle-product-exclusion" data-mat-id="' + m.id + '" data-prod-id="' + p.id + '">' +
-                            '<svg class="w-2.5 h-2.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M18.364 5.636L5.636 18.364M5.636 5.636l12.728 12.728"/></svg>' +
-                            label + '</button>';
-                    }
-                    return '<button class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ' +
-                        'bg-gray-100 text-gray-700 border border-transparent hover:bg-red-50 hover:text-red-500 hover:border-red-200 transition-colors" ' +
-                        'title="Clique para excluir do Comitê" ' +
-                        'data-action="toggle-product-exclusion" data-mat-id="' + m.id + '" data-prod-id="' + p.id + '">' +
-                        label + '</button>';
-                }).join('');
-                productsRow = '<div class="flex flex-wrap gap-1 mt-2">' + chips + '</div>' +
-                    '<p class="text-xs text-gray-400 mt-1">Clique em um produto para excluí-lo ou reincluí-lo no Comitê.</p>';
-            } else {
-                productsRow = '<p class="text-xs text-gray-400 mt-1">Nenhum produto derivado detectado</p>';
-            }
-
-            // Toggle WhatsApp
-            var waAvailable = m.available_for_whatsapp !== false;
-            var waToggle = '<button class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium border transition-colors ' +
-                (waAvailable
-                    ? 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100'
-                    : 'bg-gray-100 text-gray-400 border-gray-200 hover:bg-gray-200') +
-                '" data-action="toggle-whatsapp" data-id="' + m.id + '" title="' +
-                (waAvailable ? 'Disponível para envio via WhatsApp — clique para desativar' : 'Indisponível via WhatsApp — clique para ativar') + '">' +
-                '<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path></svg>' +
-                (waAvailable ? 'WhatsApp: On' : 'WhatsApp: Off') +
-                '</button>';
-
-            return '<div class="bg-white border border-gray-200 rounded-xl p-4">' +
-                '<div class="flex items-start justify-between gap-4">' +
-                    '<div class="flex-1 min-w-0">' +
-                        '<div class="flex items-center flex-wrap gap-2 mb-1">' +
-                            '<span class="font-medium text-gray-900 text-sm">' + escapeHtml(m.name || ('Material #' + m.id)) + '</span>' +
-                            expired +
-                            '<span class="px-2 py-0.5 bg-gray-100 text-gray-500 text-xs rounded-full">' + escapeHtml(m.material_type || 'sem tipo') + '</span>' +
-                        '</div>' +
-                        '<p class="text-xs text-gray-400">' + escapeHtml(validStr) + '</p>' +
-                        productsRow +
-                    '</div>' +
-                    '<div class="flex flex-col items-end gap-2 flex-shrink-0">' +
-                        waToggle +
-                        '<button class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-red-50 text-red-600 border border-red-200 rounded-lg text-xs font-medium hover:bg-red-100 transition-colors" data-action="deactivate-mat" data-id="' + m.id + '" data-name="' + escapeHtml(m.name || '') + '">' +
-                            '<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"></path></svg>' +
-                            'Desativar' +
-                        '</button>' +
-                    '</div>' +
-                '</div>' +
-            '</div>';
-        }).join('');
+        return resp.json();
     }
 
-    function renderUnenrichedProducts() {
-        var section = document.getElementById('unenriched-products-section');
-        var list = document.getElementById('unenriched-products-list');
-        if (!section || !list) return;
-
-        var enrichedIds = allEntries.map(function(e) { return e.product_id; });
-        var unenriched = [];
-        committeeMatsList.forEach(function(m) {
-            (m.products || []).forEach(function(p) {
-                if (!enrichedIds.includes(p.id) && !unenriched.find(function(u) { return u.id === p.id; })) {
-                    unenriched.push(p);
-                }
-            });
-        });
-
-        if (unenriched.length === 0) {
-            section.classList.add('hidden');
-            return;
-        }
-
-        section.classList.remove('hidden');
-        list.innerHTML = unenriched.map(function(p) {
-            return '<button class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-yellow-50 border border-yellow-200 text-yellow-800 text-xs rounded-full hover:bg-yellow-100 transition-colors" ' +
-                'data-action="quick-add-enrichment" data-product-id="' + p.id + '" data-product-name="' + escapeHtml(p.name || '') + '" ' +
-                'data-ticker="' + escapeHtml(p.ticker || '') + '">' +
-                '<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>' +
-                escapeHtml(p.ticker || p.name) + ' — Adicionar' +
-            '</button>';
-        }).join('');
-    }
-
-    function loadCommitteeMats(reRenderEntries) {
-        document.getElementById('committee-mats-loading').classList.remove('hidden');
-        document.getElementById('committee-mats-list').classList.add('hidden');
-        document.getElementById('committee-mats-empty').classList.add('hidden');
-
-        fetch('/api/recommendations/committee-materials', { credentials: 'include' })
-            .then(function(r) { return r.json(); })
-            .then(function(data) {
-                committeeMatsList = Array.isArray(data) ? data : [];
-                renderCommitteeMats(committeeMatsList);
-                // Re-renderiza entries para atualizar badges de fonte e produtos sem enriquecimento
-                if (reRenderEntries !== false && allEntries.length > 0) {
-                    renderEntries();
-                }
-                renderUnenrichedProducts();
-            })
-            .catch(function(err) {
-                console.error('[committee-mats] Erro:', err);
-                document.getElementById('committee-mats-loading').classList.add('hidden');
-                document.getElementById('committee-mats-empty').classList.remove('hidden');
-            });
-    }
-
-    function deactivateMat(materialId, materialName) {
-        if (!confirm('Desativar "' + materialName + '" do Comitê Ativo?\n\nOs produtos derivados serão atualizados automaticamente.')) return;
-        fetch('/api/recommendations/committee-materials/' + materialId + '/deactivate', {
+    async function apiPost(url, body) {
+        const resp = await fetch(url, {
             method: 'POST',
-            credentials: 'include',
-        })
-        .then(function(r) {
-            if (!r.ok) return r.json().then(function(e) { throw new Error(e.detail || 'Erro ao desativar'); });
-            return r.json();
-        })
-        .then(function(data) {
-            if (window.showToast) window.showToast('Material desativado do Comitê', 'success');
-            loadCommitteeMats();
-        })
-        .catch(function(err) { alert(err.message); });
-    }
-
-    function toggleProductExclusion(matId, prodId, btn) {
-        btn.disabled = true;
-        fetch('/api/recommendations/committee-materials/' + matId + '/products/' + prodId + '/toggle-exclusion', {
-            method: 'POST',
-            credentials: 'include',
-        })
-        .then(function(r) {
-            if (!r.ok) return r.json().then(function(e) { throw new Error(e.detail || 'Erro'); });
-            return r.json();
-        })
-        .then(function(data) {
-            var action = data.excluded_from_committee ? 'excluído do' : 'reincluído no';
-            if (window.showToast) window.showToast('Produto ' + action + ' Comitê', 'success');
-            committeeMatsList = committeeMatsList.map(function(m) {
-                return m.id === matId ? data.material : m;
-            });
-            renderCommitteeMats(committeeMatsList);
-            renderUnenrichedProducts();
-        })
-        .catch(function(err) {
-            if (window.showToast) window.showToast(err.message, 'error');
-            btn.disabled = false;
+            headers: jsonHeaders,
+            body: JSON.stringify(body || {}),
         });
-    }
-
-    function toggleMatWhatsapp(matId, btn) {
-        btn.disabled = true;
-        fetch('/api/recommendations/committee-materials/' + matId + '/toggle-whatsapp', {
-            method: 'POST',
-            credentials: 'include',
-        })
-        .then(function(r) {
-            if (!r.ok) return r.json().then(function(e) { throw new Error(e.detail || 'Erro'); });
-            return r.json();
-        })
-        .then(function(data) {
-            if (window.showToast) window.showToast(data.message, 'success');
-            // Atualiza o estado local e re-renderiza
-            committeeMatsList = committeeMatsList.map(function(m) {
-                if (m.id === matId) return Object.assign({}, m, { available_for_whatsapp: data.available_for_whatsapp });
-                return m;
-            });
-            renderCommitteeMats(committeeMatsList);
-        })
-        .catch(function(err) {
-            if (window.showToast) window.showToast(err.message, 'error');
-            btn.disabled = false;
-        });
-    }
-
-    // Delegation for committee mats actions
-    document.getElementById('committee-mats-list').addEventListener('click', function(e) {
-        var btn = e.target.closest('[data-action]');
-        if (!btn) return;
-        if (btn.dataset.action === 'deactivate-mat') {
-            deactivateMat(parseInt(btn.dataset.id), btn.dataset.name);
-        } else if (btn.dataset.action === 'toggle-product-exclusion') {
-            toggleProductExclusion(parseInt(btn.dataset.matId), parseInt(btn.dataset.prodId), btn);
-        } else if (btn.dataset.action === 'toggle-whatsapp') {
-            toggleMatWhatsapp(parseInt(btn.dataset.id), btn);
+        if (!resp.ok) {
+            const err = await resp.json().catch(() => ({}));
+            throw new Error(err.detail || ('Erro ' + resp.status));
         }
-    });
+        return resp.json();
+    }
 
-    // ── Modal: Ativar Material ─────────────────────────────────────────────────
-    var activateMaterials = [];
-    var activateSelectedId = null;
-    var activateSelectedName = null;
+    function renderKPIs() {
+        const s = state.status;
+        const statusEl = document.getElementById('kpi-status');
+        if (s.is_active) {
+            statusEl.innerHTML = '<span class="inline-flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-green-500"></span>Ativo</span>';
+        } else {
+            statusEl.innerHTML = '<span class="inline-flex items-center gap-1.5 text-gray-500"><span class="w-2 h-2 rounded-full bg-gray-300"></span>Inativo</span>';
+        }
+        document.getElementById('kpi-materials').textContent = (s.materials || []).length;
+        const includedProducts = (s.products || []).filter(function(p) { return !p.excluded; }).length;
+        document.getElementById('kpi-products').textContent = includedProducts;
+    }
 
-    function renderActivateMatList(mats) {
-        var list = document.getElementById('activate-mat-list');
-        var empty = document.getElementById('activate-mat-empty');
-        document.getElementById('activate-mat-loading').classList.add('hidden');
-
-        if (!mats || mats.length === 0) {
-            list.classList.add('hidden');
-            empty.classList.remove('hidden');
+    function renderActiveMaterials() {
+        const container = document.getElementById('active-materials');
+        const mats = state.status.materials || [];
+        if (!mats.length) {
+            container.innerHTML = '<div class="p-5 text-sm text-gray-500">Nenhum material ativo no momento. Selecione um material abaixo para ativar.</div>';
             return;
         }
-        empty.classList.add('hidden');
-        list.classList.remove('hidden');
-
-        list.innerHTML = mats.map(function(m) {
-            var isSelected = activateSelectedId === m.id;
-            var isActive = !!m.is_committee_active;
-            var activeTag = isActive
-                ? '<span class="px-1.5 py-0.5 bg-green-100 text-green-700 text-xs rounded-full">Ativo</span>'
-                : '';
-            var typeTag = '<span class="px-1.5 py-0.5 bg-gray-100 text-gray-400 text-xs rounded-full">' + escapeHtml(m.material_type || '') + '</span>';
-            var prods = (m.products || []).map(function(p) { return escapeHtml(p.ticker || p.name); }).join(', ');
-            var prodsStr = prods ? '<span class="text-xs text-gray-400">' + prods + '</span>' : '';
-
-            return '<div class="activate-mat-item flex items-start gap-3 p-3 rounded-lg border cursor-pointer hover:border-green-400 hover:bg-green-50 transition-colors ' + (isSelected ? 'border-green-500 bg-green-50' : 'border-gray-200 bg-white') + '" data-action="select-activate-mat" data-id="' + m.id + '" data-name="' + escapeHtml(m.name || '') + '">' +
-                '<div class="mt-0.5 w-4 h-4 rounded-full border-2 flex-shrink-0 ' + (isSelected ? 'border-green-500 bg-green-500' : 'border-gray-300') + '"></div>' +
-                '<div class="flex-1 min-w-0">' +
-                    '<div class="flex items-center flex-wrap gap-1.5">' +
-                        '<span class="font-medium text-gray-900 text-sm">' + escapeHtml(m.name || ('Material #' + m.id)) + '</span>' +
-                        activeTag + typeTag +
-                    '</div>' +
-                    prodsStr +
-                '</div>' +
-            '</div>';
-        }).join('');
-    }
-
-    function filterActivateMats() {
-        var q = document.getElementById('activate-search').value.toLowerCase().trim();
-        if (!q) return renderActivateMatList(activateMaterials);
-        renderActivateMatList(activateMaterials.filter(function(m) {
-            return (m.name || '').toLowerCase().includes(q) ||
-                (m.products || []).some(function(p) {
-                    return (p.ticker || '').toLowerCase().includes(q) || (p.name || '').toLowerCase().includes(q);
-                });
-        }));
-    }
-
-    function loadActivateMaterials() {
-        document.getElementById('activate-mat-loading').classList.remove('hidden');
-        document.getElementById('activate-mat-list').classList.add('hidden');
-        document.getElementById('activate-mat-empty').classList.add('hidden');
-
-        fetch('/api/recommendations/available-materials', { credentials: 'include' })
-            .then(function(r) { return r.json(); })
-            .then(function(data) {
-                activateMaterials = Array.isArray(data) ? data : [];
-                renderActivateMatList(activateMaterials);
-            })
-            .catch(function(err) {
-                console.error('[activate-mats] Erro:', err);
-                document.getElementById('activate-mat-loading').classList.add('hidden');
-                document.getElementById('activate-mat-empty').classList.remove('hidden');
-            });
-    }
-
-    var suggestMaterialId = null;
-    var suggestProducts = [];
-
-    function confirmActivateMaterial() {
-        if (!activateSelectedId) return;
-        var btn = document.getElementById('btn-confirm-activate-material');
-        btn.disabled = true;
-        btn.innerHTML = '<svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.4 0 0 5.4 0 12h4z"></path></svg> Ativando...';
-
-        fetch('/api/recommendations/committee-materials/' + activateSelectedId + '/activate', {
-            method: 'POST',
-            credentials: 'include',
-        })
-        .then(function(r) {
-            if (!r.ok) return r.json().then(function(e) { throw new Error(e.detail || 'Erro ao ativar'); });
-            return r.json();
-        })
-        .then(function(data) {
-            closeModal('modal-activate-material');
-            var matId = activateSelectedId;
-            activateSelectedId = null;
-            activateSelectedName = null;
-            if (data.suggested_products && data.suggested_products.length > 0 && !data.has_product_links) {
-                openSuggestProductsModal(matId, data.suggested_products);
-            } else {
-                if (window.showToast) window.showToast(data.message || 'Material ativado no Comitê', 'success');
-                loadCommitteeMats();
-            }
-        })
-        .catch(function(err) { alert(err.message); })
-        .finally(function() {
-            btn.disabled = false;
-            btn.innerHTML = '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg> Ativar no Comitê';
-        });
-    }
-
-    function openSuggestProductsModal(materialId, products) {
-        suggestMaterialId = materialId;
-        suggestProducts = products.map(function(p) { return Object.assign({}, p, { selected: p.selected !== false }); });
-        renderSuggestProducts();
-        openModal('modal-suggest-products');
-    }
-
-    function renderSuggestProducts() {
-        var list = document.getElementById('suggest-products-list');
-        if (!suggestProducts.length) {
-            list.innerHTML = '<p class="text-sm text-gray-400">Nenhum produto identificado no documento.</p>';
-            return;
-        }
-        list.innerHTML = suggestProducts.map(function(p, i) {
-            var label = p.ticker ? p.ticker : '';
-            var name = p.name || '';
-            var displayText = label ? label + ' — ' + name : name;
-            var confidenceBadge = '';
-            if (p.match_confidence === 'exact') {
-                confidenceBadge = '<span class="ml-1 text-xs text-green-600 font-medium">✓ Cadastrado</span>';
-            } else if (p.match_confidence === 'ilike' || p.match_confidence === 'prefix') {
-                confidenceBadge = '<span class="ml-1 text-xs text-blue-500 font-medium">≈ Cadastrado</span>';
-            } else if (p.match_confidence === 'name') {
-                confidenceBadge = '<span class="ml-1 text-xs text-blue-400 font-medium">≈ Nome</span>';
-            } else {
-                confidenceBadge = '<span class="ml-1 text-xs text-orange-500 font-medium">+ Novo</span>';
-            }
-            var typeText = p.product_type ? '<span class="text-xs text-gray-400 ml-1">(' + escapeHtml(p.product_type) + ')</span>' : '';
-            var selected = p.selected;
-            var cls = selected
-                ? 'inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium cursor-pointer border-2 border-green-500 bg-green-50 text-green-800 select-none'
-                : 'inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium cursor-pointer border-2 border-gray-200 bg-white text-gray-500 select-none';
-            return '<button class="' + cls + '" data-action="toggle-suggest" data-idx="' + i + '">' +
-                escapeHtml(displayText) + typeText + confidenceBadge + '</button>';
-        }).join(' ');
-    }
-
-    function confirmSuggestProducts() {
-        var confirmed = suggestProducts.filter(function(p) { return p.selected; });
-        if (!confirmed.length) {
-            if (window.showToast) window.showToast('Selecione pelo menos um produto', 'warning');
-            return;
-        }
-        var btn = document.getElementById('btn-confirm-suggest-products');
-        btn.disabled = true;
-        btn.textContent = 'Vinculando...';
-
-        fetch('/api/recommendations/committee-materials/' + suggestMaterialId + '/link-products', {
-            method: 'POST',
-            credentials: 'include',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ confirmed_products: confirmed }),
-        })
-        .then(function(r) {
-            if (!r.ok) return r.json().then(function(e) { throw new Error(e.detail || 'Erro ao vincular'); });
-            return r.json();
-        })
-        .then(function(data) {
-            closeModal('modal-suggest-products');
-            if (window.showToast) window.showToast(data.message || 'Produtos vinculados com sucesso', 'success');
-            loadCommitteeMats();
-        })
-        .catch(function(err) { alert(err.message); })
-        .finally(function() {
-            btn.disabled = false;
-            btn.textContent = 'Confirmar Produtos';
-        });
-    }
-
-    // Listeners for Ativar Material modal
-    document.getElementById('btn-open-activate-material').addEventListener('click', function() {
-        activateSelectedId = null;
-        activateSelectedName = null;
-        document.getElementById('activate-search').value = '';
-        document.getElementById('activate-selected-label').textContent = 'Nenhum material selecionado';
-        document.getElementById('btn-confirm-activate-material').disabled = true;
-        openModal('modal-activate-material');
-        loadActivateMaterials();
-    });
-    document.getElementById('btn-close-activate-material').addEventListener('click', function() { closeModal('modal-activate-material'); });
-    document.getElementById('btn-cancel-activate-material').addEventListener('click', function() { closeModal('modal-activate-material'); });
-    document.getElementById('btn-confirm-activate-material').addEventListener('click', confirmActivateMaterial);
-    document.getElementById('activate-search').addEventListener('input', filterActivateMats);
-    document.getElementById('activate-mat-list').addEventListener('click', function(e) {
-        var item = e.target.closest('[data-action="select-activate-mat"]');
-        if (!item) return;
-        activateSelectedId = parseInt(item.dataset.id);
-        activateSelectedName = item.dataset.name;
-        document.getElementById('activate-selected-label').textContent = 'Selecionado: ' + activateSelectedName;
-        document.getElementById('btn-confirm-activate-material').disabled = false;
-        // Re-render to reflect selection
-        var q = document.getElementById('activate-search').value.toLowerCase().trim();
-        var list = q ? activateMaterials.filter(function(m) {
-            return (m.name || '').toLowerCase().includes(q);
-        }) : activateMaterials;
-        renderActivateMatList(list);
-    });
-
-    // ── Import from Material ───────────────────────────────────────────────────
-    var importMaterials = [];
-    var importSelectedId = null;
-    var importSelectedName = null;
-    var importPreviewItems = [];
-
-    function renderMaterialsList(materials) {
-        var list = document.getElementById('import-materials-list');
-        var empty = document.getElementById('import-materials-empty');
-        var loading = document.getElementById('import-materials-loading');
-
-        loading.classList.add('hidden');
-
-        if (!materials || materials.length === 0) {
-            list.classList.add('hidden');
-            empty.classList.remove('hidden');
-            return;
-        }
-
-        empty.classList.add('hidden');
-        list.classList.remove('hidden');
-
-        list.innerHTML = materials.map(function(m) {
-            var isComite = m.material_type === 'comite';
-            var typeBadge = isComite
-                ? '<span class="ml-1.5 px-1.5 py-0.5 bg-blue-100 text-blue-700 text-xs rounded-full font-medium">Comitê</span>'
-                : '<span class="ml-1.5 px-1.5 py-0.5 bg-gray-100 text-gray-500 text-xs rounded-full">' + escapeHtml(m.material_type || '') + '</span>';
-            var productInfo = m.product_name
-                ? '<span class="text-xs text-gray-400">' + escapeHtml(m.product_ticker ? m.product_ticker + ' · ' : '') + escapeHtml(m.product_name) + '</span>'
-                : '';
-            var summary = m.ai_summary ? '<p class="text-xs text-gray-400 mt-0.5 line-clamp-1">' + escapeHtml(m.ai_summary) + '</p>' : '';
-
-            return '<div class="import-material-item flex items-start gap-3 p-3 rounded-lg border cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-colors ' + (importSelectedId === m.id ? 'border-blue-500 bg-blue-50' : 'border-gray-200 bg-white') + '" data-action="select-material" data-id="' + m.id + '" data-name="' + escapeHtml(m.name || '') + '">' +
-                '<div class="mt-0.5 w-4 h-4 rounded-full border-2 flex-shrink-0 ' + (importSelectedId === m.id ? 'border-blue-500 bg-blue-500' : 'border-gray-300') + '"></div>' +
-                '<div class="flex-1 min-w-0">' +
-                    '<div class="flex items-center flex-wrap gap-1">' +
-                        '<span class="font-medium text-gray-900 text-sm">' + escapeHtml(m.name || ('Material #' + m.id)) + '</span>' +
-                        typeBadge +
-                    '</div>' +
-                    productInfo +
-                    summary +
-                '</div>' +
-            '</div>';
-        }).join('');
-    }
-
-    function filterMaterials() {
-        var q = document.getElementById('import-search').value.toLowerCase().trim();
-        if (!q) return renderMaterialsList(importMaterials);
-        var filtered = importMaterials.filter(function(m) {
+        const html = mats.map(function(m) {
             return (
-                (m.name || '').toLowerCase().includes(q) ||
-                (m.product_name || '').toLowerCase().includes(q) ||
-                (m.product_ticker || '').toLowerCase().includes(q) ||
-                (m.material_type || '').toLowerCase().includes(q)
+                '<div class="p-4 flex items-center justify-between gap-3">' +
+                    '<div class="min-w-0 flex-1">' +
+                        '<div class="flex items-center gap-2">' +
+                            '<svg class="w-4 h-4 text-green-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>' +
+                            '<span class="font-medium text-sm text-gray-900 truncate">' + escapeHtml(m.name) + '</span>' +
+                            (m.type ? '<span class="text-xs px-2 py-0.5 bg-gray-100 text-gray-600 rounded">' + escapeHtml(m.type) + '</span>' : '') +
+                        '</div>' +
+                        '<div class="text-xs text-gray-500 mt-0.5">' + (m.product_count || 0) + ' produto(s) no comitê</div>' +
+                    '</div>' +
+                    '<button data-action="remove-material" data-material-id="' + m.id + '" class="px-3 py-1.5 text-xs bg-red-50 text-red-700 border border-red-200 rounded-lg hover:bg-red-100 font-medium">Desativar</button>' +
+                '</div>'
             );
-        });
-        renderMaterialsList(filtered);
-    }
-
-    function loadMaterialsForImport() {
-        document.getElementById('import-materials-loading').classList.remove('hidden');
-        document.getElementById('import-materials-list').classList.add('hidden');
-        document.getElementById('import-materials-empty').classList.add('hidden');
-
-        fetch('/api/recommendations/materials-for-import', { credentials: 'include' })
-            .then(function(r) { return r.json(); })
-            .then(function(data) {
-                importMaterials = Array.isArray(data) ? data : [];
-                renderMaterialsList(importMaterials);
-            })
-            .catch(function(err) {
-                console.error('[import] Erro ao carregar materiais:', err);
-                document.getElementById('import-materials-loading').classList.add('hidden');
-                document.getElementById('import-materials-empty').classList.remove('hidden');
-            });
-    }
-
-    function getAutoCreateEnabled() {
-        var cb = document.getElementById('auto-create-checkbox');
-        return cb ? cb.checked : false;
-    }
-
-    function renderPreviewTable(items) {
-        var autoCreate = getAutoCreateEnabled();
-        var hasUnresolved = items.some(function(i) { return i.unresolved; });
-        var autoCreateLabel = document.getElementById('auto-create-label');
-        if (autoCreateLabel) {
-            if (hasUnresolved) {
-                autoCreateLabel.classList.remove('hidden');
-                autoCreateLabel.classList.add('flex');
-            } else {
-                autoCreateLabel.classList.add('hidden');
-                autoCreateLabel.classList.remove('flex');
-            }
-        }
-
-        var tbody = document.getElementById('import-preview-tbody');
-        tbody.innerHTML = items.map(function(item, idx) {
-            var isUnresolved = !!item.unresolved;
-            var disabled = isUnresolved && !autoCreate;
-            var rowClass = disabled ? 'opacity-50' : '';
-            var unresolvedAttr = isUnresolved ? 'data-unresolved="1"' : '';
-
-            var badge = '';
-            if (isUnresolved) {
-                badge = '<span class="ml-1.5 px-1.5 py-0.5 bg-blue-100 text-blue-700 text-xs rounded-full font-medium" title="Será cadastrado automaticamente ao confirmar importação">Produto novo</span>';
-            } else if (item.already_in_committee) {
-                badge = '<span class="ml-1.5 px-1.5 py-0.5 bg-yellow-100 text-yellow-700 text-xs rounded-full font-medium">Já no Comitê</span>';
-            }
-
-            var productDisplay = item.product_name
-                ? '<span class="font-medium text-gray-900">' + escapeHtml(item.product_name) + '</span>' +
-                  (item.product_ticker ? '<span class="ml-1 text-xs text-gray-400">' + escapeHtml(item.product_ticker) + '</span>' : '')
-                : '<span class="font-medium text-gray-700">' + escapeHtml(item.nome || item.ticker || '—') + '</span>';
-
-            var ratingVal = item.rating || '';
-            var targetVal = item.target_price !== null && item.target_price !== undefined ? item.target_price : '';
-            var validVal = item.valid_until ? item.valid_until.substring(0, 10) : '';
-            var rationaleVal = item.rationale || '';
-
-            return '<tr class="hover:bg-gray-50 ' + rowClass + '" data-idx="' + idx + '">' +
-                '<td class="py-2.5 pr-2 pl-0">' +
-                    '<input type="checkbox" class="import-row-check rounded" data-idx="' + idx + '" ' + unresolvedAttr + ' ' + (disabled ? 'disabled' : 'checked') + '>' +
-                '</td>' +
-                '<td class="py-2.5 pr-3">' +
-                    '<div class="flex items-center flex-wrap gap-1">' + productDisplay + badge + '</div>' +
-                '</td>' +
-                '<td class="py-2.5 pr-3">' +
-                    '<select class="import-rating w-full px-2 py-1 border border-gray-200 rounded text-xs" data-idx="' + idx + '" ' + unresolvedAttr + ' ' + (disabled ? 'disabled' : '') + '>' +
-                        '<option value="" ' + (!ratingVal ? 'selected' : '') + '>—</option>' +
-                        ['Compra', 'Manutenção', 'Venda'].map(function(r) {
-                            return '<option value="' + r + '" ' + (ratingVal === r ? 'selected' : '') + '>' + r + '</option>';
-                        }).join('') +
-                    '</select>' +
-                '</td>' +
-                '<td class="py-2.5 pr-3">' +
-                    '<input type="number" step="0.01" value="' + targetVal + '" placeholder="—" class="import-price w-full px-2 py-1 border border-gray-200 rounded text-xs" data-idx="' + idx + '" ' + unresolvedAttr + ' ' + (disabled ? 'disabled' : '') + '>' +
-                '</td>' +
-                '<td class="py-2.5 pr-3">' +
-                    '<input type="date" value="' + validVal + '" class="import-valid w-full px-2 py-1 border border-gray-200 rounded text-xs" data-idx="' + idx + '" ' + unresolvedAttr + ' ' + (disabled ? 'disabled' : '') + '>' +
-                '</td>' +
-                '<td class="py-2.5">' +
-                    '<input type="text" value="' + escapeHtml(rationaleVal) + '" placeholder="Justificativa..." class="import-rationale w-full px-2 py-1 border border-gray-200 rounded text-xs" data-idx="' + idx + '" ' + unresolvedAttr + ' ' + (disabled ? 'disabled' : '') + '>' +
-                '</td>' +
-            '</tr>';
         }).join('');
-
-        updateImportConfirmState();
+        container.innerHTML = html;
     }
 
-    function toggleAutoCreate(checked) {
-        document.querySelectorAll('[data-unresolved="1"]').forEach(function(el) {
-            el.disabled = !checked;
-            if (!checked && el.type === 'checkbox') el.checked = false;
+    function renderAvailableMaterials() {
+        const container = document.getElementById('available-materials');
+        const filter = (state.materialFilter || '').toLowerCase();
+        const activeIds = new Set((state.status.materials || []).map(function(m) { return m.id; }));
+        let list = state.availableMaterials || [];
+        if (filter) {
+            list = list.filter(function(m) {
+                return (m.name || '').toLowerCase().indexOf(filter) >= 0
+                    || (m.type || '').toLowerCase().indexOf(filter) >= 0;
+            });
+        }
+        if (!list.length) {
+            container.innerHTML = '<div class="p-5 text-sm text-gray-500">Nenhum material disponível.</div>';
+            return;
+        }
+        const html = list.map(function(m) {
+            const isActive = activeIds.has(m.id);
+            const btn = isActive
+                ? '<span class="px-3 py-1.5 text-xs bg-gray-100 text-gray-500 rounded-lg font-medium">Já ativo</span>'
+                : '<button data-action="add-material" data-material-id="' + m.id + '" class="px-3 py-1.5 text-xs bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium">Ativar</button>';
+            return (
+                '<div class="p-4 flex items-center justify-between gap-3">' +
+                    '<div class="min-w-0 flex-1">' +
+                        '<div class="flex items-center gap-2">' +
+                            '<span class="font-medium text-sm text-gray-900 truncate">' + escapeHtml(m.name) + '</span>' +
+                            (m.type ? '<span class="text-xs px-2 py-0.5 bg-gray-100 text-gray-600 rounded flex-shrink-0">' + escapeHtml(m.type) + '</span>' : '') +
+                        '</div>' +
+                        '<div class="text-xs text-gray-500 mt-0.5">' + (m.product_count || 0) + ' produto(s) vinculado(s)</div>' +
+                    '</div>' +
+                    btn +
+                '</div>'
+            );
+        }).join('');
+        container.innerHTML = html;
+    }
+
+    function renderCommitteeProducts() {
+        const container = document.getElementById('committee-products');
+        const mats = state.status.materials || [];
+        if (!mats.length) {
+            container.innerHTML = '<div class="text-sm text-gray-500">Ative um material acima para começar.</div>';
+            return;
+        }
+        const byMaterial = {};
+        (state.status.products || []).forEach(function(p) {
+            const k = p.source_material_id;
+            if (!byMaterial[k]) byMaterial[k] = [];
+            byMaterial[k].push(p);
         });
-        var rows = document.querySelectorAll('#import-preview-tbody tr');
-        rows.forEach(function(row) {
-            var cb = row.querySelector('.import-row-check[data-unresolved="1"]');
-            if (cb) {
-                row.classList.toggle('opacity-50', !checked);
+
+        const html = mats.map(function(m) {
+            const prods = byMaterial[m.id] || [];
+            const inner = prods.length
+                ? '<div class="grid grid-cols-1 md:grid-cols-2 gap-2">' + prods.map(function(p) {
+                    const tagClass = p.excluded
+                        ? 'bg-gray-50 border-gray-200 text-gray-400 line-through'
+                        : 'bg-white border-gray-200 text-gray-900';
+                    const btn = p.excluded
+                        ? '<button data-action="include-product" data-material-id="' + m.id + '" data-product-id="' + p.id + '" class="text-xs px-2 py-1 rounded bg-green-50 text-green-700 border border-green-200 hover:bg-green-100 font-medium">Incluir</button>'
+                        : '<button data-action="exclude-product" data-material-id="' + m.id + '" data-product-id="' + p.id + '" class="text-xs px-2 py-1 rounded bg-red-50 text-red-700 border border-red-200 hover:bg-red-100 font-medium">Excluir</button>';
+                    return (
+                        '<div class="flex items-center justify-between gap-2 p-2.5 border rounded-lg ' + tagClass + '">' +
+                            '<div class="min-w-0 flex-1 flex items-center gap-2">' +
+                                (p.ticker ? '<span class="font-bold text-sm">' + escapeHtml(p.ticker) + '</span>' : '') +
+                                '<span class="text-xs truncate">' + escapeHtml(p.name || '') + '</span>' +
+                            '</div>' +
+                            btn +
+                        '</div>'
+                    );
+                }).join('') + '</div>'
+                : '<div class="text-xs text-gray-500 italic">Nenhum produto vinculado a este material.</div>';
+            return (
+                '<div class="mb-5 last:mb-0">' +
+                    '<div class="text-sm font-semibold text-gray-900 mb-2 flex items-center gap-2">' +
+                        '<svg class="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>' +
+                        escapeHtml(m.name) +
+                    '</div>' +
+                    inner +
+                '</div>'
+            );
+        }).join('');
+        container.innerHTML = html;
+    }
+
+    function renderManualReferenceSelect() {
+        const sel = document.getElementById('manual-reference-material');
+        const mats = state.status.materials || [];
+        const prev = sel.value;
+        sel.innerHTML = '<option value="">— selecione —</option>' +
+            mats.map(function(m) {
+                return '<option value="' + m.id + '">' + escapeHtml(m.name) + '</option>';
+            }).join('');
+        if (prev && mats.some(function(m) { return String(m.id) === String(prev); })) {
+            sel.value = prev;
+        }
+        updateManualAddButton();
+    }
+
+    function updateManualAddButton() {
+        const btn = document.getElementById('btn-manual-add');
+        const sel = document.getElementById('manual-reference-material');
+        btn.disabled = !(state.manualProduct && sel.value);
+    }
+
+    function render() {
+        renderKPIs();
+        renderActiveMaterials();
+        renderAvailableMaterials();
+        renderCommitteeProducts();
+        renderManualReferenceSelect();
+    }
+
+    async function loadStatus() {
+        try {
+            state.status = await apiGet('/api/committee/status');
+        } catch (e) {
+            toast('Erro ao carregar status: ' + e.message, 'error');
+        }
+    }
+
+    async function loadAvailableMaterials() {
+        try {
+            const data = await apiGet('/api/committee/available-materials');
+            state.availableMaterials = data.materials || [];
+        } catch (e) {
+            toast('Erro ao carregar materiais: ' + e.message, 'error');
+        }
+    }
+
+    async function reloadAll() {
+        await Promise.all([loadStatus(), loadAvailableMaterials()]);
+        render();
+    }
+
+    // --- Event delegation ---
+    document.body.addEventListener('click', async function(ev) {
+        const target = ev.target.closest('[data-action]');
+        if (!target) return;
+        const action = target.getAttribute('data-action');
+        const materialId = target.getAttribute('data-material-id');
+        const productId = target.getAttribute('data-product-id');
+
+        try {
+            target.disabled = true;
+            if (action === 'add-material') {
+                state.status = await apiPost('/api/committee/add-material', { material_id: Number(materialId) });
+                toast('Material ativado no comitê', 'success');
+            } else if (action === 'remove-material') {
+                state.status = await apiPost('/api/committee/remove-material', { material_id: Number(materialId) });
+                toast('Material desativado', 'success');
+            } else if (action === 'exclude-product') {
+                state.status = await apiPost('/api/committee/exclude-product', {
+                    material_id: Number(materialId),
+                    product_id: Number(productId),
+                });
+                toast('Produto excluído do comitê', 'success');
+            } else if (action === 'include-product') {
+                state.status = await apiPost('/api/committee/include-product', {
+                    material_id: Number(materialId),
+                    product_id: Number(productId),
+                });
+                toast('Produto incluído no comitê', 'success');
+            } else if (action === 'select-manual-product') {
+                const pid = Number(target.getAttribute('data-product-id'));
+                const pname = target.getAttribute('data-product-name') || '';
+                const ptk = target.getAttribute('data-product-ticker') || '';
+                state.manualProduct = { id: pid, name: pname, ticker: ptk };
+                document.getElementById('manual-product-search').value = ptk ? (ptk + ' — ' + pname) : pname;
+                document.getElementById('manual-product-selected').innerHTML =
+                    '<span class="text-primary font-medium">Selecionado:</span> ' +
+                    (ptk ? '<span class="font-semibold">' + escapeHtml(ptk) + '</span> — ' : '') +
+                    escapeHtml(pname);
+                document.getElementById('manual-product-results').classList.add('hidden');
+                updateManualAddButton();
+                return;
             }
-        });
-        updateImportConfirmState();
-    }
-
-    function updateImportConfirmState() {
-        var checks = document.querySelectorAll('.import-row-check:not(:disabled):checked');
-        var total = document.querySelectorAll('.import-row-check:not(:disabled)').length;
-        var newCount = document.querySelectorAll('.import-row-check[data-unresolved="1"]:not(:disabled):checked').length;
-        var btn = document.getElementById('btn-confirm-import');
-        var label = document.getElementById('import-confirm-label');
-        btn.disabled = checks.length === 0;
-        if (checks.length > 0) {
-            var msg = checks.length + ' de ' + total + ' produto(s) selecionado(s)';
-            if (newCount > 0) msg += ' (' + newCount + ' novo(s) será(ão) criado(s))';
-            label.textContent = msg;
-        } else {
-            label.textContent = 'Selecione ao menos um produto';
+            render();
+        } catch (e) {
+            toast('Erro: ' + e.message, 'error');
+        } finally {
+            target.disabled = false;
         }
-    }
+    });
 
-    function showImportPhase1() {
-        document.getElementById('import-phase1').classList.remove('hidden');
-        document.getElementById('import-phase2').classList.add('hidden');
-        document.getElementById('import-subtitle').textContent = 'Selecione um material para analisar e importar recomendações';
-    }
+    document.getElementById('btn-refresh').addEventListener('click', reloadAll);
 
-    function showImportPhase2() {
-        document.getElementById('import-phase1').classList.add('hidden');
-        document.getElementById('import-phase2').classList.remove('hidden');
-    }
+    document.getElementById('material-search').addEventListener('input', function(ev) {
+        state.materialFilter = ev.target.value || '';
+        renderAvailableMaterials();
+    });
 
-    function showAnalyzing(visible) {
-        var analyzing = document.getElementById('import-analyzing');
-        var previewContent = document.getElementById('import-preview-content');
-        var noResults = document.getElementById('import-no-results');
-        if (visible) {
-            analyzing.classList.remove('hidden'); analyzing.style.display = 'flex';
-            previewContent.classList.add('hidden'); previewContent.style.display = '';
-            noResults.classList.add('hidden'); noResults.style.display = '';
-        } else {
-            analyzing.classList.add('hidden'); analyzing.style.display = '';
+    // Busca de produto (manual add)
+    const searchInput = document.getElementById('manual-product-search');
+    const resultsBox = document.getElementById('manual-product-results');
+
+    searchInput.addEventListener('input', function(ev) {
+        const q = (ev.target.value || '').trim();
+        state.manualProduct = null;
+        document.getElementById('manual-product-selected').textContent = 'Nenhum produto selecionado';
+        updateManualAddButton();
+
+        if (state.searchDebounce) clearTimeout(state.searchDebounce);
+        if (!q) {
+            resultsBox.classList.add('hidden');
+            resultsBox.innerHTML = '';
+            return;
         }
-    }
+        state.searchDebounce = setTimeout(async function() {
+            try {
+                const data = await apiGet('/api/products/search?q=' + encodeURIComponent(q) + '&limit=12');
+                const rows = data.products || [];
+                if (!rows.length) {
+                    resultsBox.innerHTML = '<div class="p-3 text-xs text-gray-500">Nenhum produto encontrado</div>';
+                    resultsBox.classList.remove('hidden');
+                    return;
+                }
+                resultsBox.innerHTML = rows.map(function(p) {
+                    return (
+                        '<button type="button" data-action="select-manual-product" ' +
+                        'data-product-id="' + p.id + '" ' +
+                        'data-product-name="' + escapeHtml(p.name || '') + '" ' +
+                        'data-product-ticker="' + escapeHtml(p.ticker || '') + '" ' +
+                        'class="w-full text-left px-3 py-2 hover:bg-gray-50 border-b border-gray-100 last:border-b-0 flex items-center gap-2 text-sm">' +
+                            (p.ticker ? '<span class="font-bold text-gray-900">' + escapeHtml(p.ticker) + '</span>' : '') +
+                            '<span class="text-gray-600 truncate">' + escapeHtml(p.name || '') + '</span>' +
+                            (p.product_type ? '<span class="ml-auto text-xs text-gray-400">' + escapeHtml(p.product_type) + '</span>' : '') +
+                        '</button>'
+                    );
+                }).join('');
+                resultsBox.classList.remove('hidden');
+            } catch (e) {
+                resultsBox.innerHTML = '<div class="p-3 text-xs text-red-500">Erro: ' + escapeHtml(e.message) + '</div>';
+                resultsBox.classList.remove('hidden');
+            }
+        }, 250);
+    });
 
-    function analyzeMaterial() {
-        if (!importSelectedId) return;
+    document.addEventListener('click', function(ev) {
+        if (!ev.target.closest('#manual-product-search') && !ev.target.closest('#manual-product-results')) {
+            resultsBox.classList.add('hidden');
+        }
+    });
 
-        var btn = document.getElementById('btn-analyze-material');
+    document.getElementById('manual-reference-material').addEventListener('change', updateManualAddButton);
+
+    document.getElementById('btn-manual-add').addEventListener('click', async function() {
+        const sel = document.getElementById('manual-reference-material');
+        if (!state.manualProduct || !sel.value) return;
+        const btn = this;
         btn.disabled = true;
-        btn.innerHTML = '<svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.4 0 0 5.4 0 12h4z"></path></svg> Analisando...';
-
-        showImportPhase2();
-        showAnalyzing(true);
-
-        document.getElementById('import-subtitle').textContent = 'Analisando: ' + escapeHtml(importSelectedName || '');
-
-        fetch('/api/recommendations/preview-import/' + importSelectedId, {
-            method: 'POST',
-            credentials: 'include',
-        })
-        .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, data: d }; }); })
-        .then(function(res) {
-            showAnalyzing(false);
-            if (!res.ok) {
-                if (window.showToast) window.showToast(res.data.detail || 'Erro ao analisar material', 'error');
-                showImportPhase1();
-                return;
-            }
-            importPreviewItems = res.data.items || [];
-            var previewContent = document.getElementById('import-preview-content');
-            var noResults = document.getElementById('import-no-results');
-
-            if (importPreviewItems.length === 0) {
-                noResults.classList.remove('hidden'); noResults.style.display = 'flex';
-                previewContent.classList.add('hidden');
-                document.getElementById('import-subtitle').textContent = 'Nenhuma recomendação encontrada';
-                return;
-            }
-
-            var banner = document.getElementById('import-summary-banner');
-            var resolved = res.data.resolved || 0;
-            var unresolved = res.data.unresolved || 0;
-            var total = res.data.total || 0;
-            banner.innerHTML = '<strong>' + total + ' produto(s) identificado(s)</strong>' +
-                (resolved > 0 ? ' — <span class="text-green-700">' + resolved + ' encontrado(s) na base</span>' : '') +
-                (unresolved > 0 ? ' — <span class="text-blue-600">' + unresolved + ' novo(s) produto(s)</span>' : '');
-
-            document.getElementById('import-subtitle').textContent = importSelectedName;
-            renderPreviewTable(importPreviewItems);
-            previewContent.classList.remove('hidden'); previewContent.style.display = 'flex';
-            noResults.classList.add('hidden');
-        })
-        .catch(function(err) {
-            console.error('[import] Erro ao analisar material:', err);
-            showAnalyzing(false);
-            showImportPhase1();
-            if (window.showToast) window.showToast('Erro ao conectar ao servidor', 'error');
-        })
-        .finally(function() {
+        try {
+            state.status = await apiPost('/api/committee/add-product-manually', {
+                product_id: state.manualProduct.id,
+                reference_material_id: Number(sel.value),
+            });
+            toast('Produto adicionado ao comitê', 'success');
+            state.manualProduct = null;
+            document.getElementById('manual-product-search').value = '';
+            document.getElementById('manual-product-selected').textContent = 'Nenhum produto selecionado';
+            sel.value = '';
+            render();
+        } catch (e) {
+            toast('Erro: ' + e.message, 'error');
+        } finally {
             btn.disabled = false;
-            btn.innerHTML = '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path></svg> Analisar Material';
-        });
-    }
-
-    function confirmImport() {
-        var rows = document.querySelectorAll('.import-row-check:not(:disabled):checked');
-        if (rows.length === 0) return;
-
-        var autoCreate = getAutoCreateEnabled();
-        var items = [];
-
-        rows.forEach(function(check) {
-            var idx = parseInt(check.dataset.idx);
-            var previewItem = importPreviewItems[idx];
-            if (!previewItem) return;
-
-            var ratingEl = document.querySelector('.import-rating[data-idx="' + idx + '"]');
-            var priceEl = document.querySelector('.import-price[data-idx="' + idx + '"]');
-            var validEl = document.querySelector('.import-valid[data-idx="' + idx + '"]');
-            var rationaleEl = document.querySelector('.import-rationale[data-idx="' + idx + '"]');
-
-            var item = {};
-
-            if (previewItem.product_id) {
-                item.product_id = previewItem.product_id;
-            } else if (previewItem.unresolved && autoCreate) {
-                item.auto_create = true;
-                item.ticker = previewItem.ticker || null;
-                item.nome_produto = previewItem.nome || null;
-            } else {
-                return;
-            }
-
-            if (ratingEl && ratingEl.value) item.rating = ratingEl.value;
-            var price = parseFloat(priceEl ? priceEl.value : '');
-            if (!isNaN(price)) item.target_price = price;
-            if (validEl && validEl.value) item.valid_until = validEl.value + 'T23:59:59';
-            if (rationaleEl && rationaleEl.value.trim()) item.rationale = rationaleEl.value.trim();
-            items.push(item);
-        });
-
-        if (items.length === 0) return;
-
-        var btn = document.getElementById('btn-confirm-import');
-        btn.disabled = true;
-        btn.innerHTML = '<svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.4 0 0 5.4 0 12h4z"></path></svg> Importando...';
-
-        fetch('/api/recommendations/bulk-import', {
-            method: 'POST',
-            credentials: 'include',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ items: items }),
-        })
-        .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, data: d }; }); })
-        .then(function(res) {
-            if (!res.ok) {
-                if (window.showToast) window.showToast(res.data.detail || 'Erro ao importar', 'error');
-                return;
-            }
-            closeModal('modal-import');
-            loadEntries();
-            if (window.showToast) window.showToast(res.data.message, 'success');
-        })
-        .catch(function(err) {
-            console.error('[import] Erro ao confirmar importação:', err);
-            if (window.showToast) window.showToast('Erro ao conectar ao servidor', 'error');
-        })
-        .finally(function() {
-            btn.disabled = false;
-            btn.innerHTML = '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg> Importar Selecionados';
-        });
-    }
-
-    // Import button event listeners
-    document.getElementById('btn-open-import').addEventListener('click', function() {
-        importSelectedId = null;
-        importSelectedName = null;
-        importPreviewItems = [];
-        document.getElementById('btn-analyze-material').disabled = true;
-        document.getElementById('import-selected-label').textContent = 'Nenhum material selecionado';
-        var autoCreateCb = document.getElementById('auto-create-checkbox');
-        if (autoCreateCb) { autoCreateCb.checked = true; }
-        showImportPhase1();
-        openModal('modal-import');
-        loadMaterialsForImport();
-    });
-
-    document.getElementById('btn-close-import').addEventListener('click', function() { closeModal('modal-import'); });
-    document.getElementById('btn-analyze-material').addEventListener('click', analyzeMaterial);
-    document.getElementById('btn-import-back').addEventListener('click', showImportPhase1);
-    document.getElementById('btn-confirm-import').addEventListener('click', confirmImport);
-
-    document.getElementById('import-search').addEventListener('input', filterMaterials);
-
-    document.getElementById('import-check-all').addEventListener('change', function() {
-        var checked = this.checked;
-        document.querySelectorAll('.import-row-check:not(:disabled)').forEach(function(c) { c.checked = checked; });
-        updateImportConfirmState();
-    });
-
-    document.getElementById('auto-create-checkbox').addEventListener('change', function() {
-        toggleAutoCreate(this.checked);
-    });
-
-    document.getElementById('import-materials-list').addEventListener('click', function(e) {
-        var item = e.target.closest('[data-action="select-material"]');
-        if (!item) return;
-        importSelectedId = parseInt(item.dataset.id);
-        importSelectedName = item.dataset.name;
-        document.getElementById('btn-analyze-material').disabled = false;
-        document.getElementById('import-selected-label').textContent = escapeHtml(importSelectedName);
-        filterMaterials();
-    });
-
-    document.getElementById('import-preview-tbody').addEventListener('change', function(e) {
-        if (e.target.classList.contains('import-row-check')) {
-            updateImportConfirmState();
+            updateManualAddButton();
         }
     });
 
-    // Init
-    loadCommitteeMats();
-    loadEntries();
+    // Bootstrap
+    reloadAll();
 })();
 </script>
 

@@ -715,8 +715,105 @@ class VectorStore:
             total_candidates=len(all_documents),
             threshold=similarity_threshold
         )
-        
+
+        self._annotate_committee_flags(final_results)
+
         return final_results
+
+    def _annotate_committee_flags(self, results: List[dict]) -> None:
+        """
+        Enriquece metadata de cada chunk com:
+          - is_committee_active: Material.is_committee_active
+          - excluded_from_committee: MaterialProductLink.excluded_from_committee
+            para o par (material_id, product_ticker) do chunk.
+        Usado pelo agente para decidir [COMITÊ] vs [NÃO-COMITÊ] com isolamento por produto.
+        """
+        if not results:
+            return
+        try:
+            from database.database import SessionLocal
+            from database.models import Material, MaterialProductLink, Product as ProductModel
+            from sqlalchemy import and_, func as _sa_func
+
+            material_ids = set()
+            pairs = set()
+            for r in results:
+                meta = r.get("metadata") or {}
+                try:
+                    mid = int(meta.get("material_id")) if meta.get("material_id") else None
+                except Exception:
+                    mid = None
+                if mid:
+                    material_ids.add(mid)
+                ticker = (meta.get("product_ticker") or meta.get("ticker") or "").strip().upper()
+                if mid and ticker:
+                    pairs.add((mid, ticker))
+
+            if not material_ids:
+                return
+
+            db = SessionLocal()
+            try:
+                mat_flag = dict(
+                    db.query(Material.id, Material.is_committee_active)
+                      .filter(Material.id.in_(material_ids))
+                      .all()
+                )
+
+                excluded_set = set()
+                if pairs:
+                    ticker_to_pids = {}
+                    tickers = {tk for _, tk in pairs}
+                    if tickers:
+                        prod_rows = db.query(ProductModel.id, ProductModel.ticker).filter(
+                            _sa_func.upper(ProductModel.ticker).in_([t.upper() for t in tickers])
+                        ).all()
+                        for pid, tk in prod_rows:
+                            tkn = (tk or "").strip().upper()
+                            if tkn:
+                                ticker_to_pids.setdefault(tkn, set()).add(pid)
+
+                    mat_pid_pairs = []
+                    for mid, tk in pairs:
+                        for pid in ticker_to_pids.get(tk, []):
+                            mat_pid_pairs.append((mid, pid))
+                    if mat_pid_pairs:
+                        mids_for_q = {m for m, _ in mat_pid_pairs}
+                        pids_for_q = {p for _, p in mat_pid_pairs}
+                        excl_rows = db.query(
+                            MaterialProductLink.material_id,
+                            MaterialProductLink.product_id,
+                        ).filter(
+                            MaterialProductLink.material_id.in_(mids_for_q),
+                            MaterialProductLink.product_id.in_(pids_for_q),
+                            MaterialProductLink.excluded_from_committee == True,
+                        ).all()
+                        excl_set_db = {(m, p) for m, p in excl_rows}
+                        for mid, pid in mat_pid_pairs:
+                            if (mid, pid) in excl_set_db:
+                                excluded_set.add((mid, pid))
+
+                for r in results:
+                    meta = r.get("metadata") or {}
+                    try:
+                        mid = int(meta.get("material_id")) if meta.get("material_id") else None
+                    except Exception:
+                        mid = None
+                    is_active = bool(mat_flag.get(mid, False)) if mid else False
+                    ticker = (meta.get("product_ticker") or meta.get("ticker") or "").strip().upper()
+                    excluded = False
+                    if mid and ticker:
+                        for pid in ticker_to_pids.get(ticker, []) if pairs else []:
+                            if (mid, pid) in excluded_set:
+                                excluded = True
+                                break
+                    meta["is_committee_active"] = is_active
+                    meta["excluded_from_committee"] = excluded
+                    r["metadata"] = meta
+            finally:
+                db.close()
+        except Exception as e:
+            print(f"[VECTOR_STORE][COMMITTEE_FLAGS] Falha ao anotar flags: {e}")
     
     def _deduplicate_results(self, documents: List[dict], similarity_threshold: float = 0.85) -> List[dict]:
         """

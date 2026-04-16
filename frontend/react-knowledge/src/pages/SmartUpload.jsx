@@ -550,6 +550,104 @@ export function SmartUpload() {
     });
   };
 
+  const toggleProductExpansion = (materialIdx, productIdx) => {
+    setAnalysisResults(prev => prev.map((m, mi) => {
+      if (mi !== materialIdx) return m;
+      return {
+        ...m,
+        identified_products: m.identified_products.map((p, pi) =>
+          pi === productIdx ? { ...p, _expanded: !p._expanded } : p
+        ),
+      };
+    }));
+  };
+
+  const updateProductKeyInfo = (materialIdx, productIdx, field, value) => {
+    setAnalysisResults(prev => prev.map((m, mi) => {
+      if (mi !== materialIdx) return m;
+      return {
+        ...m,
+        identified_products: m.identified_products.map((p, pi) => {
+          if (pi !== productIdx) return p;
+          const deep = { ...(p.deep_info || {}) };
+          deep[field] = value;
+          return { ...p, deep_info: deep, _edited: true };
+        }),
+      };
+    }));
+  };
+
+  const searchMissingProduct = async (materialIdx, description) => {
+    const mat = analysisResults[materialIdx];
+    if (!mat || !description?.trim()) return;
+
+    setAnalysisResults(prev => prev.map((m, mi) =>
+      mi === materialIdx ? { ...m, _searchingMissing: true, _missingNotFound: false } : m
+    ));
+
+    try {
+      const existing = (mat.identified_products || [])
+        .map(p => p.ticker).filter(Boolean);
+      const resp = await fetch('/api/products/find-missing-product', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          material_id: mat.material_id,
+          description: description.trim(),
+          existing_products: existing,
+        }),
+      });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        throw new Error(err.detail || `Erro ${resp.status}`);
+      }
+      const data = await resp.json();
+
+      if (data.found && data.product) {
+        setAnalysisResults(prev => prev.map((m, mi) => {
+          if (mi !== materialIdx) return m;
+          return {
+            ...m,
+            _searchingMissing: false,
+            _missingNotFound: false,
+            identified_products: [
+              ...m.identified_products,
+              {
+                ...data.product,
+                selected: true,
+                _expanded: true,
+                _manualInput: false,
+                _fromVisionSearch: true,
+              },
+            ],
+          };
+        }));
+        addToast(
+          `Produto encontrado nas páginas ${(data.found_on_pages || []).join(', ')}`,
+          'success'
+        );
+      } else {
+        setAnalysisResults(prev => prev.map((m, mi) =>
+          mi === materialIdx ? { ...m, _searchingMissing: false, _missingNotFound: true } : m
+        ));
+      }
+    } catch (err) {
+      setAnalysisResults(prev => prev.map((m, mi) =>
+        mi === materialIdx ? { ...m, _searchingMissing: false } : m
+      ));
+      addToast(`Erro na busca: ${err.message}`, 'error');
+    }
+  };
+
+  const setMaterialConceptual = (materialIdx, value) => {
+    setAnalysisResults(prev => prev.map((m, mi) =>
+      mi === materialIdx ? { ...m, _isConceptual: !!value } : m
+    ));
+  };
+
   const handleConfirmAndQueue = async () => {
     const validMaterials = analysisResults.filter(m => m.material_id && !m.error && !m.duplicate);
     if (!validMaterials.length) {
@@ -562,9 +660,14 @@ export function SmartUpload() {
     let errorCount = 0;
 
     for (const mat of validMaterials) {
-      const confirmed = mat.identified_products.filter(p => p.selected);
+      const isConceptual = !!mat._isConceptual;
+      const confirmed = isConceptual ? [] : mat.identified_products.filter(p => p.selected);
       const primary = confirmed.find(p => p.product_id) || confirmed[0];
       const primaryId = primary?.product_id || null;
+
+      const productsWithInfo = confirmed
+        .filter(p => p.product_id && p.deep_info && Object.keys(p.deep_info).length > 0)
+        .map(p => ({ product_id: p.product_id, key_info: p.deep_info }));
 
       try {
         const resp = await fetch(`/api/products/${mat.material_id}/link-and-queue`, {
@@ -576,6 +679,8 @@ export function SmartUpload() {
           body: JSON.stringify({
             confirmed_products: confirmed,
             primary_product_id: primaryId,
+            products_with_info: productsWithInfo,
+            is_conceptual_material: isConceptual,
           }),
         });
         if (!resp.ok) {
@@ -1609,7 +1714,13 @@ export function SmartUpload() {
         {analysisResults.map((mat, mi) => {
           if (mat.error && !mat.duplicate) return null;
           const manualInputId = `manual-${mi}`;
+          const missingInputId = `missing-${mi}`;
           const selectedCount = (mat.identified_products || []).filter(p => p.selected).length;
+          const isConceptual = !!mat._isConceptual;
+
+          const noProductsAutoDetected = mat.no_products_detected
+            && (!mat.identified_products || mat.identified_products.length === 0)
+            && !mat._userOverrodeNoProducts;
 
           return (
             <div key={mi} className="border border-border rounded-xl overflow-hidden">
@@ -1618,78 +1729,308 @@ export function SmartUpload() {
                   <FileText className="w-4 h-4 text-primary flex-shrink-0" />
                   <span className="font-medium text-sm text-foreground truncate">{mat.filename}</span>
                 </div>
-                <span className="text-xs text-muted ml-2 flex-shrink-0">
-                  {selectedCount} produto{selectedCount !== 1 ? 's' : ''} selecionado{selectedCount !== 1 ? 's' : ''}
-                </span>
-              </div>
-
-              <div className="p-4 space-y-3">
-                {mat.identified_products && mat.identified_products.length > 0 ? (
-                  <div className="flex flex-wrap gap-2">
-                    {mat.identified_products.map((p, pi) => (
-                      <div
-                        key={pi}
-                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border cursor-pointer transition-all select-none
-                          ${p.selected
-                            ? p.exists_in_db
-                              ? 'bg-primary/10 text-primary border-primary/30'
-                              : 'bg-amber-50 text-amber-700 border-amber-300'
-                            : 'bg-gray-100 text-gray-400 border-gray-200 line-through'
-                          }`}
-                        title={p.exists_in_db ? 'Produto encontrado na base de dados' : 'Produto novo — será criado'}
-                        onClick={() => toggleProductSelection(mi, pi)}
-                      >
-                        {p.ticker && <span className="font-bold">{p.ticker}</span>}
-                        {p.ticker && p.name && p.name !== p.ticker && <span className="text-current/70">·</span>}
-                        <span className="max-w-[160px] truncate">{p.name || p.ticker}</span>
-                        {p.exists_in_db && (
-                          <CheckCircle className="w-3 h-3 flex-shrink-0 opacity-70" />
-                        )}
-                        {!p.exists_in_db && (
-                          <Sparkles className="w-3 h-3 flex-shrink-0 opacity-70" />
-                        )}
-                        <button
-                          className="ml-0.5 opacity-50 hover:opacity-100"
-                          onClick={(e) => { e.stopPropagation(); removeProduct(mi, pi); }}
-                          title="Remover produto"
-                        >
-                          <X className="w-3 h-3" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-xs text-muted italic">Nenhum produto identificado automaticamente.</p>
+                {!isConceptual && (
+                  <span className="text-xs text-muted ml-2 flex-shrink-0">
+                    {selectedCount} produto{selectedCount !== 1 ? 's' : ''} selecionado{selectedCount !== 1 ? 's' : ''}
+                  </span>
                 )}
-
-                <div className="flex gap-2 mt-2">
-                  <input
-                    id={manualInputId}
-                    type="text"
-                    placeholder="Adicionar produto (ex: XPML11 ou nome do fundo)..."
-                    className="flex-1 px-3 py-1.5 text-xs bg-card border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20"
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        addManualProduct(mi, e.target.value);
-                        e.target.value = '';
-                      }
-                    }}
-                  />
-                  <button
-                    className="px-3 py-1.5 text-xs bg-primary/10 text-primary rounded-lg hover:bg-primary/20 transition-colors font-medium"
-                    onClick={() => {
-                      const el = document.getElementById(manualInputId);
-                      if (el) { addManualProduct(mi, el.value); el.value = ''; }
-                    }}
-                  >
-                    Adicionar
-                  </button>
-                </div>
-                <p className="text-xs text-muted">
-                  <span className="text-amber-600 font-medium">Novo</span> = produto será criado automaticamente.{' '}
-                  <span className="text-primary font-medium">✓ Base</span> = produto já existe no cadastro.
-                </p>
+                {isConceptual && (
+                  <span className="text-xs text-indigo-600 font-medium ml-2 flex-shrink-0">Material conceitual</span>
+                )}
               </div>
+
+              {noProductsAutoDetected ? (
+                <div className="p-6 space-y-4">
+                  <div className="flex items-start gap-3">
+                    <Info className="w-5 h-5 text-indigo-500 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <p className="font-medium text-sm text-foreground">
+                        Nenhum produto específico foi identificado neste material.
+                      </p>
+                      <p className="text-xs text-muted mt-1">
+                        Este parece ser um material de{' '}
+                        <span className="font-medium">{mat.material_nature_guess || 'outro'}</span>.
+                        O conteúdo será indexado na base de conhecimento do agente para consultas gerais.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <button
+                      className="flex-1 px-4 py-2 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium"
+                      onClick={() => setMaterialConceptual(mi, true)}
+                    >
+                      Confirmar como material conceitual
+                    </button>
+                    <button
+                      className="flex-1 px-4 py-2 text-sm bg-card border border-border rounded-lg hover:bg-border/50 font-medium"
+                      onClick={() => setAnalysisResults(prev => prev.map((m, idx) =>
+                        idx === mi ? { ...m, _userOverrodeNoProducts: true } : m
+                      ))}
+                    >
+                      Havia produtos — deixa eu indicar
+                    </button>
+                  </div>
+                </div>
+              ) : isConceptual ? (
+                <div className="p-6">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2 text-sm text-indigo-700">
+                      <CheckCircle className="w-4 h-4" />
+                      Material marcado como conceitual. Será indexado sem vínculo a produtos.
+                    </div>
+                    <button
+                      className="text-xs text-muted hover:text-foreground underline"
+                      onClick={() => setMaterialConceptual(mi, false)}
+                    >
+                      Reverter
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="p-4 space-y-3">
+                  {mat.identified_products && mat.identified_products.length > 0 ? (
+                    <div className="space-y-2">
+                      {mat.identified_products.map((p, pi) => {
+                        const typeColor = {
+                          FII: 'bg-blue-50 text-blue-700 border-blue-200',
+                          'Ação': 'bg-green-50 text-green-700 border-green-200',
+                          'Acao': 'bg-green-50 text-green-700 border-green-200',
+                          Estruturada: 'bg-orange-50 text-orange-700 border-orange-200',
+                          Fundo: 'bg-purple-50 text-purple-700 border-purple-200',
+                          'Fundo Multimercado': 'bg-purple-50 text-purple-700 border-purple-200',
+                          'Fundo de Renda Fixa': 'bg-purple-50 text-purple-700 border-purple-200',
+                          ETF: 'bg-cyan-50 text-cyan-700 border-cyan-200',
+                          'Debênture': 'bg-yellow-50 text-yellow-700 border-yellow-200',
+                          Debenture: 'bg-yellow-50 text-yellow-700 border-yellow-200',
+                          CRI: 'bg-yellow-50 text-yellow-700 border-yellow-200',
+                          CRA: 'bg-yellow-50 text-yellow-700 border-yellow-200',
+                          Outro: 'bg-gray-50 text-gray-600 border-gray-200',
+                        }[p.product_type] || 'bg-gray-50 text-gray-600 border-gray-200';
+
+                        const confidenceLabel = {
+                          exact: 'exato', ilike: 'ilike', prefix: 'prefixo',
+                          name: 'nome', alias: 'alias',
+                        }[p.match_confidence] || 'novo';
+
+                        const deep = p.deep_info || {};
+                        const hasDeep = Object.values(deep).some(v => v && (typeof v !== 'object' || (Array.isArray(v) && v.length)));
+
+                        return (
+                          <div
+                            key={pi}
+                            className={`border rounded-lg transition-colors ${
+                              p.selected ? 'border-primary/30 bg-card' : 'border-gray-200 bg-gray-50 opacity-60'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2 p-3">
+                              <button
+                                className={`w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 ${
+                                  p.selected ? 'bg-primary border-primary text-white' : 'bg-white border-gray-300'
+                                }`}
+                                onClick={() => toggleProductSelection(mi, pi)}
+                                title={p.selected ? 'Excluir produto' : 'Incluir produto'}
+                              >
+                                {p.selected && <CheckCircle className="w-3 h-3" />}
+                              </button>
+
+                              <div className="flex items-center gap-2 min-w-0 flex-1">
+                                {p.ticker && (
+                                  <span className="font-bold text-sm text-foreground">{p.ticker}</span>
+                                )}
+                                {p.name && p.name !== p.ticker && (
+                                  <span className="text-sm text-muted truncate">{p.name}</span>
+                                )}
+                              </div>
+
+                              {p.product_type && (
+                                <span className={`text-[10px] font-semibold px-2 py-0.5 rounded border ${typeColor}`}>
+                                  {p.product_type}
+                                </span>
+                              )}
+
+                              <span
+                                className={`text-[10px] font-semibold px-2 py-0.5 rounded border ${
+                                  p.exists_in_db
+                                    ? 'bg-primary/10 text-primary border-primary/20'
+                                    : 'bg-amber-50 text-amber-700 border-amber-200'
+                                }`}
+                                title={p.exists_in_db ? 'Match na base' : 'Novo produto'}
+                              >
+                                {confidenceLabel}
+                              </span>
+
+                              {p._fromVisionSearch && (
+                                <span className="text-[10px] text-indigo-600" title="Encontrado via busca visual">
+                                  <Search className="w-3 h-3 inline" />
+                                </span>
+                              )}
+
+                              <button
+                                className="text-muted hover:text-foreground flex-shrink-0"
+                                onClick={() => toggleProductExpansion(mi, pi)}
+                                title={p._expanded ? 'Recolher' : 'Ver detalhes'}
+                              >
+                                {p._expanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                              </button>
+
+                              <button
+                                className="text-muted hover:text-red-600 flex-shrink-0"
+                                onClick={() => removeProduct(mi, pi)}
+                                title="Remover"
+                              >
+                                <X className="w-4 h-4" />
+                              </button>
+                            </div>
+
+                            {p._expanded && (
+                              <div className="border-t border-border/50 p-3 bg-gray-50/60 space-y-2 text-xs">
+                                {[
+                                  ['investment_thesis', 'Tese de investimento', 'textarea'],
+                                  ['expected_return', 'Retorno esperado', 'input'],
+                                  ['investment_term', 'Prazo', 'input'],
+                                  ['main_risk', 'Risco principal', 'input'],
+                                  ['issuer_or_manager', 'Emissor / Gestora', 'input'],
+                                  ['rating', 'Rating', 'input'],
+                                  ['minimum_investment', 'Aplicação mínima', 'input'],
+                                  ['liquidity', 'Liquidez', 'input'],
+                                ].map(([key, label, kind]) => (
+                                  <div key={key} className="flex flex-col sm:flex-row sm:items-start gap-1 sm:gap-3">
+                                    <label className="sm:w-40 text-muted font-medium sm:pt-1 flex-shrink-0">{label}</label>
+                                    {kind === 'textarea' ? (
+                                      <textarea
+                                        className="flex-1 px-2 py-1 border border-border rounded bg-white focus:outline-none focus:ring-1 focus:ring-primary/30 text-foreground resize-y"
+                                        rows={2}
+                                        value={deep[key] ?? ''}
+                                        placeholder="—"
+                                        onChange={(e) => updateProductKeyInfo(mi, pi, key, e.target.value)}
+                                      />
+                                    ) : (
+                                      <input
+                                        type="text"
+                                        className="flex-1 px-2 py-1 border border-border rounded bg-white focus:outline-none focus:ring-1 focus:ring-primary/30 text-foreground"
+                                        value={deep[key] ?? ''}
+                                        placeholder="—"
+                                        onChange={(e) => updateProductKeyInfo(mi, pi, key, e.target.value)}
+                                      />
+                                    )}
+                                  </div>
+                                ))}
+
+                                <div className="flex flex-col sm:flex-row sm:items-start gap-1 sm:gap-3">
+                                  <label className="sm:w-40 text-muted font-medium sm:pt-1 flex-shrink-0">Destaques</label>
+                                  <textarea
+                                    className="flex-1 px-2 py-1 border border-border rounded bg-white focus:outline-none focus:ring-1 focus:ring-primary/30 text-foreground resize-y"
+                                    rows={2}
+                                    placeholder="Um destaque por linha"
+                                    value={Array.isArray(deep.additional_highlights) ? deep.additional_highlights.join('\n') : (deep.additional_highlights || '')}
+                                    onChange={(e) => updateProductKeyInfo(
+                                      mi, pi, 'additional_highlights',
+                                      e.target.value.split('\n').map(s => s.trim()).filter(Boolean)
+                                    )}
+                                  />
+                                </div>
+
+                                {!hasDeep && (
+                                  <p className="text-[11px] text-muted italic">
+                                    Nenhuma informação aprofundada foi extraída automaticamente. Você pode preencher manualmente os campos acima.
+                                  </p>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-muted italic">Nenhum produto identificado automaticamente.</p>
+                  )}
+
+                  <div className="pt-2 border-t border-border/50 space-y-2">
+                    <div className="flex gap-2">
+                      <input
+                        id={manualInputId}
+                        type="text"
+                        placeholder="Adicionar manualmente (ex: XPML11 ou nome)..."
+                        className="flex-1 px-3 py-1.5 text-xs bg-card border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20"
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            addManualProduct(mi, e.target.value);
+                            e.target.value = '';
+                          }
+                        }}
+                      />
+                      <button
+                        className="px-3 py-1.5 text-xs bg-primary/10 text-primary rounded-lg hover:bg-primary/20 transition-colors font-medium"
+                        onClick={() => {
+                          const el = document.getElementById(manualInputId);
+                          if (el) { addManualProduct(mi, el.value); el.value = ''; }
+                        }}
+                      >
+                        Adicionar
+                      </button>
+                    </div>
+
+                    <div className="flex gap-2">
+                      <input
+                        id={missingInputId}
+                        type="text"
+                        placeholder="Produto não detectado no documento (descreva)..."
+                        className="flex-1 px-3 py-1.5 text-xs bg-card border border-indigo-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                        disabled={mat._searchingMissing}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && !mat._searchingMissing) {
+                            searchMissingProduct(mi, e.target.value);
+                            e.target.value = '';
+                          }
+                        }}
+                      />
+                      <button
+                        className="px-3 py-1.5 text-xs bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-medium disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-1"
+                        disabled={mat._searchingMissing}
+                        onClick={() => {
+                          const el = document.getElementById(missingInputId);
+                          if (el && el.value.trim()) {
+                            searchMissingProduct(mi, el.value);
+                            el.value = '';
+                          }
+                        }}
+                      >
+                        {mat._searchingMissing ? (
+                          <><Loader2 className="w-3 h-3 animate-spin" /> Buscando...</>
+                        ) : (
+                          <><Search className="w-3 h-3" /> Buscar produto faltante</>
+                        )}
+                      </button>
+                    </div>
+
+                    {mat._missingNotFound && (
+                      <div className="text-xs bg-amber-50 border border-amber-200 rounded-lg p-2 flex items-start gap-2 text-amber-700">
+                        <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                        <div className="flex-1">
+                          Produto não encontrado no material. Deseja adicioná-lo manualmente?
+                          <button
+                            className="ml-2 underline hover:text-amber-900 font-medium"
+                            onClick={() => {
+                              const el = document.getElementById(manualInputId);
+                              if (el) el.focus();
+                              setAnalysisResults(prev => prev.map((m, idx) =>
+                                idx === mi ? { ...m, _missingNotFound: false } : m
+                              ));
+                            }}
+                          >
+                            Adicionar manualmente
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    <p className="text-[11px] text-muted">
+                      <span className="text-amber-600 font-medium">Novo</span> = produto será criado automaticamente.{' '}
+                      <span className="text-primary font-medium">✓ Base</span> = produto já existe no cadastro.
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
           );
         })}

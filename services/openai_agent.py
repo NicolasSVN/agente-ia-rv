@@ -1659,7 +1659,13 @@ REGRAS PARA INFORMAÇÕES DA INTERNET:
             material_type = metadata.get("material_type", "")
 
             material_name = metadata.get("material_name", "") or title
-            is_comite_doc = material_type == "comite" or metadata.get("is_comite", False)
+            # [COMITÊ] requer: material ativo no comitê E produto não excluído do comitê
+            # para este material. Fallbacks legados (material_type='comite', is_comite explícito)
+            # são preservados para compatibilidade, mas ainda respeitam excluded_from_committee.
+            excluded_from_committee = bool(metadata.get("excluded_from_committee", False))
+            is_committee_active = bool(metadata.get("is_committee_active", False))
+            legacy_comite = (material_type == "comite") or metadata.get("is_comite", False)
+            is_comite_doc = (is_committee_active or legacy_comite) and not excluded_from_committee
             comite_tag = "[COMITÊ]" if is_comite_doc else "[NÃO-COMITÊ]"
             header = f"{comite_tag} [Documento: {material_name}]"
             if material_id:
@@ -1733,7 +1739,13 @@ REGRAS PARA INFORMAÇÕES DA INTERNET:
                 content = doc.get("content", "")[:500]
                 material_type = metadata.get("material_type", "")
                 material_name = metadata.get("material_name", "") or title
-                is_comite_doc = material_type == "comite" or metadata.get("is_comite", False)
+                # [COMITÊ] requer: material ativo no comitê E produto não excluído do comitê
+                # para este material. Fallbacks legados (material_type='comite', is_comite explícito)
+                # são preservados para compatibilidade, mas ainda respeitam excluded_from_committee.
+                excluded_from_committee = bool(metadata.get("excluded_from_committee", False))
+                is_committee_active = bool(metadata.get("is_committee_active", False))
+                legacy_comite = (material_type == "comite") or metadata.get("is_comite", False)
+                is_comite_doc = (is_committee_active or legacy_comite) and not excluded_from_committee
                 comite_tag = "[COMITÊ]" if is_comite_doc else "[NÃO-COMITÊ]"
                 section += f"{comite_tag} [Documento: {material_name}]"
                 if material_type:
