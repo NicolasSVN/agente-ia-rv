@@ -3,6 +3,7 @@ Endpoints para gerenciar a lista de recomendações formais do Comitê SVN.
 A tabela recommendation_entries é a fonte de verdade para 'quais produtos
 estão no comitê ativo hoje'.
 """
+import json
 import logging
 from datetime import datetime
 from typing import Optional, List
@@ -256,11 +257,14 @@ async def delete_recommendation(
 # ── Importação via Material ────────────────────────────────────────────────────
 
 class BulkImportItem(BaseModel):
-    product_id: int
+    product_id: Optional[int] = None
     rating: Optional[str] = None
     target_price: Optional[float] = None
     rationale: Optional[str] = None
     valid_until: Optional[datetime] = None
+    ticker: Optional[str] = None
+    nome_produto: Optional[str] = None
+    auto_create: bool = False
 
 
 class BulkImportRequest(BaseModel):
@@ -377,32 +381,68 @@ async def bulk_import_recommendations(
         raise HTTPException(status_code=422, detail="Lista de itens está vazia")
 
     created_entries = []
+    products_created = []
     errors = []
     added_by = current_user.email or current_user.username
 
     for item in data.items:
         savepoint = db.begin_nested()
         try:
-            product = db.query(Product).filter(Product.id == item.product_id).first()
+            product = None
+
+            if item.product_id:
+                product = db.query(Product).filter(Product.id == item.product_id).first()
+                if not product:
+                    savepoint.rollback()
+                    errors.append({"product_id": item.product_id, "error": "Produto não encontrado"})
+                    continue
+
+            elif item.auto_create and item.ticker:
+                ticker_clean = item.ticker.strip().upper()
+
+                existing = db.query(Product).filter(
+                    Product.ticker.ilike(ticker_clean)
+                ).first()
+
+                if existing:
+                    product = existing
+                    logger.info(f"[bulk-import] Ticker {ticker_clean} já cadastrado (id={existing.id}), usando produto existente")
+                else:
+                    inferred_type = "FII" if ticker_clean.endswith("11") else "Ação"
+                    product_name = (item.nome_produto or "").strip() or ticker_clean
+                    new_product = Product(
+                        name=product_name,
+                        ticker=ticker_clean,
+                        status="ativo",
+                        category=inferred_type,
+                        categories=json.dumps(["Comitê", inferred_type]),
+                        created_by=added_by,
+                    )
+                    db.add(new_product)
+                    db.flush()
+                    product = new_product
+                    products_created.append(ticker_clean)
+                    logger.info(f"[bulk-import] Produto novo '{product_name}' ({ticker_clean}) criado por {added_by}")
+
             if not product:
                 savepoint.rollback()
-                errors.append({"product_id": item.product_id, "error": "Produto não encontrado"})
+                errors.append({"ticker": item.ticker, "error": "Produto não encontrado e auto_create não habilitado ou ticker ausente"})
                 continue
 
             if item.rating and item.rating not in VALID_RATINGS:
                 savepoint.rollback()
-                errors.append({"product_id": item.product_id, "error": f"Rating inválido: {item.rating}"})
+                errors.append({"product_id": product.id, "error": f"Rating inválido: {item.rating}"})
                 continue
 
             old_entries = db.query(RecommendationEntry).filter(
-                RecommendationEntry.product_id == item.product_id,
+                RecommendationEntry.product_id == product.id,
                 RecommendationEntry.is_active == True,
             ).all()
             for e in old_entries:
                 e.is_active = False
 
             entry = RecommendationEntry(
-                product_id=item.product_id,
+                product_id=product.id,
                 rating=item.rating,
                 target_price=item.target_price,
                 rationale=item.rationale,
@@ -420,20 +460,28 @@ async def bulk_import_recommendations(
 
         except Exception as e:
             savepoint.rollback()
-            logger.error(f"[bulk-import] Erro ao processar product_id={item.product_id}: {e}")
-            errors.append({"product_id": item.product_id, "error": str(e)})
+            pid = item.product_id or item.ticker or "?"
+            logger.error(f"[bulk-import] Erro ao processar produto {pid}: {e}")
+            errors.append({"product_id": item.product_id, "ticker": item.ticker, "error": str(e)})
             continue
 
     db.commit()
 
+    msg_parts = []
+    if created_entries:
+        msg_parts.append(f"{len(created_entries)} produto(s) adicionado(s) ao Comitê com sucesso.")
+    else:
+        msg_parts.append("Nenhum produto pôde ser adicionado.")
+    if products_created:
+        msg_parts.append(f"{len(products_created)} novo(s) produto(s) criado(s) no cadastro ({', '.join(products_created)}).")
+
     return {
         "created": len(created_entries),
+        "products_created": len(products_created),
+        "products_created_tickers": products_created,
         "errors": errors,
         "entries": created_entries,
-        "message": (
-            f"{len(created_entries)} produto(s) adicionado(s) ao Comitê com sucesso."
-            if created_entries else "Nenhum produto pôde ser adicionado."
-        ),
+        "message": " ".join(msg_parts),
     }
 
 

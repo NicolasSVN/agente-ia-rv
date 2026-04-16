@@ -7,6 +7,12 @@ Melhorias v2 (Task #105):
 - Modelo gpt-4o + max_tokens=8000 por chunk
 - Prompt ampliado com vocabulário de recomendação expandido
 - Deduplicação robusta por ticker após agregação de múltiplos chunks
+
+Melhorias v3 (Task #106):
+- Suporte a documentos de operações estruturadas (POP, Collar)
+- POP sobre X / Collar sobre X → rating "Compra" para o ativo X
+- Reconhecimento de "Recomendação de operação" e "Sugestão de operação"
+- Instrução para identificar tickers como títulos de seção
 """
 import json
 import logging
@@ -25,42 +31,61 @@ CHUNK_OVERLAP = 1_500  # chars de sobreposição entre chunks
 # ── Padrão de ticker brasileiro/ação (case-insensitive, normalizado em seguida) ──
 TICKER_PATTERN = re.compile(r'\b([A-Za-z]{4}\d{1,2})\b')
 
-# ── Prompt do sistema — versão ampliada ───────────────────────────────────────
+# ── Prompt do sistema — versão ampliada (v3 com operações estruturadas) ───────
 EXTRACT_SYSTEM_PROMPT = """Você é um analista sênior especializado em extrair recomendações de investimento de relatórios financeiros brasileiros do mercado de capitais.
 
-Sua missão é identificar TODOS os produtos financeiros mencionados neste trecho de documento que possuam qualquer indicação de recomendação, rating ou posicionamento de investimento.
+Sua missão é identificar TODOS os produtos financeiros mencionados neste trecho de documento que possuam qualquer indicação de recomendação, operação estruturada, rating ou posicionamento de investimento.
 
 Para cada produto identificado, extraia os seguintes campos:
-- ticker: código do ativo (ex: MXRF11, PETR4, HGLG11, ITSA4). Use null se não houver ticker explícito.
+- ticker: código do ativo (ex: MXRF11, PETR4, HGLG11, ITSA4, BEEF3, WEGE3). Use null se não houver ticker explícito.
 - nome: nome completo do fundo ou ativo conforme aparece no documento.
 - rating: mapeie para EXATAMENTE um de: "Compra", "Manutenção", "Venda".
   Mapeamentos aceitos:
-  - → "Compra": Compra, Buy, Adicionar, Sobreponderar, Overweight, Recomendamos, Reiteramos Compra, Posição, Adicionar à carteira, Recomendação de Compra
+  - → "Compra": Compra, Buy, Adicionar, Sobreponderar, Overweight, Recomendamos, Reiteramos Compra, Posição, Adicionar à carteira, Recomendação de Compra,
+    POP (Protected Option Purchase), POP sobre [ativo], Collar (estrutura com piso e teto de retorno), Collar sobre [ativo],
+    Recomendação de operação, Sugestão de operação, Operação estruturada de compra
   - → "Manutenção": Manutenção, Manter, Hold, Neutro, Neutra, Ponderar, Market Perform, Monitorar, Reiteramos Manutenção
   - → "Venda": Venda, Sell, Reduzir, Subponderar, Underweight, Realizar lucros, Reiteramos Venda
   Se não for possível mapear com segurança, use null (não invente).
 - preco_alvo: número do preço-alvo ou valor justo (apenas o número, ex: 12.50). Use null se não mencionado.
-- vigencia: data de vigência da recomendação no formato YYYY-MM-DD. Use null se não mencionada.
+- vigencia: data de vigência da recomendação no formato YYYY-MM-DD. Se mencionar vencimento de estrutura (ex: "Vencimento: 28/12/2028"), use essa data. Use null se não mencionada.
 - racional: resumo da tese de investimento em no máximo 350 caracteres. Use null se não houver.
 
-REGRAS CRÍTICAS:
-1. Inclua produtos mesmo que o rating não esteja 100% explícito — se houver linguagem de posicionamento (ex: "reiteramos nossa recomendação", "mantemos posição", "adicionamos à carteira"), extraia com o rating mapeado.
-2. Se um produto aparecer sem rating mas com preço-alvo, inclua com rating null.
-3. Leia TODAS as tabelas do documento com atenção especial. Tabelas de carteira recomendada geralmente contêm múltiplos produtos em linhas consecutivas — extraia CADA linha como um produto separado.
-4. NÃO omita produtos por achá-los já conhecidos ou por aparecerem em tabela compacta.
-5. Se o mesmo produto aparecer múltiplas vezes, use a entrada com mais informação.
-6. Responda APENAS com JSON válido, sem texto adicional.
+REGRAS CRÍTICAS — LEIA TODAS COM ATENÇÃO:
+1. DOCUMENTOS DE OPERAÇÕES ESTRUTURADAS (POP e Collar):
+   - "POP sobre BEEF3" ou "Estrutura da operação: POP sobre X" → extraia X como ticker, rating = "Compra"
+   - "Collar sobre X" ou "Sugestão de operação: compra de put / venda de call sobre X" → extraia X, rating = "Compra"
+   - A seção "RACIONAL ESTRATÉGICO" seguida de um ticker em destaque (ex: "BEEF3", "WEGE3") indica
+     que AQUELE ticker é o produto sendo recomendado — extraia-o mesmo que o rating esteja na seção de
+     operação logo abaixo.
+   - O ticker pode aparecer como título/cabeçalho de seção (ex: uma linha contendo apenas "RAPT4") —
+     este é o ativo sendo analisado e recomendado. Sempre inclua-o.
+
+2. Inclua produtos mesmo que o rating não esteja 100% explícito — se houver linguagem de posicionamento
+   (ex: "reiteramos nossa recomendação", "mantemos posição", "adicionamos à carteira"), extraia com o
+   rating mapeado.
+
+3. Se um produto aparecer sem rating mas com preço-alvo ou estrutura de operação, inclua com rating null.
+
+4. Leia TODAS as tabelas do documento com atenção especial. Tabelas de carteira recomendada geralmente
+   contêm múltiplos produtos em linhas consecutivas — extraia CADA linha como um produto separado.
+
+5. NÃO omita produtos por achá-los já conhecidos ou por aparecerem em tabela compacta.
+
+6. Se o mesmo produto aparecer múltiplas vezes, use a entrada com mais informação.
+
+7. Responda APENAS com JSON válido, sem texto adicional.
 
 Formato de resposta:
 {
   "recommendations": [
     {
-      "ticker": "MXRF11",
-      "nome": "Maxi Renda FII",
+      "ticker": "BEEF3",
+      "nome": "Minerva Foods",
       "rating": "Compra",
-      "preco_alvo": 12.50,
-      "vigencia": "2025-12-31",
-      "racional": "FII com DY consistente e gestão ativa. Cota com desconto frente ao VP."
+      "preco_alvo": null,
+      "vigencia": "2028-12-28",
+      "racional": "POP sobre BEEF3. FCF yield projetado 2026 supera 15%. Brasil com status aftosa sem vacinação, abre mercados exigentes."
     }
   ]
 }
