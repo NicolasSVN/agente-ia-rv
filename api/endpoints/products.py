@@ -5070,9 +5070,9 @@ async def link_products_and_queue(
     if not file_path or not os.path.exists(file_path):
         raise HTTPException(status_code=400, detail="Arquivo PDF não encontrado para processamento. Refaça o upload.")
 
-    # MERGE do key_info editado pelo usuário (Change 4)
+    # MERGE ACUMULATIVO do key_info editado pelo usuário (Task #113)
+    # Usa _merge_key_info_into_product para preservar histórico ao invés de sobrescrever.
     if products_with_info:
-        import json as _json_pki
         for entry in products_with_info:
             try:
                 pid = entry.get("product_id")
@@ -5082,17 +5082,9 @@ async def link_products_and_queue(
                 prod = db.query(Product).filter(Product.id == pid).first()
                 if not prod:
                     continue
-                try:
-                    current = _json_pki.loads(prod.key_info) if prod.key_info else {}
-                    if not isinstance(current, dict):
-                        current = {}
-                except Exception:
-                    current = {}
-                for k, v in edited_info.items():
-                    if v in (None, "", [], {}):
-                        continue
-                    current[k] = v
-                prod.key_info = _json_pki.dumps(current, ensure_ascii=False)
+                _merge_key_info_into_product(
+                    db, prod, edited_info, material_id=material_id
+                )
             except Exception as merge_err:
                 print(f"[LINK_QUEUE] Erro ao mesclar key_info: {merge_err}")
         db.commit()
