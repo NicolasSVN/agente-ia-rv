@@ -21,22 +21,25 @@
 
 ## 1. Visão Geral da Arquitetura
 
-O Stevan opera sobre uma arquitetura de três grandes fases:
+O Stevan opera sobre uma arquitetura de três grandes fases: ingestão, indexação e geração.
 
-```
-┌───────────────────────────────────────────────────────────────┐
-│  FASE 1 — INGESTÃO                                            │
-│  Upload PDF → Identificação de produtos → Extração de         │
-│  conteúdo (GPT-4o Vision) → ContentBlocks → Embeddings       │
-│                           ↓                                   │
-│  FASE 2 — INDEXAÇÃO                                           │
-│  ContentBlocks + metadados → text-embedding-3-large →         │
-│  document_embeddings (PostgreSQL + pgvector)                  │
-│                           ↓                                   │
-│  FASE 3 — GERAÇÃO                                             │
-│  Mensagem assessor → Classificação de intent → Loop Agentic   │
-│  (GPT-4o + tools) → Resposta qualificada com citação         │
-└───────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart LR
+    A[Upload PDF\nSmartUpload] --> B[Identificação de\nProdutos via IA]
+    B --> C[Confirmação\nHumana]
+    C --> D[DocumentProcessor\nGPT-4o Vision]
+    D --> E[ContentBlocks]
+    E --> F[Embeddings\ntext-embedding-3-large]
+    F --> G[(document_embeddings\npgvector)]
+
+    H[Mensagem\nAssessor] --> I[Classificação\nde Intent]
+    I --> J[Loop Agentic\nGPT-4o + Tools]
+    J --> K{Tool}
+    K -->|search_knowledge_base| G
+    K -->|search_web| L[Tavily AI]
+    K -->|lookup_fii_public| M[FundsExplorer]
+    K -->|send_document| N[MaterialFile\nZ-API]
+    J --> O[Resposta\nQualificada]
 ```
 
 O centro de tudo é o **Produto** (`Product`). O agente pensa em produtos, não em documentos. Todo material enviado é obrigatoriamente vinculado a um ou mais produtos antes de ser indexado.
@@ -44,6 +47,22 @@ O centro de tudo é o **Produto** (`Product`). O agente pensa em produtos, não 
 ---
 
 ## 2. Modelos de Dados
+
+### Diagrama de Relacionamentos
+
+```mermaid
+erDiagram
+    Product ||--o{ Material : "tem muitos"
+    Product ||--o{ MaterialProductLink : "vinculado por"
+    Material ||--o{ MaterialProductLink : "vincula para"
+    Material ||--|| MaterialFile : "tem um"
+    Material ||--o{ ContentBlock : "tem muitos"
+    ContentBlock ||--o| VisualCache : "pode ter"
+    Material }|--|| IngestionLog : "rastreado em"
+    DocumentEmbedding }|--|| ContentBlock : "indexa"
+```
+
+---
 
 ### 2.1 `Product` — Produto Financeiro
 
@@ -110,7 +129,7 @@ Armazena o PDF bruto em banco. É a fonte de verdade para o arquivo — não dep
 | `file_data` | LargeBinary | Conteúdo binário do PDF |
 | `file_size` | Integer | Tamanho em bytes |
 
-**Papel nas consultas:** Quando o assessor pede para "enviar o PDF", a tool `send_document` busca `MaterialFile.file_data` pelo `material_id` e envia via Z-API. O pipeline de ingestão também lê `file_data` para renderizar páginas e extrair conteúdo.
+**Papel nas consultas:** Quando o assessor pede para "enviar o PDF", a tool `send_document` busca `MaterialFile.file_data` pelo `material_id` e envia via Z-API. O `VisualExtractor` também lê `file_data` sob demanda para renderizar páginas e extrair imagens de gráficos.
 
 ---
 
@@ -144,14 +163,14 @@ Um material pode cobrir múltiplos produtos (ex: um relatório de research que m
 | `material_id` | Integer FK | Material de origem |
 | `block_type` | Enum | `texto`, `tabela`, `grafico`, `imagem`, `script` |
 | `content` | Text | Conteúdo do bloco — texto livre ou JSON estruturado para tabelas |
-| `source_page` | Integer | Página do PDF de origem (para rastreabilidade) |
+| `source_page` | Integer | Página do PDF de origem (para rastreabilidade e extração visual) |
 | `is_high_risk` | Boolean | Flag para revisão manual (blocos com taxas, custos, percentuais) |
 | `semantic_tags` | Text (JSON) | Tags semânticas geradas pela IA |
 | `confidence_score` | Integer | 0–100 — confiança da extração |
 | `status` | Enum | `auto_approved`, `pending_review`, `approved`, `rejected` |
 | `visual_description` | Text | Descrição textual do conteúdo visual (para blocos `grafico`/`imagem`) |
 
-**Papel nas consultas:** O conteúdo dos blocos é o que o agente recebe como contexto. Blocos do tipo `tabela` armazenam JSON estruturado que é resolvido em texto legível em tempo de consulta — o agente nunca vê o JSON bruto, apenas a tabela formatada. O campo `visual_cache` associado permite envio de imagens quando a query sugere interesse visual.
+**Papel nas consultas:** O conteúdo dos blocos é o que o agente recebe como contexto. Blocos do tipo `tabela` armazenam JSON estruturado que é resolvido em texto legível em tempo de consulta — o agente nunca vê o JSON bruto, apenas a tabela formatada. Blocos do tipo `grafico` têm `source_page` necessária para que o `VisualExtractor` extraia a imagem sob demanda.
 
 ---
 
@@ -166,8 +185,8 @@ Armazena o vetor de embedding de cada `ContentBlock` junto com seus metadados de
 | `doc_id` | String (unique) | Identificador único do chunk |
 | `content` | Text | Texto do bloco (cópia para recuperação) |
 | `embedding` | Vector(3072) | Vetor gerado por `text-embedding-3-large` |
-| `product_ticker` | String(50) | Ticker do produto — filtro prioritário |
-| `gestora` | String(200) | Gestora — filtro secundário |
+| `product_ticker` | String(50) | Ticker do produto — filtro prioritário e fator de scoring |
+| `gestora` | String(200) | Gestora — fator de scoring |
 | `category` | String(200) | Categoria do produto |
 | `material_type` | String(100) | Tipo do material de origem |
 | `publish_status` | String(50) | Status do material — só `publicado` é retornado |
@@ -177,7 +196,7 @@ Armazena o vetor de embedding de cada `ContentBlock` junto com seus metadados de
 | `structure_slug` | String(200) | Slug de estrutura de derivativo (para `send_payoff_diagram`) |
 | `block_type` | String(100) | Tipo de bloco (`texto`, `tabela`, etc.) |
 
-**Papel nas consultas:** A busca vetorial usa o operador `<=>` do pgvector para calcular distância cosseno entre o embedding da query e todos os documentos. Os metadados permitem filtros SQL adicionais (por ticker, status, validade) aplicados **antes** do ranking vetorial.
+**Papel nas consultas:** A busca vetorial usa o operador `<=>` do pgvector para calcular distância cosseno entre o embedding da query e todos os documentos. Os campos `product_ticker` e `gestora` entram diretamente no **score composto** como fatores de boost além da similaridade vetorial pura.
 
 ---
 
@@ -185,17 +204,18 @@ Armazena o vetor de embedding de cada `ContentBlock` junto com seus metadados de
 
 **Tabela:** `visual_cache`
 
-Armazena imagens e gráficos extraídos de PDFs vinculados a `ContentBlock`s do tipo `grafico` ou `imagem`.
+Armazena imagens e gráficos extraídos de PDFs vinculados a `ContentBlock`s do tipo `grafico`. **A extração é lazy (sob demanda)** — não acontece durante a ingestão do documento, mas sim quando o agente precisa enviar a imagem.
 
 | Campo | Tipo | Papel no sistema |
 |---|---|---|
 | `content_block_id` | Integer FK (unique) | Bloco de conteúdo associado (1:1) |
 | `image_data` | LargeBinary | Imagem PNG em bytes |
 | `mime_type` | String(50) | Tipo da imagem (geralmente `image/png`) |
-| `bbox` | Text | Coordenadas da bounding box no PDF original (`[x0, y0, x1, y1]`) |
-| `used_fallback` | Boolean | Se a extração usou fallback (página inteira) por falta de bbox precisa |
+| `bbox` | Text | Coordenadas da bounding box usada no recorte (em % da página) |
+| `used_fallback` | Boolean | Se a extração usou a página inteira por falta de bbox precisa |
+| `last_accessed_at` | DateTime | Última vez que o cache foi acessado |
 
-**Papel nas consultas:** O agente verifica automaticamente se o chunk retornado tem um `VisualCache` associado. Se a query contém palavras-chave visuais ("gráfico", "diagrama", "payoff", "curva"), a imagem é enviada proativamente pelo WhatsApp junto com a resposta textual.
+**Papel nas consultas:** Quando o agente decide enviar uma imagem, o `VisualExtractor` verifica primeiro se há cache. Em caso de miss, renderiza a página do PDF via PyMuPDF, chama GPT-4o Vision para localizar o gráfico (bounding box), recorta e persiste. Na próxima chamada, o cache é retornado diretamente.
 
 ---
 
@@ -243,29 +263,39 @@ Rastreia o pipeline de processamento de cada documento.
 
 ### 3.1 Fluxo Geral
 
-```
-┌──────────────┐    ┌─────────────────────────┐    ┌──────────────────────┐
-│  SmartUpload │───▶│  pre-analyze-upload      │───▶│  Confirmação humana  │
-│  (Frontend)  │    │  (Step 2: análise IA)    │    │  (Step 3: modal chips)│
-└──────────────┘    └─────────────────────────┘    └──────────┬───────────┘
-                                                               │
-                                                               ▼
-                                                    ┌──────────────────────┐
-                                                    │  link-and-queue      │
-                                                    │  (vincula + fila)    │
-                                                    └──────────┬───────────┘
-                                                               │
-                                                               ▼
-                                                    ┌──────────────────────┐
-                                                    │  DocumentProcessor   │
-                                                    │  (processamento bg)  │
-                                                    └──────────┬───────────┘
-                                                               │
-                                                               ▼
-                                                    ┌──────────────────────┐
-                                                    │  ContentBlocks +     │
-                                                    │  Embeddings          │
-                                                    └──────────────────────┘
+```mermaid
+sequenceDiagram
+    actor Gestor
+    participant UI as SmartUpload
+    participant API as /pre-analyze-upload
+    participant DB as Banco de Dados
+    participant GPT as GPT-4o
+    participant DP as DocumentProcessor
+    participant VS as VectorStore
+
+    Gestor->>UI: Arrasta PDF(s)
+    UI->>API: POST /pre-analyze-upload
+    API->>DB: Salva MaterialFile (file_data)
+    API->>DB: Cria Material (pending_product_match)
+    API->>GPT: Extrai texto + identifica produtos
+    GPT-->>API: [{ticker, name, product_type, gestora, cnpj}]
+    API->>DB: Match em cascata (products table)
+    API->>DB: Cria produtos novos se necessário
+    API->>DB: Salva cache em ai_product_analysis
+    API-->>UI: Lista de produtos identificados + confiança
+
+    Gestor->>UI: Confirma/ajusta produtos (modal chips)
+    UI->>API: POST /link-and-queue
+    API->>DB: Cria MaterialProductLink(s)
+    API->>DB: Adiciona a upload_queue_items
+
+    DP->>DB: Lê fila (status=queued)
+    DP->>DB: Lê MaterialFile.file_data
+    DP->>GPT: Processa cada página (Vision)
+    GPT-->>DP: ContentBlocks extraídos
+    DP->>DB: Persiste ContentBlocks
+    DP->>VS: Gera embeddings + indexa
+    DP->>DB: Registra IngestionLog
 ```
 
 ---
@@ -359,20 +389,18 @@ Processa o PDF página por página usando **GPT-4o Vision**:
    - `products_mentioned`: tickers mencionados na página.
    - `auto_tags`: tags de contexto, perfil de investidor, momento de mercado.
    - Para tabelas: JSON estruturado com cabeçalhos e linhas.
-   - Para gráficos: bounding box `[x0, y0, x1, y1]` + descrição textual.
+   - Para gráficos: `visual_description` — descrição textual do que o gráfico mostra.
 
 4. **Cria `ContentBlock`s** para cada item extraído:
    - Blocos de texto → tipo `texto`.
    - Tabelas → tipo `tabela` com conteúdo JSON estruturado.
-   - Gráficos → tipo `grafico` com `visual_description`.
+   - Gráficos → tipo `grafico` com `visual_description` e `source_page` preenchidos. **A imagem não é extraída aqui** — o campo `source_page` habilita a extração posterior sob demanda pelo `VisualExtractor`.
 
-5. **Para blocos de gráfico:** recorta a imagem usando a bounding box e armazena em `VisualCache` (campo `image_data`).
+5. **Registra** em `IngestionLog` com estatísticas completas.
 
-6. **Registra** em `IngestionLog` com estatísticas completas.
+6. **Gera** `ai_summary` e `ai_themes` do material via GPT-4o-mini.
 
-7. **Gera** `ai_summary` e `ai_themes` do material via GPT-4o-mini.
-
-8. **Dispara indexação vetorial** automaticamente após conclusão.
+7. **Dispara indexação vetorial** automaticamente após conclusão.
 
 ---
 
@@ -397,14 +425,14 @@ Após o `DocumentProcessor` concluir, cada `ContentBlock` publicado é indexado:
 
 ### 4.2 Armazenamento
 
-Cada embedding é inserido em `document_embeddings` com os campos de metadados desnormalizados:
+Cada embedding é inserido em `document_embeddings` com os campos de metadados desnormalizados para scoring posterior:
 
 ```
 doc_id          → ID único do chunk (material_id + block_id)
 content         → Texto do bloco
 embedding       → Vector(3072)
-product_ticker  → Para filtro por ticker
-gestora         → Para filtro por gestora
+product_ticker  → Para EntityResolver e ticker_match no scoring
+gestora         → Para gestora_match no scoring
 category        → Para filtro por categoria
 material_type   → Tipo do material (comite, research, etc.)
 publish_status  → Só "publicado" é retornado
@@ -415,7 +443,7 @@ material_id     → Referência ao Material
 
 ### 4.3 Índice pgvector
 
-O banco usa um índice `ivfflat` ou `hnsw` na coluna `embedding` para busca aproximada eficiente. A busca usa o operador `<=>` (distância cosseno).
+O banco usa índice `ivfflat` ou `hnsw` na coluna `embedding` para busca aproximada eficiente. A distância cosseno é calculada pelo operador `<=>` do pgvector.
 
 ---
 
@@ -427,78 +455,24 @@ A busca é orquestrada pela classe `EnhancedSearch` com 10 camadas de melhoria. 
 
 ### 5.1 Fluxo Completo
 
-```
-Query do assessor
-       │
-       ▼
-┌─────────────────────────────────────────────────────────────┐
-│ Camada 1 — QueryNormalizer                                  │
-│ Lowercase + remoção de acentos + stopwords financeiras      │
-└────────────────────────────┬────────────────────────────────┘
-                             │
-                             ▼
-┌─────────────────────────────────────────────────────────────┐
-│ Camada 2 — TokenExtractor                                   │
-│ Extrai tickers (regex XXXX11), nomes de fundos, gestoras,   │
-│ keywords financeiras                                        │
-└────────────────────────────┬────────────────────────────────┘
-                             │
-                             ▼
-┌─────────────────────────────────────────────────────────────┐
-│ Camada 3 — SynonymLookup + Glossário Financeiro             │
-│ Expande a query com sinônimos e termos técnicos             │
-│ Ex: "rendimento" → "yield", "DY", "dividend yield"         │
-└────────────────────────────┬────────────────────────────────┘
-                             │
-                             ▼
-┌─────────────────────────────────────────────────────────────┐
-│ Detecção de Intent                                          │
-│ conceptual | temporal | numeric | comparative | ranking     │
-└────────────────────────────┬────────────────────────────────┘
-                             │
-                             ▼
-┌─────────────────────────────────────────────────────────────┐
-│ CAMADA 0 — EntityResolver (busca relacional, pré-vetorial)  │
-│ Mapeia termos da query para product_ids no banco SQL        │
-│ Busca: ticker exato → name ILIKE → aliases                  │
-│ Resultado: blocos do produto (max 5 por produto)            │
-└────────────────────────────┬────────────────────────────────┘
-                             │
-                             ▼
-┌─────────────────────────────────────────────────────────────┐
-│ Busca Multi-Query Vetorial                                  │
-│ Para cada query expandida (até 3): busca no pgvector        │
-│ n_results * 2, threshold similarity 0.8                     │
-└────────────────────────────┬────────────────────────────────┘
-                             │
-                             ▼
-┌─────────────────────────────────────────────────────────────┐
-│ Busca Direta por Ticker (se detectado, não-comparativa)     │
-│ search_by_product(ticker, n=5) para cada ticker na query    │
-└────────────────────────────┬────────────────────────────────┘
-                             │
-                             ▼
-┌─────────────────────────────────────────────────────────────┐
-│ Fallback Estruturado (se < 2 resultados)                    │
-│ 1. Busca produto diretamente na tabela products             │
-│ 2. Fuzzy Matching (threshold 0.6) nos tickers do índice     │
-└────────────────────────────┬────────────────────────────────┘
-                             │
-                             ▼
-┌─────────────────────────────────────────────────────────────┐
-│ CompositeScorer — Score Composto                            │
-│ 70% vetor + 20% recência + 10% match exato de ticker        │
-│ Boost por tipo de conteúdo baseado no intent detectado      │
-└────────────────────────────┬────────────────────────────────┘
-                             │
-                             ▼
-┌─────────────────────────────────────────────────────────────┐
-│ Enriquecimento Temporal                                     │
-│ Referências temporais relativas resolvidas (ex: "Q3 2024")  │
-└────────────────────────────┬────────────────────────────────┘
-                             │
-                             ▼
-                Top N resultados ranqueados
+```mermaid
+flowchart TD
+    Q[Query do Assessor] --> N[QueryNormalizer\nLowercase · sem acentos · sem stopwords]
+    N --> T[TokenExtractor\nTickers · nomes de fundos · keywords financeiras]
+    T --> I[Detecção de Intent\nconceptual · temporal · numeric · comparative · ranking]
+    T --> S[SynonymLookup\nExpansão com glossário financeiro]
+    I --> E
+
+    E[CAMADA 0 — EntityResolver\nMatch relacional: ticker → name ILIKE → aliases\nRetorna product_ids com confiança]
+    E -->|confiança ≥ 0.8| P[search_by_product_ids\nBlocos do produto via pgvector]
+    E --> MQ
+
+    P --> MQ[Busca Multi-Query Vetorial\nAté 3 queries expandidas · n_results × 2 · threshold 0.8]
+    MQ --> TD[Busca Direta por Ticker\n5 blocos por ticker detectado]
+    TD --> FB[Fallback Estruturado\nProduto na tabela · Fuzzy Matching threshold 0.6]
+    FB --> SC[CompositeScorer\n6 fatores de score]
+    SC --> TE[Enriquecimento Temporal\nReferências temporais relativas resolvidas]
+    TE --> R[Top N resultados ranqueados]
 ```
 
 ---
@@ -507,9 +481,9 @@ Query do assessor
 
 **Classe:** `EntityResolver` em `services/semantic_search.py`
 
-É a camada mais determinística — busca relacional direta, sem vetores. Age antes de qualquer busca vetorial.
+É a camada mais determinística — busca relacional direta na tabela `products`, sem vetores. Age **antes** de qualquer busca vetorial.
 
-**Termos ambíguos ignorados** (não geram match): `xp`, `cdi`, `ibov`, `selic`, `ipca`, `ifix`, `dólar`, `fii`, `etf`, `bdr`, etc. — evita falsos positivos.
+**Termos ambíguos ignorados** (não geram match para evitar falsos positivos): `xp`, `cdi`, `ibov`, `selic`, `ipca`, `ifix`, `dólar`, `fii`, `etf`, `bdr`, entre outros.
 
 **Processo:**
 1. Extrai tickers (regex `[A-Z]{4}\d{1,2}`) e nomes limpos da query.
@@ -518,24 +492,42 @@ Query do assessor
    - Tenta `name ILIKE "%{term}%"` → confiança 0.6–0.9 por comprimento
    - Tenta aliases em `name_aliases` JSON → confiança 0.8
 3. Retorna lista `[{product_id, name, ticker, confidence, match_type}]`.
-4. Produtos com confiança ≥ 0.8 disparam busca vetorial direcionada via `search_by_product_ids`.
+4. Produtos com confiança ≥ 0.8 disparam busca vetorial direcionada via `search_by_product_ids` (max 5 blocos por produto).
 
 ---
 
-### 5.3 Score Composto
+### 5.3 Score Composto — 6 Fatores
 
-O `CompositeScorer` combina múltiplos sinais:
+O `CompositeScorer` combina 6 fatores. Os pesos somam exatamente 1.0:
 
-| Sinal | Peso | Descrição |
+**Pesos base (queries conceptual, numeric, ranking):**
+
+| Fator | Peso | Fonte |
 |---|---|---|
-| Similaridade vetorial | 70% | Distância cosseno `<=>` no pgvector |
-| Recência | 20% | Materiais mais recentes recebem boost (relevante em queries temporais) |
-| Match exato de ticker | 10% | Boost adicional se o ticker da query bate com `product_ticker` do chunk |
+| `vector_score` — similaridade cosseno | **0.45** | `1.0 − distância pgvector` |
+| `fuzzy_score` — match fuzzy de tokens | **0.20** | FuzzyMatcher por ticker/nome |
+| `ticker_match` — ticker exato na query | **0.15** | `product_ticker` do chunk bate com ticker detectado |
+| `gestora_match` — gestora na query | **0.10** | `gestora` do chunk bate com gestora detectada |
+| `context_match` — produto no histórico | **0.05** | Produto apareceu nas últimas mensagens |
+| `recency_score` — recência do material | **0.05** | Materiais mais recentes → score mais alto |
 
-**Boost por intent:**
-- `temporal` → reforça recência
-- `numeric` → prioriza blocos do tipo `tabela`
-- `conceptual` → prioriza blocos do tipo `texto`
+**Pesos ajustados para queries temporais:**
+
+| Fator | Peso temporal |
+|---|---|
+| `vector_score` | 0.35 |
+| `fuzzy_score` | 0.15 |
+| `ticker_match` | 0.10 |
+| `gestora_match` | 0.08 |
+| `context_match` | 0.07 |
+| `recency_score` | **0.25** (peso 5× maior) |
+
+**Boost por intent** (aplicado após o score base):
+
+| Intent | Tipo de boost |
+|---|---|
+| `numeric` | +0.15 para blocos `tabela`, `key_metrics`, `chart`; +0.08 para tópicos de dividendos/performance |
+| `ranking` | +0.10 para blocos comparativos; +0.08 para tabelas |
 
 ---
 
@@ -545,7 +537,7 @@ Quando a intent é `comparative` (ex: "compare MANA11 com LIFE11"), o sistema:
 1. Detecta múltiplos tickers.
 2. Executa busca separada para cada entidade (max 3 por entidade).
 3. Garante representação equilibrada no contexto final via `_ensure_entity_coverage`.
-4. Se "os dois" ou "ambos" aparecerem sem tickers explícitos, usa contexto da conversa (`ConversationContextManager`) para resolver.
+4. Se "os dois" ou "ambos" aparecerem sem tickers explícitos, usa `ConversationContextManager` para resolver pelos produtos da última mensagem.
 
 ---
 
@@ -557,25 +549,51 @@ Blocos do tipo `tabela` armazenam conteúdo em JSON estruturado (cabeçalhos + l
 
 ## 6. Sistema Visual — VisualCache
 
-**Tabela:** `visual_cache`
+**Serviço:** `services/visual_extractor.py` | **Tabela:** `visual_cache`
 
-### 6.1 Extração
+### 6.1 Fluxo de Extração (Lazy/On-Demand)
 
-Durante o `DocumentProcessor`, para cada página classificada como `Chart` ou `Infographic`:
-1. GPT-4o Vision retorna a bounding box do elemento visual: `[x0, y0, x1, y1]` em coordenadas relativas da página.
-2. PyMuPDF renderiza a página em alta resolução (250 DPI).
-3. O recorte é feito usando as coordenadas da bbox.
-4. A imagem PNG é armazenada em `VisualCache.image_data` (LargeBinary).
-5. Se a bbox não for confiável, `used_fallback = True` e a página inteira é armazenada.
+A extração de imagens é **lazy** — não ocorre durante a ingestão do PDF. Ocorre somente quando o agente decide enviar uma imagem ao assessor.
+
+```mermaid
+sequenceDiagram
+    participant A as Agente
+    participant VE as VisualExtractor
+    participant DB as visual_cache
+    participant MF as MaterialFile
+    participant GPT as GPT-4o Vision
+
+    A->>VE: extract_visual(content_block_id, db)
+    VE->>DB: Existe cache?
+    alt Cache HIT
+        DB-->>VE: image_data (PNG)
+        VE-->>A: Imagem do cache
+    else Cache MISS
+        VE->>DB: Busca ContentBlock (tipo=grafico, source_page)
+        VE->>MF: Lê file_data (PDF binário)
+        VE->>VE: Renderiza página (200 DPI via PyMuPDF)
+        VE->>GPT: Localiza gráfico na página
+        GPT-->>VE: {has_chart, chart_position (% da página), chart_description}
+        alt bbox_area < 85%
+            VE->>VE: Recorta imagem na bbox + margem 40px
+        else bbox muito grande ou sem chart
+            VE->>VE: Usa página inteira (used_fallback=True)
+        end
+        VE->>DB: Persiste em visual_cache
+        VE-->>A: Imagem extraída
+    end
+```
+
+---
 
 ### 6.2 Envio Proativo
 
-O agente verifica automaticamente após `search_knowledge_base` se algum chunk retornado tem `VisualCache` associado. A decisão de enviar a imagem é **determinística por palavras-chave** (não IA):
+O agente verifica automaticamente após `search_knowledge_base` se algum chunk retornado tem `VisualCache` associado. A decisão de enviar a imagem é **determinística por palavras-chave** — não usa IA para decidir:
 
 **Palavras-chave que disparam envio visual:**
 `gráfico`, `diagrama`, `payoff`, `curva`, `chart`, `imagem`, `figura`, `performance`, `histórico`, `rentabilidade ao longo`, `evolução`.
 
-Se a query contém qualquer uma dessas palavras e o chunk possui VisualCache, a imagem é enviada via WhatsApp antes da resposta textual.
+Se a query contém qualquer uma dessas palavras e o chunk possui `VisualCache`, a imagem é enviada via WhatsApp antes da resposta textual.
 
 ---
 
@@ -584,22 +602,35 @@ Se a query contém qualquer uma dessas palavras e o chunk possui VisualCache, a 
 **Arquivo principal:** `services/openai_agent.py`
 **Tools:** `services/agent_tools.py`
 
-### 7.1 Entrada da Mensagem
+### 7.1 Fluxo de Entrada da Mensagem
 
-A mensagem do assessor chega via:
-- **WhatsApp** → Webhook Z-API → `api/endpoints/whatsapp_webhook.py`
-- **Teste interno** → Interface "Testar Agente" → mesmo pipeline
+```mermaid
+sequenceDiagram
+    actor Assessor
+    participant WA as WhatsApp / Z-API
+    participant WH as Webhook
+    participant AG as OpenAIAgent
+    participant GPT as GPT-4o
 
-### 7.2 Pré-processamento
+    Assessor->>WA: Envia mensagem
+    WA->>WH: POST /webhook/whatsapp
+    WH->>WH: Valida token (ZAPI_CLIENT_TOKEN)
+    WH->>WH: Debounce (agrupa mensagens próximas)
+    WH->>AG: generate_response_v2(message, phone)
+    AG->>AG: Identifica Assessor (phone → DB)
+    AG->>AG: Carrega histórico de conversa
+    AG->>AG: Classifica intent (_classify_message)
+    AG->>AG: Constrói system prompt
+    AG->>GPT: Prompt + tools disponíveis
+    GPT-->>AG: Tool calls ou resposta final
+    AG->>AG: Executa tools (paralelo)
+    AG-->>WA: Envia resposta formatada
+    WA-->>Assessor: Mensagem entregue
+```
 
-1. **Identificação do contato:** O número de WhatsApp é resolvido para um `Assessor` no banco.
-2. **Contexto de conversa:** Histórico das últimas N mensagens da sessão é carregado.
-3. **Memória hierárquica:** Resumos de sessões anteriores são injetados no contexto.
-4. **Debounce:** Mensagens muito próximas temporalmente são agrupadas antes de enviar ao agente.
+---
 
-### 7.3 Classificação de Intent
-
-**Método:** `_classify_message` com GPT-4o e prompt especializado.
+### 7.2 Classificação de Intent
 
 **Categorias de intent macro:**
 
@@ -612,9 +643,9 @@ A mensagem do assessor chega via:
 | `ESCOPO` | Indica que o assunto está fora do escopo — resposta padrão |
 | `ATENDIMENTO_HUMANO` | Aciona `request_human_handoff` |
 
-### 7.4 Construção do System Prompt
+---
 
-**Método:** `_build_system_prompt` em `services/openai_agent.py`
+### 7.3 Construção do System Prompt
 
 O system prompt é montado dinamicamente a cada chamada:
 
@@ -625,43 +656,34 @@ O system prompt é montado dinamicamente a cada chamada:
 5. **Campanhas ativas:** Campanhas com vigência ativa são injetadas automaticamente.
 6. **Lista de PDFs disponíveis:** Materiais com `available_for_whatsapp=True` e `MaterialFile` associado são listados com seus `material_id` — a tool `send_document` só aceita IDs desta lista.
 
-### 7.5 Loop Agentic — Function Calling
+---
 
-**Modelo:** GPT-4o com suporte a function calling paralelo.
+### 7.4 Loop Agentic — Function Calling
 
-```
-1. Prompt do sistema + histórico + mensagem atual
-       │
-       ▼
-2. GPT-4o decide:
-   ┌─────────────────────────────────────────────┐
-   │ Chamar uma ou mais tools?                   │
-   │ → search_knowledge_base                     │
-   │ → search_web                                │
-   │ → lookup_fii_public                         │
-   │ → send_document                             │
-   │ → send_payoff_diagram                       │
-   │ → request_human_handoff                     │
-   └───────────────┬─────────────────────────────┘
-                   │ (ou não chamar nenhuma)
-                   ▼
-3. Tools executadas em paralelo (asyncio)
-       │
-       ▼
-4. Resultados das tools adicionados ao contexto
-       │
-       ▼
-5. GPT-4o gera resposta final com os dados coletados
-       │
-       ▼
-6. Resposta enviada ao assessor
+```mermaid
+flowchart TD
+    P[System Prompt + Histórico + Mensagem] --> G[GPT-4o]
+    G --> D{Precisa de tools?}
+    D -->|Sim| TC[Tool Calls geradas]
+    TC -->|Paralelo| KB[search_knowledge_base\nEnhancedSearch RAG V3.2]
+    TC -->|Paralelo| WB[search_web\nTavily AI]
+    TC -->|Paralelo| FII[lookup_fii_public\nFundsExplorer]
+    TC --> SD[send_document\nMaterialFile → Z-API]
+    TC --> PD[send_payoff_diagram\nImagem estática]
+    TC --> HH[request_human_handoff\nCria ticket]
+    KB --> RES[Resultados agregados]
+    WB --> RES
+    FII --> RES
+    RES --> G2[GPT-4o gera resposta\ncom contexto completo]
+    D -->|Não| G2
+    G2 --> R[Resposta final ao assessor]
 ```
 
 O loop pode executar múltiplas rodadas — se o GPT pedir mais buscas após receber os primeiros resultados, o ciclo se repete.
 
 ---
 
-### 7.6 Ferramentas Disponíveis (ALL_TOOLS_V2)
+### 7.5 Ferramentas Disponíveis (ALL_TOOLS_V2)
 
 #### `search_knowledge_base`
 - **Quando usar:** Dados estratégicos — tese de investimento, racional, preço-alvo, análise fundamentalista, riscos, diferenciais, campanhas.
@@ -677,7 +699,7 @@ O loop pode executar múltiplas rodadas — se o GPT pedir mais buscas após rec
 
 #### `lookup_fii_public`
 - **Quando usar:** Indicadores quantitativos atuais de FIIs — DY, P/VP, vacância, último rendimento, preço da cota, patrimônio.
-- **Fonte:** FundsExplorer.com.br (scraping estruturado).
+- **Fonte:** FundsExplorer.com.br (scraping estruturado via `services/fii_lookup.py`).
 - **Input:** `ticker` (ex: `BTLG11`).
 - **Pode ser combinada** com `search_knowledge_base` para entrega de análise qualitativa + dados ao vivo.
 
@@ -689,7 +711,7 @@ O loop pode executar múltiplas rodadas — se o GPT pedir mais buscas após rec
 
 #### `send_payoff_diagram`
 - **Quando usar:** Quando o assessor pede para ver/enviar o diagrama de payoff de uma estrutura de derivativo.
-- **Input:** `structure_slug` (ex: `booster`, `collar-com-ativo`, `risk-reversal`) + `structure_name`.
+- **Input:** `structure_slug` + `structure_name`.
 - **Fonte:** Imagens estáticas em `static/derivatives_diagrams/`.
 - **Slugs disponíveis:** `booster`, `swap`, `collar-com-ativo`, `fence-com-ativo`, `step-up`, `condor-strangle-com-hedge`, `condor-venda-strangle`, `venda-straddle`, `compra-condor`, `compra-borboleta-fly`, `compra-straddle`, `compra-strangle`, `compra-venda-opcoes`, `risk-reversal`, `compra-call-spread`, `seagull`, `collar-sem-ativo`, `compra-put-spread`, `fence-sem-ativo`, `call-up-and-in`, `call-up-and-out`, `put-down-and-in`, `put-down-and-out`, `ndf`, `financiamento`, `venda-put-spread`, `venda-call-spread`.
 
@@ -731,13 +753,6 @@ Para perguntas que combinam dados estratégicos e ao vivo (ex: "qual a tese do H
 | Consumo de APIs | `cost_tracking` | Tokens por operação, custo USD/BRL por chamada de modelo |
 | Insights de conversas | `conversation_insights` | Categoria, produtos mencionados, resolvido pela IA, escalações |
 
-O dashboard de **Analytics RAG** (painel admin) consome `retrieval_logs` para exibir:
-- Queries mais frequentes
-- Taxa de sucesso de recuperação
-- Chunks mais usados
-- Distribuição de intents
-- Tempo médio de resposta
-
 ---
 
 ## 10. Referência Rápida de Componentes
@@ -749,11 +764,12 @@ O dashboard de **Analytics RAG** (painel admin) consome `retrieval_logs` para ex
 | `EntityResolver` | `services/semantic_search.py` | Match relacional query → product_id |
 | `SynonymLookup` | `services/semantic_search.py` | Expansão por sinônimos e glossário financeiro |
 | `EnhancedSearch` | `services/semantic_search.py` | Orquestrador do pipeline RAG V3.2 |
-| `CompositeScorer` | `services/semantic_search.py` | Score composto (vetor + recência + ticker) |
+| `CompositeScorer` | `services/semantic_search.py` | Score composto (6 fatores + boost por intent) |
 | `FuzzyMatcher` | `services/semantic_search.py` | Fallback por similaridade de string |
 | `ConversationContextManager` | `services/semantic_search.py` | Contexto de conversa para queries comparativas |
 | `VectorStore` | `services/vector_store.py` | Interface com pgvector (search, indexação) |
 | `DocumentProcessor` | `services/document_processor.py` | Extração de conteúdo via GPT-4o Vision |
+| `VisualExtractor` | `services/visual_extractor.py` | Extração lazy de imagens (cache hit/miss + GPT-4o Vision) |
 | `OpenAIAgent` | `services/openai_agent.py` | Loop agentic GPT-4o + tools |
 | `execute_tool_call` | `services/agent_tools.py` | Executor de tools do agente |
 | `FIILookup` | `services/fii_lookup.py` | Scraping FundsExplorer para dados FII |
