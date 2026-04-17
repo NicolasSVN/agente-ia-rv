@@ -271,6 +271,16 @@ export function ProductKeyInfoCard({ product, onUpdated }) {
   const { addToast } = useToast();
   const keyInfo = useMemo(() => parseKeyInfo(product?.key_info), [product?.key_info]);
   const history = keyInfo.key_info_history;
+  const hasAnyValue = useMemo(() => {
+    const fieldKeys = [...TEXT_FIELDS, ...IDENTITY_FIELDS].map((f) => f.key);
+    const anyText = fieldKeys.some((k) => {
+      const v = keyInfo[k];
+      return typeof v === 'string' && v.trim().length > 0;
+    });
+    const anyHighlight = Array.isArray(keyInfo.additional_highlights)
+      && keyInfo.additional_highlights.length > 0;
+    return anyText || anyHighlight;
+  }, [keyInfo]);
 
   const handleFieldSave = async (field, value) => {
     try {
@@ -315,6 +325,17 @@ export function ProductKeyInfoCard({ product, onUpdated }) {
           </p>
         </div>
       </div>
+
+      {!hasAnyValue && (
+        <div className="bg-muted/10 border border-dashed border-border rounded-input p-4 text-sm text-muted">
+          <strong className="text-foreground">Nenhuma informação estratégica preenchida ainda.</strong>
+          <p className="mt-1">
+            Faça o upload de um material via <em>Upload Inteligente</em> para que tese,
+            retorno esperado, prazo, risco e demais campos sejam extraídos automaticamente —
+            ou preencha manualmente os campos abaixo. Tudo é indexado para o agente Stevan.
+          </p>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {TEXT_FIELDS.map((f) => (

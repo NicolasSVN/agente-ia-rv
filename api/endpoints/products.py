@@ -720,8 +720,11 @@ async def update_product_key_info(
     if not sanitized:
         raise HTTPException(status_code=400, detail="Envie ao menos um campo válido para atualização")
 
-    # Source manual: marca origem como 'edição manual' (material_id=None)
-    changed = _merge_key_info_into_product(db, product, sanitized, material_id=None)
+    # Source manual: marca origem como 'edição manual' (material_id=None) e
+    # promove o novo valor a primário (arquiva o anterior em key_info_history).
+    changed = _merge_key_info_into_product(
+        db, product, sanitized, material_id=None, manual_override=True,
+    )
     if changed:
         db.commit()
 
@@ -4646,6 +4649,7 @@ def _merge_key_info_into_product(
     product: "Product",
     extracted_info: dict,
     material_id: Optional[int] = None,
+    manual_override: bool = False,
 ) -> bool:
     """
     Faz MERGE ACUMULATIVO entre key_info do produto e info extraída.
@@ -4709,15 +4713,22 @@ def _merge_key_info_into_product(
             current[field] = new_val
             changed = True
         elif cur_str != new_val:
-            already_in_history = any(
-                isinstance(h, dict)
-                and h.get("field") == field
-                and (h.get("value") or "").strip() == new_val
-                for h in history
-            )
-            if not already_in_history:
-                _push_history(field, new_val)
+            if manual_override:
+                # Edição manual explícita: arquiva valor antigo no histórico
+                # e promove o novo valor a primário.
+                _push_history(field, cur_str)
+                current[field] = new_val
                 changed = True
+            else:
+                already_in_history = any(
+                    isinstance(h, dict)
+                    and h.get("field") == field
+                    and (h.get("value") or "").strip() == new_val
+                    for h in history
+                )
+                if not already_in_history:
+                    _push_history(field, new_val)
+                    changed = True
 
     for field in list_fields:
         new_val = extracted_info.get(field)
