@@ -358,7 +358,8 @@ class ProductIngestor:
             base_material = db.query(Material).filter(
                 Material.product_id == base_product.id,
                 Material.name == document_title,
-                Material.id.in_(redistributed_material_ids)
+                Material.id.in_(redistributed_material_ids),
+                Material.id != material_id
             ).first()
 
             if not base_material:
