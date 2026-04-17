@@ -2382,6 +2382,14 @@ REGRAS PARA INFORMAÇÕES DA INTERNET:
                     "ativo sugerido",
                     "produto sugerido",
                     # Formas coloquiais curtas — adicionadas em Task #150
+                    # Verbos simples (fallback de terceiro nível — GPT e EntityResolver têm prioridade)
+                    "indica",
+                    "indicando",
+                    "sugere",
+                    "sugerindo",
+                    "sugira",
+                    "algum produto",
+                    # Compostos com pronome
                     "me indica",
                     "me indique",
                     "me sugere",
