@@ -6692,6 +6692,26 @@ async def archive_orphan_products(
         if scripts_count > 0:
             skipped.append({"id": pid, "name": p.name, "reason": "has_scripts"})
             continue
+
+        direct_mat_ids = set(
+            r[0] for r in db.query(Material.id).filter(Material.product_id == p.id).all()
+        )
+        linked_mat_ids = set(
+            r[0] for r in db.query(MaterialProductLink.material_id)
+            .filter(MaterialProductLink.product_id == p.id).all()
+        )
+        all_mat_ids = direct_mat_ids | linked_mat_ids
+        if all_mat_ids:
+            skipped.append({"id": pid, "name": p.name, "reason": "has_materials"})
+            continue
+
+        blocks_count = db.query(ContentBlock).join(Material).filter(
+            Material.product_id == p.id
+        ).count()
+        if blocks_count > 0:
+            skipped.append({"id": pid, "name": p.name, "reason": "has_blocks"})
+            continue
+
         p.status = "arquivado"
         archived += 1
 

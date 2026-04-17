@@ -1,6 +1,23 @@
 """
 Módulo de segurança.
 Contém funções para hashing de senhas e gerenciamento de tokens JWT.
+
+CONFIGURAÇÃO OBRIGATÓRIA EM PRODUÇÃO
+-------------------------------------
+A variável SESSION_SECRET deve ser configurada como um Replit Secret permanente
+para que os tokens JWT sejam válidos entre reinicializações do servidor.
+Sem essa configuração, todos os usuários perdem a sessão a cada restart.
+
+Como gerar e configurar:
+  1. Execute no terminal: python -c "import secrets; print(secrets.token_hex(64))"
+  2. Copie o valor gerado
+  3. No Replit: vá em Secrets (cadeado na barra lateral) → Add secret
+     - Key:   SESSION_SECRET
+     - Value: <valor gerado>
+  4. Reinicie o servidor
+
+Sem SESSION_SECRET configurado, o sistema gera uma chave aleatória por startup
+(apenas em desenvolvimento), o que invalida todos os tokens a cada reinício.
 """
 import os
 import uuid
@@ -33,10 +50,14 @@ if settings.SECRET_KEY in UNSAFE_KEYS:
         import warnings
         settings.SECRET_KEY = secrets.token_hex(32)
         warnings.warn(
-            "SECRET_KEY usando valor gerado automaticamente para desenvolvimento. "
-            "Configure SESSION_SECRET para produção.",
+            "[SECURITY] SESSION_SECRET não configurada — usando chave temporária gerada em runtime. "
+            "Todos os tokens JWT serão invalidados a cada reinício do servidor. "
+            "Para persistência de sessão, configure SESSION_SECRET nas Replit Secrets "
+            "(python -c \"import secrets; print(secrets.token_hex(64))\").",
             stacklevel=2
         )
+else:
+    security_logger.info("[SECURITY] SESSION_SECRET configurada — tokens JWT persistem entre reinicializações.")
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
