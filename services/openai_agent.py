@@ -1659,6 +1659,24 @@ REGRAS PARA INFORMAÇÕES DA INTERNET:
             material_type = metadata.get("material_type", "")
 
             material_name = metadata.get("material_name", "") or title
+            block_type_meta = metadata.get("block_type", "")
+            _doc_id_meta = str(metadata.get("doc_id") or "")
+            is_product_key_info = (
+                block_type_meta == "product_key_info"
+                or material_type == "ficha_produto"
+                or _doc_id_meta.startswith("product_keyinfo_")
+            )
+            product_link = None
+            if is_product_key_info:
+                ticker_label = (metadata.get("product_ticker") or metadata.get("products") or "").upper()
+                label_id = ticker_label or product_name or "Produto"
+                material_name = f"Ficha do Produto – {label_id}"
+                pid = metadata.get("product_id")
+                if pid:
+                    try:
+                        product_link = f"/base-conhecimento/product/{int(pid)}"
+                    except (TypeError, ValueError):
+                        product_link = None
             # [COMITÊ] requer: material ativo no comitê E produto não excluído do comitê
             # para este material. Fallbacks legados (material_type='comite', is_comite explícito)
             # são preservados para compatibilidade, mas ainda respeitam excluded_from_committee.
@@ -1668,13 +1686,20 @@ REGRAS PARA INFORMAÇÕES DA INTERNET:
             is_comite_doc = (is_committee_active or legacy_comite) and not excluded_from_committee
             comite_tag = "[COMITÊ]" if is_comite_doc else "[NÃO-COMITÊ]"
             header = f"{comite_tag} [Documento: {material_name}]"
-            if material_id:
+            if material_id and not is_product_key_info:
                 header += f" (material_id: {material_id})"
             if product_name:
                 header += f" | Produto: {product_name}"
             if material_type:
                 header += f" | Tipo: {material_type}"
-            header += f"\n⚠️ Ao citar dados deste documento, inclua: (Fonte: {material_name})"
+            if is_product_key_info:
+                link_hint = f" (link: {product_link})" if product_link else ""
+                header += (
+                    f"\n⚠️ Ao citar dados desta Ficha do Produto, inclua: (Fonte: {material_name}){link_hint}."
+                    f" NÃO há PDF para esta fonte — NUNCA acione send_document para ela."
+                )
+            else:
+                header += f"\n⚠️ Ao citar dados deste documento, inclua: (Fonte: {material_name})"
 
             context_parts.append(f"{header}\n{content}")
 
@@ -1739,6 +1764,24 @@ REGRAS PARA INFORMAÇÕES DA INTERNET:
                 content = doc.get("content", "")[:500]
                 material_type = metadata.get("material_type", "")
                 material_name = metadata.get("material_name", "") or title
+                block_type_meta = metadata.get("block_type", "")
+                _doc_id_meta = str(metadata.get("doc_id") or "")
+                is_product_key_info = (
+                    block_type_meta == "product_key_info"
+                    or material_type == "ficha_produto"
+                    or _doc_id_meta.startswith("product_keyinfo_")
+                )
+                product_link = None
+                if is_product_key_info:
+                    ticker_label = (metadata.get("product_ticker") or metadata.get("products") or "").upper()
+                    label_id = ticker_label or pname or "Produto"
+                    material_name = f"Ficha do Produto – {label_id}"
+                    pid = metadata.get("product_id")
+                    if pid:
+                        try:
+                            product_link = f"/base-conhecimento/product/{int(pid)}"
+                        except (TypeError, ValueError):
+                            product_link = None
                 # [COMITÊ] requer: material ativo no comitê E produto não excluído do comitê
                 # para este material. Fallbacks legados (material_type='comite', is_comite explícito)
                 # são preservados para compatibilidade, mas ainda respeitam excluded_from_committee.
@@ -1750,7 +1793,14 @@ REGRAS PARA INFORMAÇÕES DA INTERNET:
                 section += f"{comite_tag} [Documento: {material_name}]"
                 if material_type:
                     section += f" [{material_type}]"
-                section += f"\n⚠️ Ao citar dados: (Fonte: {material_name})"
+                if is_product_key_info:
+                    link_hint = f" (link: {product_link})" if product_link else ""
+                    section += (
+                        f"\n⚠️ Ao citar dados desta Ficha do Produto: (Fonte: {material_name}){link_hint}."
+                        f" NÃO há PDF para esta fonte — NUNCA acione send_document para ela."
+                    )
+                else:
+                    section += f"\n⚠️ Ao citar dados: (Fonte: {material_name})"
                 section += f"\n{content}\n\n"
             sections.append(section)
 

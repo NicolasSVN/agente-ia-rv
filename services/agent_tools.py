@@ -350,12 +350,38 @@ async def _execute_search_knowledge_base(args: dict, db=None, conversation_id=No
                 pass
 
         material_type = meta.get("material_type", "")
+        block_type_meta = meta.get("block_type", "")
         # Marcação universal: material_type='comite' OU produto presente em recommendation_entries
         _doc_pid = meta.get("product_id")
         _in_committee_entries = bool(_doc_pid and int(_doc_pid) in _committee_product_ids)
         is_comite_doc = material_type == "comite" or meta.get("is_comite", False) or _in_committee_entries
         comite_tag = "[COMITÊ]" if is_comite_doc else "[NÃO-COMITÊ]"
-        if comite_tag == "[COMITÊ]":
+
+        _doc_id_meta = str(meta.get("doc_id") or "")
+        is_product_key_info = (
+            block_type_meta == "product_key_info"
+            or material_type == "ficha_produto"
+            or _doc_id_meta.startswith("product_keyinfo_")
+        )
+        product_link = None
+        if is_product_key_info:
+            ticker_label = (meta.get("product_ticker") or meta.get("products") or "").upper()
+            product_name_label = meta.get("product_name", "")
+            label_id = ticker_label or product_name_label or "Produto"
+            material_name = f"Ficha do Produto – {label_id}"
+            if _doc_pid:
+                try:
+                    product_link = f"/base-conhecimento/product/{int(_doc_pid)}"
+                except (TypeError, ValueError):
+                    product_link = None
+            link_hint = f" (link: {product_link})" if product_link else ""
+            source_note = (
+                f"TAG: [{comite_tag.strip('[]')}] | Esta é a FICHA DO PRODUTO mantida internamente pela SVN. "
+                f"Ao citar, use: (Fonte: {material_name}){link_hint}. "
+                f"NÃO existe PDF para esta fonte — NUNCA chame send_document com este resultado. "
+                f"Se o assessor quiser ver mais, oriente que pode acessar a tela do produto na Base de Conhecimento."
+            )
+        elif comite_tag == "[COMITÊ]":
             source_note = (
                 f"TAG: [COMITÊ] | Ao citar, inclua: (Fonte: {material_name}). "
                 f"Este material é uma recomendação formal do Comitê de Investimentos da SVN — "
@@ -369,7 +395,7 @@ async def _execute_search_knowledge_base(args: dict, db=None, conversation_id=No
                 f"esclareça que este ativo não está no Comitê ativo da SVN e sugira consultar o broker."
             )
 
-        results.append({
+        result_entry = {
             "title": meta.get("document_title", "Documento"),
             "material_name": material_name,
             "material_type": material_type,
@@ -378,13 +404,18 @@ async def _execute_search_knowledge_base(args: dict, db=None, conversation_id=No
             "ticker": meta.get("products", ""),
             "content": content[:800],
             "score": round(r.composite_score, 3) if hasattr(r, 'composite_score') else None,
-            "material_id": meta.get("material_id"),
+            "material_id": None if is_product_key_info else meta.get("material_id"),
             "block_id": int_block_id,
-            "block_type": meta.get("block_type", ""),
+            "block_type": block_type_meta,
             "source_page": source_page,
             "visual_description": visual_desc,
             "source_note": source_note,
-        })
+        }
+        if is_product_key_info:
+            result_entry["is_product_key_info"] = True
+            if product_link:
+                result_entry["product_link"] = product_link
+        results.append(result_entry)
 
     if db and seen_product_ids:
         try:
