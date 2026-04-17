@@ -351,10 +351,10 @@ async def _execute_search_knowledge_base(args: dict, db=None, conversation_id=No
 
         material_type = meta.get("material_type", "")
         block_type_meta = meta.get("block_type", "")
-        # Marcação universal: material_type='comite' OU produto presente em recommendation_entries
+        # Marcação exclusiva pela estrela: apenas produto com Product.is_committee=True (via _committee_product_ids)
         _doc_pid = meta.get("product_id")
         _in_committee_entries = bool(_doc_pid and int(_doc_pid) in _committee_product_ids)
-        is_comite_doc = material_type == "comite" or meta.get("is_comite", False) or _in_committee_entries
+        is_comite_doc = _in_committee_entries
         comite_tag = "[COMITÊ]" if is_comite_doc else "[NÃO-COMITÊ]"
 
         _doc_id_meta = str(meta.get("doc_id") or "")
