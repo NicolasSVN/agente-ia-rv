@@ -381,6 +381,8 @@ async def list_products(
     
     if status:
         query = query.filter(Product.status == status)
+    else:
+        query = query.filter(Product.status != "arquivado")
     
     products = query.order_by(Product.name).all()
     
