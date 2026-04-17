@@ -1809,7 +1809,13 @@ REGRAS PARA INFORMAÇÕES DA INTERNET:
                     )
                 else:
                     source_page = metadata.get("page") or metadata.get("source_page")
-                    page_suffix = f", pág. {source_page}" if source_page and int(source_page) > 0 else ""
+                    page_suffix = ""
+                    if source_page:
+                        try:
+                            if int(source_page) > 0:
+                                page_suffix = f", pág. {int(source_page)}"
+                        except (TypeError, ValueError):
+                            pass
                     section += f"\n⚠️ Ao citar dados: (Fonte: {material_name}{page_suffix})"
                 section += f"\n{content}\n\n"
             sections.append(section)

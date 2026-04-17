@@ -381,19 +381,29 @@ async def _execute_search_knowledge_base(args: dict, db=None, conversation_id=No
                 f"NÃO existe PDF para esta fonte — NUNCA chame send_document com este resultado. "
                 f"Se o assessor quiser ver mais, oriente que pode acessar a tela do produto na Base de Conhecimento."
             )
-        elif comite_tag == "[COMITÊ]":
-            source_note = (
-                f"TAG: [COMITÊ] | Ao citar, inclua: (Fonte: {material_name}). "
-                f"Este material é uma recomendação formal do Comitê de Investimentos da SVN — "
-                f"use framing de recomendação oficial na resposta."
-            )
         else:
-            source_note = (
-                f"TAG: [NÃO-COMITÊ] | Ao citar, inclua: (Fonte: {material_name}). "
-                f"Este material é INFORMATIVO — NÃO é uma recomendação formal da SVN. "
-                f"Você pode informar e analisar o ativo, mas se perguntado sobre recomendação, "
-                f"esclareça que este ativo não está no Comitê ativo da SVN e sugira consultar o broker."
-            )
+            _page_suffix = ""
+            if source_page:
+                try:
+                    _page_int = int(source_page)
+                    if _page_int > 0:
+                        _page_suffix = f", pág. {_page_int}"
+                except (TypeError, ValueError):
+                    pass
+
+            if comite_tag == "[COMITÊ]":
+                source_note = (
+                    f"TAG: [COMITÊ] | Ao citar, inclua: (Fonte: {material_name}{_page_suffix}). "
+                    f"Este material é uma recomendação formal do Comitê de Investimentos da SVN — "
+                    f"use framing de recomendação oficial na resposta."
+                )
+            else:
+                source_note = (
+                    f"TAG: [NÃO-COMITÊ] | Ao citar, inclua: (Fonte: {material_name}{_page_suffix}). "
+                    f"Este material é INFORMATIVO — NÃO é uma recomendação formal da SVN. "
+                    f"Você pode informar e analisar o ativo, mas se perguntado sobre recomendação, "
+                    f"esclareça que este ativo não está no Comitê ativo da SVN e sugira consultar o broker."
+                )
 
         result_entry = {
             "title": meta.get("document_title", "Documento"),

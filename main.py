@@ -401,12 +401,16 @@ def _apply_incremental_migrations():
         "ALTER TABLE materials ADD COLUMN IF NOT EXISTS ai_product_analysis TEXT",
         "ALTER TABLE materials ALTER COLUMN product_id DROP NOT NULL",
         # Task #134: Categorias padrão para FIIs sem categoria (ticker terminado em 11)
+        # Restrito a produtos cujo nome contém termos imobiliários para evitar classificar ETFs/units
         """UPDATE products SET category = 'FII'
            WHERE (category IS NULL OR category = '' OR category = 'fii')
              AND ticker IS NOT NULL
-             AND ticker ~* '\\d{2}$'
-             AND LENGTH(ticker) >= 5
-             AND UPPER(ticker) LIKE '%11'""",
+             AND UPPER(ticker) LIKE '%11'
+             AND LENGTH(ticker) BETWEEN 5 AND 7
+             AND (
+               name ~* '\\y(fundo|fii|imobiliário|imobiliario|fiagro|cri\\b|recebíveis|renda imobiliária|reit)\\y'
+               OR description ~* '\\y(fundo de investimento imobiliário|fii|cri\\b|imóveis|imóvel)\\y'
+             )""",
         # Task #134: Garantir que categories (JSON array) esteja alinhado com category para FIIs
         """UPDATE products SET categories = json_build_array(category)::text
            WHERE category = 'FII'
