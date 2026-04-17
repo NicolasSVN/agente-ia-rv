@@ -377,25 +377,36 @@ class ProductIngestor:
                 MaterialProductLink.product_id == derived_product.id
             ).first()
 
-            if already_linked:
+            if not already_linked:
+                new_link = MaterialProductLink(
+                    material_id=base_material.id,
+                    product_id=derived_product.id,
+                    excluded_from_committee=False
+                )
+                db.add(new_link)
+                _log(
+                    f"Produto derivado '{derived_product.ticker}' → material de '{underlying_ticker}' "
+                    f"(material_id={base_material.id})",
+                    "success"
+                )
+                changes_made = True
+            else:
                 _log(
                     f"'{derived_product.ticker}' já vinculado ao material de '{underlying_ticker}'",
                     "info"
                 )
-                continue
 
-            new_link = MaterialProductLink(
-                material_id=base_material.id,
-                product_id=derived_product.id,
-                excluded_from_committee=False
-            )
-            db.add(new_link)
-            _log(
-                f"Produto derivado '{derived_product.ticker}' → material de '{underlying_ticker}' "
-                f"(material_id={base_material.id})",
-                "success"
-            )
-            changes_made = True
+            old_link = db.query(MaterialProductLink).filter(
+                MaterialProductLink.material_id == material_id,
+                MaterialProductLink.product_id == derived_product.id
+            ).first()
+            if old_link:
+                db.delete(old_link)
+                _log(
+                    f"Vínculo antigo removido: '{derived_product.ticker}' → placeholder (material_id={material_id})",
+                    "info"
+                )
+                changes_made = True
 
         if changes_made:
             db.commit()
