@@ -269,6 +269,7 @@ function HistoryPanel({ history }) {
 
 export function ProductKeyInfoCard({ product, onUpdated }) {
   const { addToast } = useToast();
+  const [extracting, setExtracting] = useState(false);
   const keyInfo = useMemo(() => parseKeyInfo(product?.key_info), [product?.key_info]);
   const history = keyInfo.key_info_history;
   const hasAnyValue = useMemo(() => {
@@ -281,6 +282,25 @@ export function ProductKeyInfoCard({ product, onUpdated }) {
       && keyInfo.additional_highlights.length > 0;
     return anyText || anyHighlight;
   }, [keyInfo]);
+
+  const handleAutoExtract = async () => {
+    setExtracting(true);
+    try {
+      const result = await productsAPI.autoExtractKeyInfo(product.id);
+      if (result.success && result.fields_set?.length > 0) {
+        addToast(`${result.fields_set.length} campo(s) extraído(s) automaticamente`, 'success');
+        if (onUpdated) await onUpdated();
+      } else if (result.success) {
+        addToast('Nenhum campo novo encontrado nos documentos', 'info');
+      } else {
+        addToast(result.message || 'Não foi possível extrair informações', 'warning');
+      }
+    } catch (err) {
+      addToast(`Erro na extração: ${err.message}`, 'error');
+    } finally {
+      setExtracting(false);
+    }
+  };
 
   const handleFieldSave = async (field, value) => {
     try {
@@ -317,7 +337,24 @@ export function ProductKeyInfoCard({ product, onUpdated }) {
       <div className="flex items-start gap-2 pb-2 border-b border-border">
         <Sparkles className="w-5 h-5 text-primary mt-0.5" />
         <div className="flex-1">
-          <h3 className="font-semibold text-foreground">Informações estratégicas</h3>
+          <div className="flex items-center justify-between gap-2">
+            <h3 className="font-semibold text-foreground">Informações estratégicas</h3>
+            <button
+              type="button"
+              onClick={handleAutoExtract}
+              disabled={extracting}
+              title="Extrair campos automaticamente a partir dos documentos do produto"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium
+                         bg-primary/10 text-primary border border-primary/30 rounded-btn
+                         hover:bg-primary/20 disabled:opacity-50 disabled:cursor-not-allowed
+                         transition-colors"
+            >
+              {extracting
+                ? <Loader className="w-3.5 h-3.5 animate-spin" />
+                : <Sparkles className="w-3.5 h-3.5" />}
+              {extracting ? 'Extraindo…' : 'Extrair automaticamente'}
+            </button>
+          </div>
           <p className="text-xs text-muted mt-0.5">
             Campos extraídos automaticamente dos materiais e/ou editados manualmente.
             São indexados na base do agente Stevan e usados em respostas sobre este produto,

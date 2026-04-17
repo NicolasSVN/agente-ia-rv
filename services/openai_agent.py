@@ -1699,7 +1699,15 @@ REGRAS PARA INFORMAÇÕES DA INTERNET:
                     f" NÃO há PDF para esta fonte — NUNCA acione send_document para ela."
                 )
             else:
-                header += f"\n⚠️ Ao citar dados deste documento, inclua: (Fonte: {material_name})"
+                page_num = metadata.get("page", "0")
+                try:
+                    page_int = int(page_num)
+                except (TypeError, ValueError):
+                    page_int = 0
+                if page_int > 0:
+                    header += f"\n⚠️ Ao citar dados deste documento, inclua: (Fonte: {material_name}, pág. {page_int})"
+                else:
+                    header += f"\n⚠️ Ao citar dados deste documento, inclua: (Fonte: {material_name})"
 
             context_parts.append(f"{header}\n{content}")
 

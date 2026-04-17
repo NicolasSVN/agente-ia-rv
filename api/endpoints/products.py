@@ -831,6 +831,149 @@ async def update_product(
     return {"success": True}
 
 
+def _auto_extract_key_info_sync(db: Session, product: "Product") -> dict:
+    """
+    Extrai key_info de um produto a partir dos seus blocos de conteúdo indexados.
+    Usa GPT-4o-mini para ler os blocos estratégicos e preencher os campos.
+    Retorna {'extracted': True, 'fields_set': [...]} ou {'extracted': False, 'reason': ...}.
+    """
+    import json as _json
+    import os as _os
+    from openai import OpenAI
+
+    api_key = _os.getenv("OPENAI_API_KEY") or ""
+    if not api_key:
+        return {"extracted": False, "reason": "OPENAI_API_KEY não configurado"}
+
+    blocks = (
+        db.query(ContentBlock)
+        .join(Material, ContentBlock.material_id == Material.id)
+        .filter(
+            Material.product_id == product.id,
+            ContentBlock.status.in_([
+                ContentBlockStatus.APPROVED.value,
+                ContentBlockStatus.AUTO_APPROVED.value,
+            ]),
+        )
+        .order_by(ContentBlock.order.asc())
+        .limit(20)
+        .all()
+    )
+
+    if not blocks:
+        return {"extracted": False, "reason": "Nenhum bloco aprovado para este produto"}
+
+    texts = []
+    for b in blocks:
+        if b.content and len(b.content.strip()) > 50:
+            texts.append(b.content.strip()[:2000])
+
+    if not texts:
+        return {"extracted": False, "reason": "Blocos sem conteúdo textual suficiente"}
+
+    combined = "\n\n---\n\n".join(texts[:10])
+    product_name = product.name or ""
+    product_ticker = (product.ticker or "").upper()
+    product_manager = product.manager or ""
+
+    system = (
+        "Você é um especialista em ficha de produtos financeiros. "
+        "A partir de trechos de documentos de um produto, extraia as informações estratégicas solicitadas. "
+        "Retorne apenas JSON válido com os campos pedidos. Se não encontrar o valor, omita o campo."
+    )
+    user = f"""Produto: {product_name} ({product_ticker})
+Gestora/Emissor conhecida: {product_manager}
+
+Trechos do documento:
+{combined}
+
+Extraia os seguintes campos do produto, preenchendo APENAS com informações explicitamente presentes no texto acima:
+- investment_thesis: tese de investimento ou racional principal (string, até 500 chars)
+- expected_return: retorno esperado ou alvo (string, ex: "CDI + 3% a.a." ou "12% a.a.")
+- investment_term: prazo ou horizonte de investimento (string, ex: "3 anos", "longo prazo")
+- main_risk: principal risco do produto (string, até 300 chars)
+- issuer_or_manager: nome do emissor ou gestora (string)
+- rating: rating de crédito se houver (string, ex: "AAA", "brAAA")
+- minimum_investment: valor mínimo de aplicação (string, ex: "R$ 1.000,00")
+- liquidity: liquidez (string, ex: "D+0", "D+30", "sem liquidez")
+- additional_highlights: lista de destaques relevantes (array de strings, máximo 5 itens)
+
+Responda APENAS com JSON válido no formato:
+{{"investment_thesis": "...", "expected_return": "...", ...}}
+Omita campos que não encontrou. Não inclua campos além dos listados."""
+
+    try:
+        client = OpenAI(api_key=api_key)
+        resp = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            temperature=0.1,
+            max_tokens=800,
+            response_format={"type": "json_object"},
+        )
+        raw = resp.choices[0].message.content or "{}"
+        extracted = _json.loads(raw)
+        if not isinstance(extracted, dict):
+            return {"extracted": False, "reason": "Resposta do modelo não é dicionário"}
+    except Exception as e:
+        return {"extracted": False, "reason": f"Erro ao chamar GPT-4o-mini: {e}"}
+
+    if not extracted:
+        return {"extracted": False, "reason": "Nenhum campo extraído pelo modelo"}
+
+    material_id = blocks[0].material_id if blocks else None
+    changed = _merge_key_info_into_product(db, product, extracted, material_id=material_id)
+    if changed:
+        db.commit()
+        try:
+            from services.product_key_info_indexer import index_product_key_info
+            db.refresh(product)
+            index_product_key_info(product)
+        except Exception as idx_err:
+            print(f"[AUTO_EXTRACT] Falha ao reindexar key_info produto {product.id}: {idx_err}")
+
+    return {"extracted": changed, "fields_set": list(extracted.keys())}
+
+
+@router.post("/{product_id}/auto-extract-key-info")
+async def auto_extract_product_key_info(
+    product_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Extrai automaticamente os campos do key_info do produto a partir dos seus
+    blocos de conteúdo aprovados, usando GPT-4o-mini. Os campos extraídos são
+    mesclados com o key_info existente (sem sobrescrever valores já preenchidos)
+    e o documento sintético é reindexado para o agente Stevan.
+    """
+    if current_user.role not in ["admin", "gestao_rv", "broker"]:
+        raise HTTPException(status_code=403, detail="Acesso negado")
+
+    product = db.query(Product).filter(Product.id == product_id).first()
+    if not product:
+        raise HTTPException(status_code=404, detail="Produto não encontrado")
+
+    result = await asyncio.to_thread(_auto_extract_key_info_sync, db, product)
+
+    if not result.get("extracted") and result.get("reason"):
+        return {
+            "success": False,
+            "message": result["reason"],
+            "key_info": product.key_info,
+        }
+
+    db.refresh(product)
+    return {
+        "success": True,
+        "fields_set": result.get("fields_set", []),
+        "key_info": product.key_info,
+    }
+
+
 @router.patch("/{product_id}/key-info")
 async def update_product_key_info(
     product_id: int,
@@ -958,6 +1101,101 @@ async def admin_backfill_key_info_index(
         raise HTTPException(status_code=403, detail="Acesso negado")
     from services.product_key_info_indexer import backfill_all
     return await asyncio.to_thread(backfill_all, db)
+
+
+@router.post("/admin/backfill-auto-extract-key-info")
+async def admin_backfill_auto_extract_key_info(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Extrai automaticamente key_info para todos os produtos que ainda não têm
+    nenhuma informação estratégica preenchida. Usa GPT-4o-mini sobre os
+    top-10 blocos de estratégia/risco/perspectivas de cada produto.
+    """
+    if current_user.role not in ["admin", "gestao_rv"]:
+        raise HTTPException(status_code=403, detail="Acesso negado")
+
+    def _run(db):
+        products = db.query(Product).all()
+        extracted = 0
+        skipped = 0
+        errors = 0
+        for p in products:
+            try:
+                import json as _json
+                current_ki = {}
+                try:
+                    current_ki = _json.loads(p.key_info) if p.key_info else {}
+                    if not isinstance(current_ki, dict):
+                        current_ki = {}
+                except Exception:
+                    current_ki = {}
+
+                text_fields = [
+                    "investment_thesis", "expected_return", "investment_term",
+                    "main_risk", "issuer_or_manager", "rating",
+                    "minimum_investment", "liquidity",
+                ]
+                has_content = any(
+                    isinstance(current_ki.get(f), str) and current_ki.get(f, "").strip()
+                    for f in text_fields
+                )
+                if has_content:
+                    skipped += 1
+                    continue
+
+                result = _auto_extract_key_info_sync(db, p)
+                if result.get("extracted"):
+                    extracted += 1
+                else:
+                    skipped += 1
+            except Exception as e:
+                errors += 1
+                print(f"[BACKFILL_KEY_INFO] Erro produto id={p.id}: {e}")
+
+        return {
+            "extracted": extracted,
+            "skipped": skipped,
+            "errors": errors,
+            "total": len(products),
+        }
+
+    return await asyncio.to_thread(_run, db)
+
+
+@router.post("/admin/backfill-gestora-embeddings")
+async def admin_backfill_gestora_embeddings(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Preenche o campo `gestora` nos embeddings que estão com esse campo
+    vazio, consultando o produto associado ao material de cada embedding.
+    Operação de backfill idempotente — seguro rodar múltiplas vezes.
+    """
+    if current_user.role not in ["admin", "gestao_rv"]:
+        raise HTTPException(status_code=403, detail="Acesso negado")
+
+    from sqlalchemy import text as sql_text
+
+    def _run(db):
+        result = db.execute(sql_text("""
+            UPDATE document_embeddings de
+            SET gestora = p.manager
+            FROM materials m
+            JOIN products p ON p.id = m.product_id
+            WHERE de.material_id = m.id::text
+              AND (de.gestora IS NULL OR de.gestora = '')
+              AND p.manager IS NOT NULL
+              AND p.manager != ''
+        """))
+        updated = result.rowcount
+        db.commit()
+        print(f"[BACKFILL_GESTORA] {updated} embedding(s) com gestora atualizado(s).")
+        return {"updated": updated}
+
+    return await asyncio.to_thread(_run, db)
 
 
 @router.post("/admin/backfill-publish-and-reindex")

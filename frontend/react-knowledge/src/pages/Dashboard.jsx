@@ -64,6 +64,11 @@ export function Dashboard() {
   const [archivingOrphans, setArchivingOrphans] = useState(false);
   const [archiveOrphansResult, setArchiveOrphansResult] = useState(null);
 
+  const [keyInfoBackfillRunning, setKeyInfoBackfillRunning] = useState(false);
+  const [keyInfoBackfillResult, setKeyInfoBackfillResult] = useState(null);
+  const [gestoraBackfillRunning, setGestoraBackfillRunning] = useState(false);
+  const [gestoraBackfillResult, setGestoraBackfillResult] = useState(null);
+
   useEffect(() => {
     localStorage.setItem(STORAGE_SEARCH_KEY, search);
   }, [search]);
@@ -389,6 +394,37 @@ export function Dashboard() {
       addToast(`Erro: ${err.message}`, 'error');
     } finally {
       setEnrichBackfillRunning(false);
+    }
+  };
+
+  const handleBackfillKeyInfo = async () => {
+    setKeyInfoBackfillRunning(true);
+    setKeyInfoBackfillResult(null);
+    try {
+      const result = await adminAPI.backfillAutoExtractKeyInfo();
+      setKeyInfoBackfillResult(result);
+      addToast(
+        `Fichas: ${result.extracted} extraída(s) · ${result.skipped} sem mudança`,
+        'success'
+      );
+    } catch (err) {
+      addToast(`Erro: ${err.message}`, 'error');
+    } finally {
+      setKeyInfoBackfillRunning(false);
+    }
+  };
+
+  const handleBackfillGestora = async () => {
+    setGestoraBackfillRunning(true);
+    setGestoraBackfillResult(null);
+    try {
+      const result = await adminAPI.backfillGestoraEmbeddings();
+      setGestoraBackfillResult(result);
+      addToast(`${result.updated} embedding(s) com gestora atualizado(s)`, 'success');
+    } catch (err) {
+      addToast(`Erro: ${err.message}`, 'error');
+    } finally {
+      setGestoraBackfillRunning(false);
     }
   };
 
@@ -1054,10 +1090,97 @@ export function Dashboard() {
             </div>
           </div>
 
+          <div className="space-y-4 border-b border-border pb-5">
+            <div>
+              <h3 className="text-sm font-semibold text-foreground mb-1">
+                5. Preencher fichas de produtos automaticamente (key_info)
+              </h3>
+              <p className="text-sm text-muted mb-3">
+                Para cada produto sem informações estratégicas preenchidas, lê os blocos de conteúdo
+                aprovados e usa IA para extrair tese de investimento, retorno esperado, prazo, risco,
+                gestor, mínimo e liquidez. Só preenche campos vazios — nunca sobrescreve edições manuais.
+                Processa todos os produtos de uma vez; pode demorar vários minutos.
+              </p>
+              <button
+                onClick={handleBackfillKeyInfo}
+                disabled={keyInfoBackfillRunning}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium
+                           bg-primary text-white hover:bg-primary/90
+                           disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {keyInfoBackfillRunning ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    Extraindo fichas... (pode demorar)
+                  </>
+                ) : (
+                  <>
+                    <Wrench className="w-4 h-4" />
+                    Extrair fichas automaticamente
+                  </>
+                )}
+              </button>
+              {keyInfoBackfillResult && (
+                <div className="mt-3 bg-green-50 border border-green-200 rounded-lg p-3 space-y-1">
+                  <p className="text-sm font-semibold text-green-800">
+                    {keyInfoBackfillResult.extracted} produto(s) com fichas extraídas
+                    · {keyInfoBackfillResult.skipped} sem mudança
+                    {keyInfoBackfillResult.errors > 0 && (
+                      <span className="text-red-700 ml-2">· {keyInfoBackfillResult.errors} erro(s)</span>
+                    )}
+                  </p>
+                  <p className="text-xs text-green-700">
+                    Total processado: {keyInfoBackfillResult.total} produto(s)
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="space-y-4 border-b border-border pb-5">
+            <div>
+              <h3 className="text-sm font-semibold text-foreground mb-1">
+                6. Corrigir cobertura de gestora nos embeddings
+              </h3>
+              <p className="text-sm text-muted mb-3">
+                Preenche o campo <code className="text-xs bg-muted/10 px-1 rounded">gestora</code> nos
+                embeddings que estão com esse campo vazio, consultando o produto associado a cada
+                embedding. Melhora o recall de buscas por nome de gestora (ex: "o que tem da BTG?").
+                Operação idempotente — seguro executar múltiplas vezes.
+              </p>
+              <button
+                onClick={handleBackfillGestora}
+                disabled={gestoraBackfillRunning}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium
+                           bg-primary text-white hover:bg-primary/90
+                           disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {gestoraBackfillRunning ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    Atualizando gestoras...
+                  </>
+                ) : (
+                  <>
+                    <Wrench className="w-4 h-4" />
+                    Corrigir gestora nos embeddings
+                  </>
+                )}
+              </button>
+              {gestoraBackfillResult && (
+                <div className="mt-3 bg-green-50 border border-green-200 rounded-lg p-3">
+                  <p className="text-sm font-semibold text-green-800">
+                    {gestoraBackfillResult.updated} embedding(s) atualizado(s) com gestora.
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+
           <div className="flex items-start gap-4 flex-wrap">
             <div className="flex-1 min-w-[260px]">
               <h3 className="text-sm font-semibold text-foreground mb-1">
-                5. Vínculos de produtos derivados
+                7. Vínculos de produtos derivados
               </h3>
               <p className="text-sm text-muted mb-3">
                 Corrige retroativamente os vínculos de materiais entre produtos derivados e seus

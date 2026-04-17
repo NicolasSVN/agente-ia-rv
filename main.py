@@ -400,6 +400,19 @@ def _apply_incremental_migrations():
         "CREATE INDEX IF NOT EXISTS ix_recommendation_entries_active ON recommendation_entries(is_active)",
         "ALTER TABLE materials ADD COLUMN IF NOT EXISTS ai_product_analysis TEXT",
         "ALTER TABLE materials ALTER COLUMN product_id DROP NOT NULL",
+        # Task #134: Categorias padrão para FIIs sem categoria (ticker terminado em 11)
+        """UPDATE products SET category = 'FII'
+           WHERE (category IS NULL OR category = '' OR category = 'fii')
+             AND ticker IS NOT NULL
+             AND ticker ~* '\\d{2}$'
+             AND LENGTH(ticker) >= 5
+             AND UPPER(ticker) LIKE '%11'""",
+        # Task #134: Garantir que categories (JSON array) esteja alinhado com category para FIIs
+        """UPDATE products SET categories = json_build_array(category)::text
+           WHERE category = 'FII'
+             AND (categories IS NULL OR categories = '[]' OR categories = '["fii"]')
+             AND ticker IS NOT NULL
+             AND UPPER(ticker) LIKE '%11'""",
     ]
     db = SessionLocal()
     try:

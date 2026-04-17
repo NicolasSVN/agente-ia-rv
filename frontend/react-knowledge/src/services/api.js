@@ -63,6 +63,10 @@ export const productsAPI = {
     body: JSON.stringify(partial),
   }),
 
+  autoExtractKeyInfo: (productId) => fetchAPI(`/products/${productId}/auto-extract-key-info`, {
+    method: 'POST',
+  }),
+
   linkableMaterials: (productId, q = '', limit = 40) =>
     fetchAPI(`/products/${productId}/materials-linkable?q=${encodeURIComponent(q)}&limit=${limit}`),
 
@@ -266,6 +270,14 @@ export const adminAPI = {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ product_ids: productIds }),
+  }),
+
+  backfillAutoExtractKeyInfo: () => fetchAPI('/products/admin/backfill-auto-extract-key-info', {
+    method: 'POST',
+  }),
+
+  backfillGestoraEmbeddings: () => fetchAPI('/products/admin/backfill-gestora-embeddings', {
+    method: 'POST',
   }),
 };
 
