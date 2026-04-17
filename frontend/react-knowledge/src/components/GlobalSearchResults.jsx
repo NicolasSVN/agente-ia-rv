@@ -78,28 +78,49 @@ const ProductResult = ({ item, query, onClick }) => (
   </motion.div>
 );
 
-const MaterialResult = ({ item, query, onClick }) => (
-  <motion.div
-    initial={{ opacity: 0, x: -10 }}
-    animate={{ opacity: 1, x: 0 }}
-    className="p-3 bg-white rounded-lg border border-border hover:border-primary/30 hover:shadow-sm transition-all cursor-pointer"
-    onClick={onClick}
-  >
-    <div className="flex items-start justify-between">
-      <div className="flex-1">
-        <h4 className="font-medium text-foreground">
-          <MatchHighlight text={item.name} query={query} />
-        </h4>
-        <div className="flex items-center gap-2 mt-1 text-sm text-muted">
-          <span className="text-primary">{item.product_name}</span>
-          <span>•</span>
-          <span className="capitalize">{item.material_type}</span>
+const PUBLISH_STATUS_STYLE = {
+  publicado: 'bg-green-100 text-green-700',
+  rascunho: 'bg-gray-100 text-gray-500',
+};
+
+const PUBLISH_STATUS_LABEL = {
+  publicado: 'Publicado',
+  rascunho: 'Rascunho',
+};
+
+const MaterialResult = ({ item, query, onClick }) => {
+  const statusKey = item.publish_status || 'rascunho';
+  const statusStyle = PUBLISH_STATUS_STYLE[statusKey] || PUBLISH_STATUS_STYLE.rascunho;
+  const statusLabel = PUBLISH_STATUS_LABEL[statusKey] || statusKey;
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, x: -10 }}
+      animate={{ opacity: 1, x: 0 }}
+      className="p-3 bg-white rounded-lg border border-border hover:border-primary/30 hover:shadow-sm transition-all cursor-pointer"
+      onClick={onClick}
+    >
+      <div className="flex items-start justify-between">
+        <div className="flex-1">
+          <div className="flex items-center gap-2">
+            <h4 className="font-medium text-foreground">
+              <MatchHighlight text={item.name} query={query} />
+            </h4>
+            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${statusStyle}`}>
+              {statusLabel}
+            </span>
+          </div>
+          <div className="flex items-center gap-2 mt-1 text-sm text-muted">
+            <span className="text-primary">{item.product_name}</span>
+            <span>•</span>
+            <span className="capitalize">{item.material_type}</span>
+          </div>
         </div>
+        <ExternalLink className="w-4 h-4 text-muted" />
       </div>
-      <ExternalLink className="w-4 h-4 text-muted" />
-    </div>
-  </motion.div>
-);
+    </motion.div>
+  );
+};
 
 const BlockResult = ({ item, query, onClick }) => (
   <motion.div

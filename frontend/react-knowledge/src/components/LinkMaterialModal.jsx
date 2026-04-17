@@ -116,6 +116,15 @@ export function LinkMaterialModal({ open, onClose, productId, productName, onLin
                   <p className="text-sm font-medium text-foreground truncate">{m.name}</p>
                   <div className="flex flex-wrap items-center gap-2 mt-1">
                     <MaterialTypeChip type={m.material_type} />
+                    {m.publish_status === 'publicado' ? (
+                      <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-green-100 text-green-700">
+                        Publicado
+                      </span>
+                    ) : (
+                      <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-gray-100 text-gray-500">
+                        Rascunho
+                      </span>
+                    )}
                     <span className="text-xs text-muted">
                       {m.blocks_count} bloco{m.blocks_count !== 1 ? 's' : ''} indexado{m.blocks_count !== 1 ? 's' : ''}
                     </span>
