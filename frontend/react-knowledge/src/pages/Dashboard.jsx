@@ -3,9 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Plus, RefreshCw, Package, Search, X,
-  CheckSquare, Square, Trash2, Star, StarOff, MousePointer,
+  CheckSquare, Square, Trash2, Star, StarOff, MousePointer, Wrench, Link2,
 } from 'lucide-react';
-import { productsAPI, searchAPI } from '../services/api';
+import { productsAPI, searchAPI, adminAPI } from '../services/api';
 import { ProductCard } from '../components/ProductCard';
 import { Button } from '../components/Button';
 import { LoadingSpinner } from '../components/LoadingSpinner';
@@ -48,6 +48,10 @@ export function Dashboard() {
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [bulkCommitteeWorking, setBulkCommitteeWorking] = useState(false);
 
+  const [currentUser, setCurrentUser] = useState(null);
+  const [backfillRunning, setBackfillRunning] = useState(false);
+  const [backfillResult, setBackfillResult] = useState(null);
+
   useEffect(() => {
     localStorage.setItem(STORAGE_SEARCH_KEY, search);
   }, [search]);
@@ -84,6 +88,7 @@ export function Dashboard() {
   useEffect(() => {
     loadProducts();
     loadCategories();
+    adminAPI.getMe().then(setCurrentUser).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -309,6 +314,20 @@ export function Dashboard() {
   };
 
   const bulkWorking = bulkDeleting || bulkCommitteeWorking;
+
+  const handleBackfillDerivedLinks = async () => {
+    setBackfillRunning(true);
+    setBackfillResult(null);
+    try {
+      const result = await adminAPI.backfillDerivedLinks();
+      setBackfillResult(result);
+      addToast(`Backfill concluído: ${result.links_created} vínculo(s) criado(s)`, 'success');
+    } catch (err) {
+      addToast(`Erro ao executar backfill: ${err.message}`, 'error');
+    } finally {
+      setBackfillRunning(false);
+    }
+  };
 
   return (
     <div className="space-y-6 pb-28">
@@ -655,6 +674,76 @@ export function Dashboard() {
           </button>
         </div>
       </Modal>
+
+      {currentUser?.role === 'admin' && (
+        <div className="border border-border rounded-xl p-5 bg-card space-y-4">
+          <div className="flex items-center gap-2">
+            <Wrench className="w-5 h-5 text-muted" />
+            <h2 className="text-base font-semibold text-foreground">Manutenção</h2>
+          </div>
+
+          <div className="flex items-start gap-4 flex-wrap">
+            <div className="flex-1 min-w-[260px]">
+              <p className="text-sm text-muted mb-3">
+                Corrige retroativamente os vínculos de materiais entre produtos derivados e seus
+                ativos-base com base no campo <code className="text-xs bg-muted/10 px-1 rounded">underlying_ticker</code>.
+                A operação é idempotente e pode ser executada a qualquer momento.
+              </p>
+              <button
+                onClick={handleBackfillDerivedLinks}
+                disabled={backfillRunning}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium
+                           bg-primary text-white hover:bg-primary/90
+                           disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {backfillRunning ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    Executando...
+                  </>
+                ) : (
+                  <>
+                    <Link2 className="w-4 h-4" />
+                    Corrigir vínculos de derivados
+                  </>
+                )}
+              </button>
+            </div>
+
+            {backfillResult && (
+              <div className="flex-1 min-w-[260px] bg-green-50 border border-green-200 rounded-lg p-4 space-y-2">
+                <p className="text-sm font-semibold text-green-800">Resultado do backfill</p>
+                <ul className="text-sm text-green-700 space-y-1">
+                  <li>Produtos derivados encontrados: <strong>{backfillResult.derived_products_found}</strong></li>
+                  <li>Vínculos criados: <strong>{backfillResult.links_created}</strong></li>
+                  <li>Vínculos já existentes: <strong>{backfillResult.links_already_existed}</strong></li>
+                  <li>Vínculos obsoletos removidos: <strong>{backfillResult.stale_links_removed}</strong></li>
+                  {backfillResult.skipped_no_base_product > 0 && (
+                    <li className="text-amber-700">Sem produto-base: <strong>{backfillResult.skipped_no_base_product}</strong></li>
+                  )}
+                  {backfillResult.skipped_no_base_material > 0 && (
+                    <li className="text-amber-700">Sem material-base: <strong>{backfillResult.skipped_no_base_material}</strong></li>
+                  )}
+                </ul>
+                {Array.isArray(backfillResult.details) && backfillResult.details.length > 0 && (
+                  <details className="mt-2">
+                    <summary className="text-xs text-green-600 cursor-pointer hover:underline">
+                      Ver detalhes por produto ({backfillResult.details.length})
+                    </summary>
+                    <ul className="mt-2 space-y-1 max-h-48 overflow-y-auto">
+                      {backfillResult.details.map((d, i) => (
+                        <li key={i} className="text-xs text-green-700 font-mono bg-green-100 rounded px-2 py-1">
+                          {typeof d === 'string' ? d : `${d.derived} → ${d.underlying}: ${d.status}`}
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

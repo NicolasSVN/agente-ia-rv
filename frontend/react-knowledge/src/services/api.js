@@ -240,6 +240,14 @@ export const searchAPI = {
     fetchAPI(`/search/quick?q=${encodeURIComponent(query)}&limit=${limit}`),
 };
 
+export const adminAPI = {
+  getMe: () => fetchAPI('/auth/me'),
+
+  backfillDerivedLinks: () => fetchAPI('/products/admin/backfill-derived-links', {
+    method: 'POST',
+  }),
+};
+
 export const knowledgeAPI = {
   list: () => fetchAPI('/knowledge/'),
   
