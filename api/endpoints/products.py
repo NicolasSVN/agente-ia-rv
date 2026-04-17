@@ -5563,6 +5563,18 @@ async def link_products_and_queue(
 
     db.commit()
 
+    # Reindexa key_info dos produtos recém-criados (com key_info inicial preenchido
+    # via deep_info do SmartUpload) para que o agente os encontre imediatamente.
+    if created_products:
+        try:
+            from services.product_key_info_indexer import index_product_key_info
+            for new_pid in created_products:
+                prod_obj = db.query(Product).filter(Product.id == new_pid).first()
+                if prod_obj and prod_obj.key_info:
+                    index_product_key_info(prod_obj)
+        except Exception as idx_err:
+            print(f"[LINK_QUEUE] Aviso: falha ao reindexar key_info de produtos novos: {idx_err}")
+
     upload_id = str(uuid.uuid4())
     queue_item = UploadQueueItem(
         upload_id=upload_id,
