@@ -5371,7 +5371,13 @@ async def _identify_products_with_ai(text: str, filename: str) -> list:
             "4. Para fundos sem ticker explícito, use null em ticker — mas inclua o nome.\n"
             "5. Para ações/ETFs/FIIs/BDRs SEM contexto de estrutura, infira o tipo pelo padrão do ticker.\n"
             "6. Se a gestora ou CNPJ estiver mencionado próximo ao produto, capture-os.\n"
-            "7. underlying_ticker só é preenchido para estruturas; deixe null para outros tipos.\n\n"
+            "7. underlying_ticker só é preenchido para estruturas; deixe null para outros tipos.\n"
+            "8. **NOME DO ARQUIVO É SINAL FORTE**: o nome do arquivo entregue como 'Documento: ...'\n"
+            "   muitas vezes carrega o tipo da estrutura (ex.: 'POP RAPT4 dez28.pdf', 'Collar WEGE3.pdf').\n"
+            "   Se o filename contiver POP/Collar/Fence/Booster/Seagull/COE/Worst-Of/Strangle/Straddle/\n"
+            "   Trava/Borboleta/Reverse Convertible/Knock-out, considere DEFINITIVO que o documento\n"
+            "   descreve uma ESTRUTURA sobre o ativo cujo ticker aparece no filename — mesmo quando\n"
+            "   o texto extraído fala apenas da empresa subjacente. NUNCA emita só a ação.\n\n"
             "Responda APENAS com JSON válido, sem texto adicional.\n"
             'Formato: {"products": [{"ticker": "MXRF11", "name": "Maxi Renda FII", '
             '"product_type": "FII", "gestora": "XP Asset", "cnpj": null, "underlying_ticker": null}, '
@@ -5403,7 +5409,7 @@ async def _identify_products_with_ai(text: str, filename: str) -> list:
         return []
 
 
-def _match_products_to_db(db: Session, ai_products: list) -> list:
+def _match_products_to_db(db: Session, ai_products: list, filename: str | None = None) -> list:
     """
     Tenta encontrar cada produto identificado pela IA na base de dados.
     Estratégia em cascata:
@@ -5414,14 +5420,22 @@ def _match_products_to_db(db: Session, ai_products: list) -> list:
     Retorna match_confidence: 'exact' | 'ilike' | 'prefix' | 'name' | None
 
     GUARDA ANTI-CAPTURA POR ATIVO SUBJACENTE:
-    Quando o candidato é uma ESTRUTURA (POP/Collar/COE/Fence/Estruturada ou
-    underlying_ticker preenchido), só aceitamos match com produtos cujo
-    `product_type` resolva para `estruturada`. Sem essa guarda, "POP de MYPK3"
-    casaria com o produto research MYPK3 (ação) e o usuário só perceberia
-    depois de processar o material no produto errado.
+    Quando o candidato é uma ESTRUTURA (POP/Collar/COE/Fence/Estruturada,
+    underlying_ticker preenchido OU o nome do arquivo sugere estrutura),
+    só aceitamos match com produtos cujo `product_type` resolva para
+    `estruturada`. Sem essa guarda, "POP de RAPT4.pdf" casaria com o
+    produto research RAPT4 (ação) e o usuário só perceberia depois de
+    processar o material no produto errado.
     """
     import re as _re_struct
+    import os as _os_struct
     from services.product_type_inference import coerce_product_type
+
+    # Filename é sinal de PRIMEIRA CLASSE — quando a IA falha em ler o termo
+    # "POP/Collar/Fence" (porque o termo só aparece na página 6+ do PDF),
+    # o nome do arquivo costuma carregá-lo no formato "POP RAPT4 dez28.pdf".
+    filename_basename = _os_struct.path.basename(filename or "") if filename else ""
+    filename_lower = filename_basename.lower()
 
     # Lista canônica de palavras-chave de estruturas (Renda Variável estruturada).
     # Procuramos por palavra-inteira no `product_type` e no `name` que a IA devolveu.
@@ -5436,18 +5450,20 @@ def _match_products_to_db(db: Session, ai_products: list) -> list:
     )
 
     def _candidate_is_structure(product_type_raw: str | None, name_raw: str | None,
-                                underlying_ticker_raw: str | None) -> bool:
+                                underlying_ticker_raw: str | None) -> tuple[bool, str | None]:
+        """Retorna (é_estrutura, motivo). Inclui filename como sinal de primeira classe."""
         if underlying_ticker_raw:
-            return True
+            return True, f"underlying_ticker preenchido ({underlying_ticker_raw})"
         joined = " ".join(
             (s or "").lower() for s in (product_type_raw, name_raw)
         ).strip()
-        if not joined:
-            return False
         for kw in _STRUCTURE_KEYWORDS_AI:
-            if _re_struct.search(rf"\b{_re_struct.escape(kw)}\b", joined):
-                return True
-        return False
+            kw_re = rf"\b{_re_struct.escape(kw)}\b"
+            if joined and _re_struct.search(kw_re, joined):
+                return True, f"AI sinalizou '{kw}' em product_type/name"
+            if filename_lower and _re_struct.search(kw_re, filename_lower):
+                return True, f"filename '{filename_basename}' contém '{kw}'"
+        return False, None
 
     def _is_structure_match(prod) -> bool:
         if not prod:
@@ -5478,8 +5494,10 @@ def _match_products_to_db(db: Session, ai_products: list) -> list:
             continue
         seen_pairs.add(pair_key)
 
-        # Candidato é estrutura? (procura palavra-inteira no product_type E no name).
-        candidate_is_structure = _candidate_is_structure(product_type, name, underlying_ticker)
+        # Candidato é estrutura? (procura palavra-inteira no product_type, name E filename).
+        candidate_is_structure, structure_reason = _candidate_is_structure(
+            product_type, name, underlying_ticker
+        )
 
         matched_product = None
         match_confidence = None
@@ -5547,13 +5565,26 @@ def _match_products_to_db(db: Session, ai_products: list) -> list:
         rejected_match_reason = None
         if matched_product and candidate_is_structure and not _is_structure_match(matched_product):
             rejected_match_reason = (
-                f"Candidato é estrutura ({product_type or 'POP/Collar/etc'})"
+                f"Candidato é estrutura ({structure_reason or product_type or 'POP/Collar/etc'})"
                 f" mas o produto existente {matched_product.name}"
                 f" ({matched_product.ticker or '?'}) é"
                 f" {matched_product.product_type or 'sem tipo'}."
             )
+            print(
+                f"[STRUCTURE_GUARD] layer=pre_analyze filename={filename_basename!r} "
+                f"matched_product={{id:{matched_product.id}, name:{matched_product.name!r}, "
+                f"type:{matched_product.product_type!r}}} decision=rejected "
+                f"reason={rejected_match_reason!r}"
+            )
             matched_product = None
             match_confidence = None
+        elif matched_product and candidate_is_structure:
+            print(
+                f"[STRUCTURE_GUARD] layer=pre_analyze filename={filename_basename!r} "
+                f"matched_product={{id:{matched_product.id}, name:{matched_product.name!r}, "
+                f"type:{matched_product.product_type!r}}} decision=kept "
+                f"reason='match também é estruturada'"
+            )
 
         # Tipo a apresentar ao usuário: prefere o tipo REAL do produto matched
         # (fonte da verdade); se não houver match, mostra o que a IA inferiu.
@@ -6101,7 +6132,7 @@ async def pre_analyze_upload(
             material.source_file_path = file_path
             db.commit()
 
-        text = _extract_pdf_text_for_analysis(content, max_pages=5)
+        text = _extract_pdf_text_for_analysis(content, max_pages=10)
         ai_products = await _identify_products_with_ai(text, file.filename)
 
         # 1b. Vision pass para páginas com texto extraído < 200 chars
@@ -6130,7 +6161,7 @@ async def pre_analyze_upload(
         except Exception as vision_err:
             print(f"[PRE_ANALYZE][VISION] Erro no passe visual: {vision_err}")
 
-        identified = _match_products_to_db(db, ai_products)
+        identified = _match_products_to_db(db, ai_products, filename=file.filename)
 
         # 1a. Deep key_info extraction (segunda chamada) + MERGE em Product.key_info
         try:
@@ -6336,7 +6367,10 @@ async def find_missing_product(
         "gestora": found_product.get("gestora"),
         "cnpj": found_product.get("cnpj"),
     }]
-    matched = _match_products_to_db(db, ai_candidate)
+    matched = _match_products_to_db(
+        db, ai_candidate,
+        filename=getattr(material, "source_filename", None) or material.name,
+    )
     card = matched[0] if matched else {
         "ticker": ai_candidate[0]["ticker"],
         "name": ai_candidate[0]["name"],
@@ -6411,9 +6445,10 @@ async def analyze_pdf_products(
                 raise HTTPException(status_code=400, detail="Arquivo PDF não encontrado para este material")
             content = bytes(db_file[0])
 
-        text = _extract_pdf_text_for_analysis(content, max_pages=5)
-        ai_products = await _identify_products_with_ai(text, mat.name or "")
-        identified = _match_products_to_db(db, ai_products)
+        text = _extract_pdf_text_for_analysis(content, max_pages=10)
+        analyze_filename = getattr(mat, "source_filename", None) or mat.name or ""
+        ai_products = await _identify_products_with_ai(text, analyze_filename)
+        identified = _match_products_to_db(db, ai_products, filename=analyze_filename)
         mat.ai_product_analysis = _json.dumps(identified, ensure_ascii=False)
         db.commit()
         return {"success": True, "material_id": material_id, "identified_products": identified, "cached": False}
@@ -6422,9 +6457,9 @@ async def analyze_pdf_products(
         if not file.filename.lower().endswith(".pdf"):
             raise HTTPException(status_code=400, detail="Apenas PDFs são suportados")
         content = await file.read()
-        text = _extract_pdf_text_for_analysis(content, max_pages=5)
+        text = _extract_pdf_text_for_analysis(content, max_pages=10)
         ai_products = await _identify_products_with_ai(text, file.filename)
-        identified = _match_products_to_db(db, ai_products)
+        identified = _match_products_to_db(db, ai_products, filename=file.filename)
         return {"success": True, "identified_products": identified, "cached": False}
 
     raise HTTPException(status_code=400, detail="Forneça material_id ou file")
@@ -6562,19 +6597,38 @@ async def link_products_and_queue(
         "reverse convertible", "knock-out", "knock out",
     )
 
-    def _cp_is_structure(cp_dict) -> bool:
+    # Sinais derivados do MATERIAL (filename + nome) — se o usuário enviou
+    # "POP RAPT4.pdf" e a IA não captou "POP" no texto, ainda queremos
+    # rejeitar match com a ação subjacente.
+    _material_filename_basename = ""
+    try:
+        if material and getattr(material, "source_file_path", None):
+            _material_filename_basename = os.path.basename(material.source_file_path)
+    except Exception:
+        _material_filename_basename = ""
+    _material_name_str = (getattr(material, "name", "") or "") if material else ""
+    _material_filename_str = (
+        getattr(material, "source_filename", "") or _material_filename_basename or ""
+    )
+    _material_signal_lower = " ".join(
+        s for s in (_material_filename_str.lower(), _material_name_str.lower()) if s
+    ).strip()
+
+    def _cp_is_structure(cp_dict) -> tuple[bool, str | None]:
+        """Retorna (é_estrutura, motivo). Inclui filename/material.name."""
         if (cp_dict.get("underlying_ticker") or "").strip():
-            return True
+            return True, f"underlying_ticker={cp_dict.get('underlying_ticker')}"
         joined = " ".join(
             ((cp_dict.get(k) or "")).lower()
             for k in ("product_type", "ai_product_type", "name")
         ).strip()
-        if not joined:
-            return False
         for kw in _STRUCTURE_KEYWORDS_CONFIRM:
-            if _re_cp.search(rf"\b{_re_cp.escape(kw)}\b", joined):
-                return True
-        return False
+            kw_re = rf"\b{_re_cp.escape(kw)}\b"
+            if joined and _re_cp.search(kw_re, joined):
+                return True, f"AI sinalizou '{kw}'"
+            if _material_signal_lower and _re_cp.search(kw_re, _material_signal_lower):
+                return True, f"filename/material '{_material_filename_str or _material_name_str}' contém '{kw}'"
+        return False, None
 
     created_products = []
     for cp in confirmed_products:
@@ -6583,13 +6637,39 @@ async def link_products_and_queue(
         # para criação. Sem essa flag o usuário ficaria sem como corrigir um match errado.
         force_new = bool(cp.get("force_new"))
         pid = None if force_new else cp.get("product_id")
+
+        # Detecta estrutura ANTES de aceitar `pid` que veio da pré-análise.
+        # Se `pid` aponta para um produto não-estruturado mas o material é
+        # estrutura (filename "POP RAPT4.pdf" + ação RAPT4 cadastrada),
+        # descartamos o pid e caímos na criação do produto-estrutura novo.
+        cp_is_structure_flag, cp_structure_reason = _cp_is_structure(cp)
+        if pid and cp_is_structure_flag:
+            existing_for_pid = db.query(Product).filter(Product.id == pid).first()
+            existing_type = (
+                (existing_for_pid.product_type or "").lower() if existing_for_pid else ""
+            )
+            if existing_for_pid and existing_type not in (
+                "estruturada", "estrutura", "estruturado"
+            ):
+                print(
+                    f"[STRUCTURE_GUARD] layer=link_and_queue "
+                    f"filename={_material_filename_str!r} "
+                    f"matched_product={{id:{existing_for_pid.id}, "
+                    f"name:{existing_for_pid.name!r}, type:{existing_for_pid.product_type!r}}} "
+                    f"decision=rejected reason={cp_structure_reason!r}"
+                )
+                pid = None
+                cp["force_new"] = True
+                force_new = True
+
         if not pid:
             ticker = (cp.get("ticker") or "").strip().upper() or None
             name = (cp.get("name") or "").strip() or None
             if not ticker and not name:
                 continue
 
-            cp_is_structure = _cp_is_structure(cp)
+            # Já avaliamos acima quando havia pid; recalcular para o caso `pid` ausente.
+            cp_is_structure = cp_is_structure_flag
 
             existing = None
             # Quando o usuário forçou "criar novo" OU quando o item é estrutura,

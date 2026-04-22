@@ -452,7 +452,8 @@ class UploadQueue:
                 return kw
         return None
 
-    def _auto_create_product(self, db, fund_name, ticker, gestora, document_type=None):
+    def _auto_create_product(self, db, fund_name, ticker, gestora, document_type=None,
+                             filename_hint=None, material_name=None):
         from database.models import Product, ProductStatus
         from services.product_resolver import ProductResolver
         from services.product_type_inference import coerce_product_type
@@ -464,7 +465,12 @@ class UploadQueue:
         # Quando for, o resolve normal por ticker do underlying é perigoso —
         # ele encontraria a ação nua e linkaria o material da estrutura à ação,
         # apagando o vínculo correto e silenciando o tipo `estruturada`.
-        structure_kw = self._detect_structure_in_name(fund_name, document_type)
+        # IMPORTANTE: além de fund_name/document_type, inspecionamos também o
+        # FILENAME e o NOME DO MATERIAL — quando a IA falha em ler "POP/Collar"
+        # do PDF, o nome do arquivo costuma carregá-lo.
+        structure_kw = self._detect_structure_in_name(
+            fund_name, document_type, filename_hint, material_name,
+        )
 
         resolver = ProductResolver(db)
         result = resolver.resolve(
@@ -753,6 +759,53 @@ class UploadQueue:
             mat.processing_status = ProcessingStatus.PROCESSING.value
             db.commit()
 
+            # REVALIDA vínculo pré-existente: se o material veio da confirmação
+            # já apontando para um produto-ação mas filename/material.name dizem
+            # que é estrutura (POP/Collar/Fence...), zera o vínculo aqui para
+            # que `_auto_create_product` (lógica abaixo) crie a estrutura nova.
+            if mat.product_id:
+                preexisting_struct_kw = self._detect_structure_in_name(
+                    item.filename,
+                    mat.name,
+                    getattr(mat, "source_filename", None),
+                )
+                if preexisting_struct_kw:
+                    linked = db.query(Product).filter(Product.id == mat.product_id).first()
+                    linked_type = (linked.product_type or "").lower() if linked else ""
+                    if linked and linked_type not in (
+                        "estruturada", "estrutura", "estruturado"
+                    ):
+                        msg = (
+                            f"[STRUCTURE_GUARD] layer=worker filename={item.filename!r} "
+                            f"matched_product={{id:{linked.id}, name:{linked.name!r}, "
+                            f"type:{linked.product_type!r}}} decision=rejected "
+                            f"reason='material parece estrutura ({preexisting_struct_kw!r}) "
+                            f"mas vínculo é {linked.product_type or 'sem tipo'}'"
+                        )
+                        print(msg)
+                        logger.warning(msg)
+                        item.add_log(
+                            f"Vínculo descartado: material parece estrutura "
+                            f"({preexisting_struct_kw!r}) mas estava ligado a "
+                            f"{linked.name} ({linked_type or 'sem tipo'}). "
+                            f"Criaremos um produto novo.",
+                            "warning",
+                        )
+                        # Limpa link MaterialProductLink antigo do produto errado.
+                        try:
+                            from database.models import MaterialProductLink as _MPL
+                            db.query(_MPL).filter(
+                                _MPL.material_id == mat.id,
+                                _MPL.product_id == linked.id,
+                            ).delete()
+                        except Exception as link_del_err:
+                            logger.warning(
+                                f"[UPLOAD_WORKER] Falha ao remover MaterialProductLink "
+                                f"antigo: {link_del_err}"
+                            )
+                        mat.product_id = None
+                        db.commit()
+
             start_page = 0
             processing_job = None
 
@@ -1025,6 +1078,8 @@ class UploadQueue:
                                 ticker=metadata.ticker,
                                 gestora=metadata.gestora,
                                 document_type=metadata.document_type,
+                                filename_hint=getattr(item, "filename", None),
+                                material_name=mat.name if mat else None,
                             )
                             if new_product:
                                 mat.product_id = new_product.id
