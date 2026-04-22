@@ -425,32 +425,17 @@ class UploadQueue:
     # nome do material/fund_name, o produto criado é OBRIGATORIAMENTE do tipo
     # `estruturada` (e não `acao`/`fii` por padrão). Cobre as siglas mais
     # usadas pela mesa SVN (POP, Collar, Fence, Put Spread, Booster, Worst Of).
-    # Keywords são propositalmente ESPECÍFICAS (POP, Collar, Fence, etc.) — termos
-    # genéricos como "estrutura"/"estruturado" foram excluídos para evitar falsos
-    # positivos com materiais que apenas mencionam "estrutura de capital",
-    # "estrutura a termo de juros", "estrutura preferencial" etc.
-    _STRUCTURE_KEYWORDS = (
-        "pop", "collar", "fence", "booster", "put spread", "call spread",
-        "seagull", "worst of", "worst-of", "coe", "strangle", "straddle",
-        "borboleta", "butterfly", "trava de alta", "trava de baixa",
-        "operação estruturada", "produto estruturado", "nota estruturada",
-    )
+    # Fonte única da verdade em `services/structure_keywords.STRUCTURE_KEYWORDS`,
+    # consumida também por _candidate_is_structure / _cp_is_structure nos endpoints.
+    from services.structure_keywords import STRUCTURE_KEYWORDS as _STRUCTURE_KEYWORDS
 
     @classmethod
     def _detect_structure_in_name(cls, *texts) -> Optional[str]:
         """Retorna a primeira sigla de estrutura encontrada nos textos (ex.: 'pop'),
         ou None se nenhuma casar. Usa busca case-insensitive em palavras inteiras
         para evitar falsos positivos (ex.: 'pop' não casa com 'popular')."""
-        import re
-        joined = " ".join(t for t in texts if t).lower()
-        if not joined:
-            return None
-        for kw in cls._STRUCTURE_KEYWORDS:
-            # \b ... \b funciona para todas as siglas listadas (puramente alfabéticas
-            # ou separadas por espaço/hífen).
-            if re.search(rf"\b{re.escape(kw)}\b", joined):
-                return kw
-        return None
+        from services.structure_keywords import find_structure_keyword
+        return find_structure_keyword(*texts)
 
     def _auto_create_product(self, db, fund_name, ticker, gestora, document_type=None,
                              filename_hint=None, material_name=None):

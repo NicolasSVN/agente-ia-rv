@@ -5439,15 +5439,8 @@ def _match_products_to_db(db: Session, ai_products: list, filename: str | None =
 
     # Lista canônica de palavras-chave de estruturas (Renda Variável estruturada).
     # Procuramos por palavra-inteira no `product_type` e no `name` que a IA devolveu.
-    _STRUCTURE_KEYWORDS_AI = (
-        "pop", "collar", "coe", "fence", "estruturada", "estruturado",
-        "booster", "seagull", "worst of", "worst-of", "worst/of",
-        "put spread", "call spread", "put/call spread",
-        "strangle", "straddle", "borboleta", "butterfly",
-        "trava de alta", "trava de baixa",
-        "operação estruturada", "produto estruturado", "nota estruturada",
-        "reverse convertible", "knock-out", "knock out",
-    )
+    # Fonte única da verdade compartilhada com o worker (services/upload_queue.py).
+    from services.structure_keywords import STRUCTURE_KEYWORDS as _STRUCTURE_KEYWORDS_AI
 
     def _candidate_is_structure(product_type_raw: str | None, name_raw: str | None,
                                 underlying_ticker_raw: str | None) -> tuple[bool, str | None]:
@@ -6587,15 +6580,9 @@ async def link_products_and_queue(
         }
 
     import re as _re_cp
-    _STRUCTURE_KEYWORDS_CONFIRM = (
-        "pop", "collar", "coe", "fence", "estruturada", "estruturado",
-        "booster", "seagull", "worst of", "worst-of", "worst/of",
-        "put spread", "call spread", "put/call spread",
-        "strangle", "straddle", "borboleta", "butterfly",
-        "trava de alta", "trava de baixa",
-        "operação estruturada", "produto estruturado", "nota estruturada",
-        "reverse convertible", "knock-out", "knock out",
-    )
+    # Fonte única da verdade compartilhada com o worker (services/upload_queue.py)
+    # e com _candidate_is_structure (mesmo arquivo, função pre-analyze).
+    from services.structure_keywords import STRUCTURE_KEYWORDS as _STRUCTURE_KEYWORDS_CONFIRM
 
     # Sinais derivados do MATERIAL (filename + nome) — se o usuário enviou
     # "POP RAPT4.pdf" e a IA não captou "POP" no texto, ainda queremos
