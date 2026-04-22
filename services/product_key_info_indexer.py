@@ -10,6 +10,19 @@ como uma "Ficha do Produto" e fica disponível para o agente Stevan via
 doc_id usado: `product_keyinfo_{product_id}`
 block_type:   `product_key_info`
 material_name: "Ficha do Produto"
+
+IMPORTANTE: Estes embeddings são salvos com `material_id = NULL` por design,
+pois NÃO existe Material/PDF subjacente — eles são derivados diretamente do
+campo `key_info` do Product. O vínculo com o produto é preservado via
+`product_id` no `extra_metadata` (JSON). O retriever em
+`services/agent_tools.py` detecta esses documentos pelo prefixo do `doc_id`
+(ou por `block_type == "product_key_info"` / `material_type == "ficha_produto"`)
+e aplica tratamento dedicado (source_note próprio, supressão de send_document,
+geração de link para a tela do produto).
+
+NÃO rodar `DELETE FROM document_embeddings WHERE material_id IS NULL` cegamente:
+isso apagaria as Fichas do Produto válidas. Se precisar limpar órfãos reais,
+use também `AND doc_id NOT LIKE 'product_keyinfo_%'`.
 """
 import json
 import hashlib
