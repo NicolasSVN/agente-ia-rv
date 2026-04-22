@@ -1220,7 +1220,7 @@ class EnhancedSearch:
         query: str,
         n_results: int = 5,
         conversation_id: Optional[str] = None,
-        similarity_threshold: float = 0.8,
+        similarity_threshold: float = 0.4,  # Task #152 — recall-friendly default
         db: Optional[Any] = None
     ) -> List[SearchResult]:
         """
@@ -1306,12 +1306,20 @@ class EnhancedSearch:
                         all_results.append(r)
             print(f"[EnhancedSearch] Comparativa detectada: {tokens.possible_tickers} | {len(all_results)} blocos multi-entidade")
         
+        # Task #152 — block_type_filter dirigido pela intenção da query
+        intent_block_types: Optional[List[str]] = None
+        if query_intent == 'numeric':
+            intent_block_types = ['tabela', 'financial_table', 'texto']
+        elif query_intent == 'visual':
+            intent_block_types = ['grafico', 'imagem', 'tabela']
+
         for q in expanded_queries[:3]:
             results = self.vector_store.search(
                 query=q,
                 n_results=n_results * 2,
                 similarity_threshold=similarity_threshold,
-                query_type=query_intent
+                query_type=query_intent,
+                block_type_filter=intent_block_types,
             )
             for r in results:
                 doc_id = r.get('metadata', {}).get('block_id', r.get('content', '')[:50])
@@ -1370,6 +1378,7 @@ class EnhancedSearch:
             final_results = scored_results[:n_results]
 
         # Task #152 — Reranker LLM opt-in (RAG_USE_RERANKER=1)
+        reranker_kept_ids: List[str] = []
         try:
             from services import reranker as _reranker
             if _reranker.is_enabled() and len(final_results) >= 2:
@@ -1377,18 +1386,25 @@ class EnhancedSearch:
                 reranked = _reranker.rerank(query, reranker_input, top_k=n_results)
                 if reranked:
                     final_results = reranked
-                    if conversation_id:
+                    for r in final_results:
                         try:
-                            kept_ids = []
-                            for r in final_results:
-                                bid = r.metadata.get("block_id") if hasattr(r, "metadata") else None
-                                if bid is not None:
-                                    kept_ids.append(str(bid))
-                            self._kept_ids_cache = kept_ids
+                            bid = r.metadata.get("block_id") if hasattr(r, "metadata") else None
+                            if bid is not None:
+                                reranker_kept_ids.append(str(bid))
                         except Exception:
                             pass
         except Exception as _e_rr:
             print(f"[EnhancedSearch] Reranker desativado por erro: {_e_rr}")
+
+        # Persiste tools_used / reranker_kept_ids no(s) RetrievalLog(s) recentes
+        if conversation_id and (reranker_kept_ids or True):
+            try:
+                self.vector_store.update_retrieval_telemetry_for_conversation(
+                    conversation_id=conversation_id,
+                    reranker_kept_ids=reranker_kept_ids or None,
+                )
+            except Exception as _e_tl:
+                print(f"[EnhancedSearch] Falha ao gravar telemetria do reranker: {_e_tl}")
         
         # Anotar metadata de intent em cada resultado para uso no agente
         for r in final_results:

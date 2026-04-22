@@ -1211,7 +1211,10 @@ class ProductIngestor:
                 "valid_until_dt": valid_until_dt_iso or None,
                 "created_at": created_at_str,
                 "tags": tags_str,
-                "categories": categories_str
+                "categories": categories_str,
+                # Task #152 — toda nova ingestão usa o pipeline com markdown
+                # contextual (content_for_embedding), portanto versão 2.
+                "embedding_version": 2,
             }
             
             if financial_metrics_detected:

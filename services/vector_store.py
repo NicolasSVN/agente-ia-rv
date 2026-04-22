@@ -133,6 +133,8 @@ KNOWN_METADATA_FIELDS = [
     'tab', 'has_diagram', 'diagram_image_path',
     # Task #152 — data parseada de validade, usada pelo CompositeScorer
     'valid_until_dt',
+    # Task #152 — versão do embedding (2 = gerado a partir de content_for_embedding markdown)
+    'embedding_version',
 ]
 
 FIELD_MAP_TO_COLUMN = {
@@ -979,37 +981,66 @@ class VectorStore:
         tools_used: List[str],
         within_seconds: int = 120,
     ) -> int:
+        """Wrapper retrocompatível — vide `update_retrieval_telemetry_for_conversation`."""
+        return self.update_retrieval_telemetry_for_conversation(
+            conversation_id=conversation_id,
+            tools_used=tools_used,
+            within_seconds=within_seconds,
+        )
+
+    def update_retrieval_telemetry_for_conversation(
+        self,
+        conversation_id: Optional[str],
+        tools_used: Optional[List[str]] = None,
+        reranker_kept_ids: Optional[List[str]] = None,
+        within_seconds: int = 120,
+    ) -> int:
         """
-        Atualiza retrieval_logs recentes desta conversa com a lista de ferramentas
-        usadas pelo agente no turno (Task #152 — observabilidade de tools_used).
+        Atualiza retrieval_logs recentes desta conversa com:
+        - tools_used   (lista de tools que o agente chamou no turno)
+        - reranker_kept_ids (lista de block_ids mantidos pelo reranker LLM)
+        Apenas campos vazios/nulos são preenchidos para preservar histórico.
         Retorna o número de linhas atualizadas.
         """
-        if not conversation_id or not tools_used:
+        if not conversation_id:
+            return 0
+        if not tools_used and not reranker_kept_ids:
             return 0
         import json
+
+        sets = []
+        params = {"cid": conversation_id, "secs": str(within_seconds)}
+        if tools_used:
+            sets.append(
+                "tools_used = CASE WHEN tools_used IS NULL OR tools_used = '' OR tools_used = '[]' "
+                "THEN :tools ELSE tools_used END"
+            )
+            params["tools"] = json.dumps(list(dict.fromkeys(tools_used)))
+        if reranker_kept_ids:
+            sets.append(
+                "reranker_kept_ids = CASE WHEN reranker_kept_ids IS NULL OR reranker_kept_ids = '' "
+                "OR reranker_kept_ids = '[]' THEN :kept ELSE reranker_kept_ids END"
+            )
+            params["kept"] = json.dumps(list(dict.fromkeys(reranker_kept_ids)))
+
         try:
             from database.database import SessionLocal
             db = SessionLocal()
             try:
                 res = db.execute(
                     sql_text(
-                        "UPDATE retrieval_logs SET tools_used = :tools "
-                        "WHERE conversation_id = :cid "
-                        "AND created_at >= NOW() - (:secs || ' seconds')::interval "
-                        "AND (tools_used IS NULL OR tools_used = '' OR tools_used = '[]')"
+                        f"UPDATE retrieval_logs SET {', '.join(sets)} "
+                        f"WHERE conversation_id = :cid "
+                        f"AND created_at >= NOW() - (:secs || ' seconds')::interval"
                     ),
-                    {
-                        "tools": json.dumps(list(dict.fromkeys(tools_used))),
-                        "cid": conversation_id,
-                        "secs": str(within_seconds),
-                    },
+                    params,
                 )
                 db.commit()
                 return res.rowcount or 0
             finally:
                 db.close()
         except Exception as e:
-            print(f"[RETRIEVAL] Warning: update_tools_used falhou: {e}")
+            print(f"[RETRIEVAL] Warning: update_retrieval_telemetry falhou: {e}")
             return 0
 
     def _calculate_recency_score(self, created_at_str: str, now: 'datetime') -> float:

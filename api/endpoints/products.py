@@ -1829,19 +1829,22 @@ async def bulk_set_committee(
     """
     Define em lote a flag is_committee para múltiplos produtos (Task #152).
 
-    Body:
+    Body (aceita IDs e/ou tickers — Task #152):
         {
-          "product_ids": [int, ...],
+          "product_ids": [int, ...]    # opcional
+          "tickers":     [str, ...]    # opcional, case-insensitive
           "is_committee": true | false
         }
 
-    Retorna a lista de produtos efetivamente alterados, ignorando IDs
-    inexistentes ou que já estavam no estado desejado.
+    Pelo menos um de `product_ids` ou `tickers` deve ser informado. Retorna a
+    lista de produtos efetivamente alterados, ignorando entradas inexistentes
+    ou que já estavam no estado desejado.
     """
     if current_user.role not in ["admin", "gestao_rv"]:
         raise HTTPException(status_code=403, detail="Acesso negado")
 
     raw_ids = payload.get("product_ids") or []
+    raw_tickers = payload.get("tickers") or []
     target = payload.get("is_committee")
     if target is None or not isinstance(target, bool):
         raise HTTPException(status_code=400, detail="Campo 'is_committee' (bool) obrigatório")
@@ -1849,12 +1852,23 @@ async def bulk_set_committee(
         product_ids = [int(x) for x in raw_ids if x is not None]
     except (TypeError, ValueError):
         raise HTTPException(status_code=400, detail="'product_ids' deve ser lista de inteiros")
-    if not product_ids:
-        raise HTTPException(status_code=400, detail="'product_ids' não pode estar vazio")
+    tickers_norm = [str(t).strip().upper() for t in raw_tickers if t]
+    if not product_ids and not tickers_norm:
+        raise HTTPException(status_code=400, detail="Informe 'product_ids' e/ou 'tickers'")
 
-    products = db.query(Product).filter(Product.id.in_(product_ids)).all()
+    q = db.query(Product)
+    if product_ids and tickers_norm:
+        q = q.filter(or_(Product.id.in_(product_ids), Product.ticker.in_(tickers_norm)))
+    elif product_ids:
+        q = q.filter(Product.id.in_(product_ids))
+    else:
+        q = q.filter(Product.ticker.in_(tickers_norm))
+    products = q.all()
+
     found_ids = {p.id for p in products}
+    found_tickers = {(p.ticker or "").upper() for p in products}
     not_found = [pid for pid in product_ids if pid not in found_ids]
+    not_found_tickers = [t for t in tickers_norm if t not in found_tickers]
 
     updated, unchanged = [], []
     for p in products:
@@ -1876,7 +1890,8 @@ async def bulk_set_committee(
         "updated": updated,
         "unchanged_ids": unchanged,
         "not_found_ids": not_found,
-        "total_requested": len(product_ids),
+        "not_found_tickers": not_found_tickers,
+        "total_requested": len(product_ids) + len(tickers_norm),
     }
 
 

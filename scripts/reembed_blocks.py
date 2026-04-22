@@ -79,57 +79,83 @@ def _markdown_for_block(ingestor, block, product_name: str, product_ticker: Opti
 
 
 def run(batch: int, sleep: float, product_id: Optional[int], dry_run: bool) -> dict:
+    """
+    Estratégia segura (Task #152):
+    1. Coleta IDs elegíveis de blocos (cursor por id, sem offset).
+    2. Para cada material com blocos pendentes:
+       a. Atualiza `content_for_embedding` em todos os blocos do material e commita.
+       b. Tenta `index_material(material_id)` (chamada idempotente).
+       c. Só marca `embedding_version=TARGET_VERSION` em ContentBlock E em
+          DocumentEmbedding APÓS o reindex retornar sucesso.
+    Falhas em um material não impedem o reembed dos demais e NÃO marcam blocos
+    com a nova versão (próxima execução tentará novamente).
+    """
     from database.database import SessionLocal
-    from database.models import Material, Product
+    from database.models import ContentBlock, Material, Product
+    from sqlalchemy import text as sql_text
     from services.product_ingestor import get_product_ingestor
 
     ingestor = get_product_ingestor()
     db = SessionLocal()
-    processed = 0
-    upgraded = 0
+    processed_blocks = 0
+    upgraded_blocks = 0
+    materials_done = 0
     reindex_failed = 0
-    materials_to_reindex: set = set()
 
+    materials_to_blocks: dict = {}
     try:
         for block in _iter_blocks(db, product_id, batch):
-            processed += 1
-            material = db.query(Material).filter(Material.id == block.material_id).first()
+            processed_blocks += 1
+            materials_to_blocks.setdefault(block.material_id, []).append(block)
+
+        for mid, blocks in materials_to_blocks.items():
+            material = db.query(Material).filter(Material.id == mid).first()
             if not material:
                 continue
             product = db.query(Product).filter(Product.id == material.product_id).first()
             if not product:
                 continue
 
-            md = _markdown_for_block(ingestor, block, product.name, product.ticker)
-            if md is not None:
-                block.content_for_embedding = md
+            for block in blocks:
+                md = _markdown_for_block(ingestor, block, product.name, product.ticker)
+                if md is not None:
+                    block.content_for_embedding = md
+            if not dry_run:
+                db.commit()
 
-            block.embedding_version = TARGET_VERSION
-            materials_to_reindex.add(material.id)
-            upgraded += 1
+            if dry_run:
+                upgraded_blocks += len(blocks)
+                continue
 
-            if processed % batch == 0:
-                if not dry_run:
-                    db.commit()
-                print(f"[REEMBED] Lote: {processed} blocos processados ({upgraded} marcados v{TARGET_VERSION})")
+            try:
+                ingestor.index_material(mid)
+            except Exception as e:
+                reindex_failed += 1
+                print(f"[REEMBED] Reindex falhou material {mid} — blocos NÃO marcados v{TARGET_VERSION}: {e}")
                 time.sleep(sleep)
+                continue
 
-        if not dry_run:
+            block_ids = [b.id for b in blocks]
+            db.query(ContentBlock).filter(ContentBlock.id.in_(block_ids)).update(
+                {ContentBlock.embedding_version: TARGET_VERSION},
+                synchronize_session=False,
+            )
+            db.execute(
+                sql_text(
+                    "UPDATE document_embeddings SET embedding_version = :v "
+                    "WHERE material_id = :mid"
+                ),
+                {"v": TARGET_VERSION, "mid": str(mid)},
+            )
             db.commit()
-
-        if not dry_run:
-            for mid in materials_to_reindex:
-                try:
-                    ingestor.index_material(mid)
-                except Exception as e:
-                    reindex_failed += 1
-                    print(f"[REEMBED] Reindex falhou material {mid}: {e}")
-                time.sleep(sleep / 2)
+            upgraded_blocks += len(blocks)
+            materials_done += 1
+            time.sleep(sleep / 2)
 
         return {
-            "processed": processed,
-            "upgraded": upgraded,
-            "materials_reindexed": len(materials_to_reindex) - reindex_failed,
+            "processed_blocks": processed_blocks,
+            "upgraded_blocks": upgraded_blocks,
+            "materials_reindexed": materials_done,
             "reindex_failed": reindex_failed,
             "dry_run": dry_run,
             "target_version": TARGET_VERSION,
