@@ -5412,7 +5412,53 @@ def _match_products_to_db(db: Session, ai_products: list) -> list:
     3. Ticker sem sufixo numérico (prefixo de 4 letras, ILIKE)
     4. Nome ILIKE (%nome%)
     Retorna match_confidence: 'exact' | 'ilike' | 'prefix' | 'name' | None
+
+    GUARDA ANTI-CAPTURA POR ATIVO SUBJACENTE:
+    Quando o candidato é uma ESTRUTURA (POP/Collar/COE/Fence/Estruturada ou
+    underlying_ticker preenchido), só aceitamos match com produtos cujo
+    `product_type` resolva para `estruturada`. Sem essa guarda, "POP de MYPK3"
+    casaria com o produto research MYPK3 (ação) e o usuário só perceberia
+    depois de processar o material no produto errado.
     """
+    import re as _re_struct
+    from services.product_type_inference import coerce_product_type
+
+    # Lista canônica de palavras-chave de estruturas (Renda Variável estruturada).
+    # Procuramos por palavra-inteira no `product_type` e no `name` que a IA devolveu.
+    _STRUCTURE_KEYWORDS_AI = (
+        "pop", "collar", "coe", "fence", "estruturada", "estruturado",
+        "booster", "seagull", "worst of", "worst-of", "worst/of",
+        "put spread", "call spread", "put/call spread",
+        "strangle", "straddle", "borboleta", "butterfly",
+        "trava de alta", "trava de baixa",
+        "operação estruturada", "produto estruturado", "nota estruturada",
+        "reverse convertible", "knock-out", "knock out",
+    )
+
+    def _candidate_is_structure(product_type_raw: str | None, name_raw: str | None,
+                                underlying_ticker_raw: str | None) -> bool:
+        if underlying_ticker_raw:
+            return True
+        joined = " ".join(
+            (s or "").lower() for s in (product_type_raw, name_raw)
+        ).strip()
+        if not joined:
+            return False
+        for kw in _STRUCTURE_KEYWORDS_AI:
+            if _re_struct.search(rf"\b{_re_struct.escape(kw)}\b", joined):
+                return True
+        return False
+
+    def _is_structure_match(prod) -> bool:
+        if not prod:
+            return False
+        coerced = coerce_product_type(
+            raw=getattr(prod, "product_type", None),
+            ticker=getattr(prod, "ticker", None),
+            name=getattr(prod, "name", None),
+        )
+        return (coerced or "").lower() == "estruturada"
+
     result = []
     seen_pairs = set()
 
@@ -5431,6 +5477,9 @@ def _match_products_to_db(db: Session, ai_products: list) -> list:
         if pair_key in seen_pairs:
             continue
         seen_pairs.add(pair_key)
+
+        # Candidato é estrutura? (procura palavra-inteira no product_type E no name).
+        candidate_is_structure = _candidate_is_structure(product_type, name, underlying_ticker)
 
         matched_product = None
         match_confidence = None
@@ -5493,16 +5542,42 @@ def _match_products_to_db(db: Session, ai_products: list) -> list:
                 if matched_product:
                     break
 
+        # GUARDA: candidato é estrutura, mas o match achado NÃO é estrutura.
+        # Rejeita o match para forçar criação de produto novo (estrutura).
+        rejected_match_reason = None
+        if matched_product and candidate_is_structure and not _is_structure_match(matched_product):
+            rejected_match_reason = (
+                f"Candidato é estrutura ({product_type or 'POP/Collar/etc'})"
+                f" mas o produto existente {matched_product.name}"
+                f" ({matched_product.ticker or '?'}) é"
+                f" {matched_product.product_type or 'sem tipo'}."
+            )
+            matched_product = None
+            match_confidence = None
+
+        # Tipo a apresentar ao usuário: prefere o tipo REAL do produto matched
+        # (fonte da verdade); se não houver match, mostra o que a IA inferiu.
+        if matched_product and matched_product.product_type:
+            display_product_type = matched_product.product_type
+        else:
+            display_product_type = product_type
+
         result.append({
             "ticker": ticker,
             "name": name or (matched_product.name if matched_product else ticker),
-            "product_type": product_type,
+            "product_type": display_product_type,
+            "ai_product_type": product_type,
             "gestora": gestora,
             "cnpj": cnpj,
             "underlying_ticker": underlying_ticker,
             "product_id": matched_product.id if matched_product else None,
             "exists_in_db": matched_product is not None,
             "match_confidence": match_confidence,
+            "existing_product_name": matched_product.name if matched_product else None,
+            "existing_product_ticker": matched_product.ticker if matched_product else None,
+            "existing_product_type": matched_product.product_type if matched_product else None,
+            "is_structure_candidate": candidate_is_structure,
+            "rejected_match_reason": rejected_match_reason,
             "selected": True,
         })
     return result
@@ -6476,26 +6551,61 @@ async def link_products_and_queue(
             "message": "Material conceitual adicionado à fila (sem produtos vinculados)",
         }
 
+    import re as _re_cp
+    _STRUCTURE_KEYWORDS_CONFIRM = (
+        "pop", "collar", "coe", "fence", "estruturada", "estruturado",
+        "booster", "seagull", "worst of", "worst-of", "worst/of",
+        "put spread", "call spread", "put/call spread",
+        "strangle", "straddle", "borboleta", "butterfly",
+        "trava de alta", "trava de baixa",
+        "operação estruturada", "produto estruturado", "nota estruturada",
+        "reverse convertible", "knock-out", "knock out",
+    )
+
+    def _cp_is_structure(cp_dict) -> bool:
+        if (cp_dict.get("underlying_ticker") or "").strip():
+            return True
+        joined = " ".join(
+            ((cp_dict.get(k) or "")).lower()
+            for k in ("product_type", "ai_product_type", "name")
+        ).strip()
+        if not joined:
+            return False
+        for kw in _STRUCTURE_KEYWORDS_CONFIRM:
+            if _re_cp.search(rf"\b{_re_cp.escape(kw)}\b", joined):
+                return True
+        return False
+
     created_products = []
     for cp in confirmed_products:
-        pid = cp.get("product_id")
+        # `force_new` = usuário clicou em "Criar novo em vez de vincular" no SmartUpload.
+        # Quando true, ignoramos product_id e o lookup por ticker/nome e vamos direto
+        # para criação. Sem essa flag o usuário ficaria sem como corrigir um match errado.
+        force_new = bool(cp.get("force_new"))
+        pid = None if force_new else cp.get("product_id")
         if not pid:
             ticker = (cp.get("ticker") or "").strip().upper() or None
             name = (cp.get("name") or "").strip() or None
             if not ticker and not name:
                 continue
 
+            cp_is_structure = _cp_is_structure(cp)
+
             existing = None
-            if ticker:
-                existing = db.query(Product).filter(
-                    Product.ticker == ticker,
-                    Product.status == "ativo",
-                ).first()
-            if not existing and name:
-                existing = db.query(Product).filter(
-                    Product.name.ilike(f"%{name}%"),
-                    Product.status == "ativo",
-                ).first()
+            # Quando o usuário forçou "criar novo" OU quando o item é estrutura,
+            # NÃO procuramos produto pré-existente por ticker/nome — isso reintroduziria
+            # o bug "POP de MYPK3 cai na ação MYPK3".
+            if not force_new and not cp_is_structure:
+                if ticker:
+                    existing = db.query(Product).filter(
+                        Product.ticker == ticker,
+                        Product.status == "ativo",
+                    ).first()
+                if not existing and name:
+                    existing = db.query(Product).filter(
+                        Product.name.ilike(f"%{name}%"),
+                        Product.status == "ativo",
+                    ).first()
 
             if existing:
                 pid = existing.id

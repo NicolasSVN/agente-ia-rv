@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Upload, FileText, CheckCircle, ArrowRight, Sparkles, Info, AlertCircle, RotateCcw, Clock, Trash2, X, Loader, Loader2, Files, List, ChevronUp, ChevronDown, FileWarning, FileUp, Copy, Search } from 'lucide-react';
+import { Upload, FileText, CheckCircle, ArrowRight, Sparkles, Info, AlertCircle, RotateCcw, Clock, Trash2, X, Loader, Loader2, Files, List, ChevronUp, ChevronDown, FileWarning, FileUp, Copy, Search, Link2, PlusCircle } from 'lucide-react';
 import { materialsAPI, productsAPI } from '../services/api';
 import { Button } from '../components/Button';
 import { ProductAutocomplete } from '../components/ProductAutocomplete';
@@ -537,6 +537,34 @@ export function SmartUpload() {
       };
       return next;
     });
+  };
+
+  const forceCreateNew = (materialIdx, productIdx) => {
+    // Usuário viu que o produto identificado bateu por engano com algo já existente
+    // (ex.: POP de MYPK3 batendo com a ação MYPK3) e quer forçar a criação de um produto novo.
+    // Limpa o vínculo local e seta `force_new` que será enviado ao backend para
+    // ignorar busca por ticker/nome no link-and-queue.
+    setAnalysisResults(prev => prev.map((m, mi) => {
+      if (mi !== materialIdx) return m;
+      return {
+        ...m,
+        identified_products: m.identified_products.map((p, pi) => {
+          if (pi !== productIdx) return p;
+          return {
+            ...p,
+            product_id: null,
+            exists_in_db: false,
+            match_confidence: null,
+            existing_product_name: null,
+            existing_product_ticker: null,
+            existing_product_type: null,
+            force_new: true,
+            // Restaura o tipo da IA quando havia "tomado emprestado" o tipo do match.
+            product_type: p.ai_product_type || p.product_type,
+          };
+        }),
+      };
+    }));
   };
 
   const removeProduct = (materialIdx, productIdx) => {
@@ -1833,6 +1861,9 @@ export function SmartUpload() {
                           name: 'nome', alias: 'alias',
                         }[p.match_confidence] || 'novo';
 
+                        const hasType = !!(p.product_type && String(p.product_type).trim());
+                        const willCreateNew = !p.exists_in_db;
+
                         const deep = p.deep_info || {};
                         const hasDeep = Object.values(deep).some(v => v && (typeof v !== 'object' || (Array.isArray(v) && v.length)));
 
@@ -1863,22 +1894,21 @@ export function SmartUpload() {
                                 )}
                               </div>
 
-                              {p.product_type && (
-                                <span className={`text-[10px] font-semibold px-2 py-0.5 rounded border ${typeColor}`}>
+                              {hasType ? (
+                                <span
+                                  className={`text-[10px] font-semibold px-2 py-0.5 rounded border ${typeColor}`}
+                                  title={`Tipo do produto: ${p.product_type}`}
+                                >
                                   {p.product_type}
                                 </span>
+                              ) : (
+                                <span
+                                  className="text-[10px] font-semibold px-2 py-0.5 rounded border bg-red-50 text-red-700 border-red-200"
+                                  title="Tipo não foi identificado pela leitura. Edite o produto após o upload para definir."
+                                >
+                                  Tipo não identificado
+                                </span>
                               )}
-
-                              <span
-                                className={`text-[10px] font-semibold px-2 py-0.5 rounded border ${
-                                  p.exists_in_db
-                                    ? 'bg-primary/10 text-primary border-primary/20'
-                                    : 'bg-amber-50 text-amber-700 border-amber-200'
-                                }`}
-                                title={p.exists_in_db ? 'Match na base' : 'Novo produto'}
-                              >
-                                {confidenceLabel}
-                              </span>
 
                               {p._fromVisionSearch && (
                                 <span className="text-[10px] text-indigo-600" title="Encontrado via busca visual">
@@ -1902,6 +1932,48 @@ export function SmartUpload() {
                                 <X className="w-4 h-4" />
                               </button>
                             </div>
+
+                            {/* Faixa de DESTINO: deixa explícito se vai criar produto novo
+                                ou vincular a um existente. Permite ao usuário corrigir
+                                um match equivocado (ex.: POP de MYPK3 batendo na ação MYPK3). */}
+                            {p.selected && (
+                              willCreateNew ? (
+                                <div className="border-t border-border/50 px-3 py-2 bg-emerald-50/60 flex items-center gap-2 text-xs">
+                                  <PlusCircle className="w-3.5 h-3.5 text-emerald-700 flex-shrink-0" />
+                                  <span className="text-emerald-800">
+                                    {p.force_new
+                                      ? <>Vai <strong>criar produto novo</strong> (você corrigiu o match anterior).</>
+                                      : <>Vai <strong>criar produto novo</strong> em sua base.</>}
+                                  </span>
+                                  {p.rejected_match_reason && (
+                                    <span className="text-emerald-700/80 italic ml-1" title={p.rejected_match_reason}>
+                                      (match com produto existente foi descartado por divergência de tipo)
+                                    </span>
+                                  )}
+                                </div>
+                              ) : (
+                                <div className="border-t border-border/50 px-3 py-2 bg-blue-50/70 flex items-center gap-2 text-xs flex-wrap">
+                                  <Link2 className="w-3.5 h-3.5 text-blue-700 flex-shrink-0" />
+                                  <span className="text-blue-800">
+                                    Vai <strong>vincular ao produto existente</strong>{' '}
+                                    «<strong>{p.existing_product_name || p.name}</strong>
+                                    {p.existing_product_ticker ? <> ({p.existing_product_ticker})</> : null}»
+                                    {p.existing_product_type && (
+                                      <span className="text-blue-700/80"> — tipo {p.existing_product_type}</span>
+                                    )}
+                                    .
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => forceCreateNew(mi, pi)}
+                                    className="ml-auto inline-flex items-center gap-1 px-2 py-0.5 rounded border border-blue-300 bg-white text-blue-800 hover:bg-blue-100 text-[11px] font-medium"
+                                    title="Não é o mesmo produto — criar um produto novo em vez de vincular"
+                                  >
+                                    <PlusCircle className="w-3 h-3" /> Criar novo em vez disso
+                                  </button>
+                                </div>
+                              )
+                            )}
 
                             {p._expanded && (
                               <div className="border-t border-border/50 p-3 bg-gray-50/60 space-y-2 text-xs">

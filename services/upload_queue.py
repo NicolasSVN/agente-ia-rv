@@ -943,6 +943,52 @@ class UploadQueue:
                             confidence=metadata.confidence,
                         )
 
+                        # GUARDA-CHUVA ANTI-CAPTURA POR AÇÃO SUBJACENTE:
+                        # Se o material é uma ESTRUTURA (POP/Collar/Fence...) e o resolver
+                        # encontrou um produto existente, só aceitamos o vínculo se o
+                        # produto também for `estruturada`. Caso contrário, descartamos o
+                        # match e forçamos `_auto_create_product` (que sabe criar a estrutura
+                        # nova). Sem essa guarda, "POP de MYPK3" cai no produto research
+                        # MYPK3 (ação) já cadastrado.
+                        structure_kw = self._detect_structure_in_name(
+                            metadata.fund_name,
+                            metadata.document_type,
+                            getattr(item, "filename", None),
+                            mat.name if mat else None,
+                        )
+                        if structure_kw and resolve_result.matched_product_id:
+                            matched_existing = db.query(Product).filter(
+                                Product.id == resolve_result.matched_product_id
+                            ).first()
+                            matched_type = (
+                                (matched_existing.product_type or "").lower()
+                                if matched_existing else ""
+                            )
+                            if matched_type not in ("estruturada", "estrutura", "estruturado"):
+                                item.add_log(
+                                    f"Match descartado: material é estrutura "
+                                    f"({structure_kw!r}) mas o produto encontrado "
+                                    f"({matched_existing.name if matched_existing else '?'}) "
+                                    f"é {matched_type or 'sem tipo'} — criando produto novo.",
+                                    "info"
+                                )
+                                logger.info(
+                                    f"[UploadQueue] Estrutura {structure_kw!r}: rejeitando "
+                                    f"match com produto não-estruturado "
+                                    f"id={resolve_result.matched_product_id} "
+                                    f"({matched_type!r}) — vai criar produto novo."
+                                )
+                                # Substitui o resultado por um "no-match" para cair no else
+                                # (is_confident é uma property derivada de match_type).
+                                from services.product_resolver import ResolverResult
+                                resolve_result = ResolverResult(
+                                    matched_product_id=None,
+                                    matched_product_name=None,
+                                    matched_product_ticker=None,
+                                    match_type="rejected_structure_mismatch",
+                                    match_confidence=0.0,
+                                )
+
                         if resolve_result.is_confident:
                             mat.product_id = resolve_result.matched_product_id
                             mat.processing_status = "processing"
