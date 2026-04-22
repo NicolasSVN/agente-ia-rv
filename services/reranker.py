@@ -20,8 +20,11 @@ _MAX_SNIPPET_CHARS = 480
 
 
 def is_enabled() -> bool:
-    """Retorna True se o reranker estiver ativado via env."""
-    val = os.getenv("RAG_USE_RERANKER", "").strip().lower()
+    """
+    Retorna True se o reranker estiver ativado via env.
+    Default = ON (Task #152). Defina `RAG_USE_RERANKER=0` para desligar.
+    """
+    val = os.getenv("RAG_USE_RERANKER", "1").strip().lower()
     return val in ("1", "true", "yes", "on")
 
 

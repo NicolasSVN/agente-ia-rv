@@ -412,7 +412,7 @@ async def _execute_search_knowledge_base(args: dict, db=None, conversation_id=No
             "comite_tag": comite_tag,
             "product": meta.get("product_name", ""),
             "ticker": meta.get("products", ""),
-            "content": content[:800],
+            "content": content[:600],
             "score": round(r.composite_score, 3) if hasattr(r, 'composite_score') else None,
             "material_id": None if is_product_key_info else meta.get("material_id"),
             "block_id": int_block_id,

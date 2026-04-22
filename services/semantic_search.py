@@ -1320,6 +1320,7 @@ class EnhancedSearch:
                 similarity_threshold=similarity_threshold,
                 query_type=query_intent,
                 block_type_filter=intent_block_types,
+                conversation_id=conversation_id,
             )
             for r in results:
                 doc_id = r.get('metadata', {}).get('block_id', r.get('content', '')[:50])
@@ -1383,7 +1384,10 @@ class EnhancedSearch:
             from services import reranker as _reranker
             if _reranker.is_enabled() and len(final_results) >= 2:
                 reranker_input = scored_results[: max(n_results, 8)]
-                reranked = _reranker.rerank(query, reranker_input, top_k=n_results)
+                # Task #152 — final top-4 hard cap após reranking, antes
+                # de devolver ao agente (controla pressão de TPM).
+                final_top_k = min(n_results, 4)
+                reranked = _reranker.rerank(query, reranker_input, top_k=final_top_k)
                 if reranked:
                     final_results = reranked
                     for r in final_results:

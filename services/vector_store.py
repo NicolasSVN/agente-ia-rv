@@ -481,7 +481,8 @@ class VectorStore:
     
     def search(self, query: str, n_results: int = 3, product_filter: str = None, 
                similarity_threshold: float = 1.5, query_type: str = None,
-               block_type_filter: Optional[List[str]] = None) -> List[dict]:
+               block_type_filter: Optional[List[str]] = None,
+               conversation_id: Optional[str] = None) -> List[dict]:
         """
         Busca documentos relevantes para a consulta usando ranking híbrido inteligente.
         
@@ -739,7 +740,8 @@ class VectorStore:
             query_type=query_type,
             results=final_results,
             total_candidates=len(all_documents),
-            threshold=similarity_threshold
+            threshold=similarity_threshold,
+            conversation_id=conversation_id,
         )
 
         self._annotate_committee_flags(final_results)

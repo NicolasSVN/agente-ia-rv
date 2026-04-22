@@ -3365,12 +3365,12 @@ INSTRUÇÕES IMPORTANTES:
                 else:
                     result_str = json.dumps(result, ensure_ascii=False)
 
-                if len(result_str) > 8000:
+                if len(result_str) > 5000:
                     if isinstance(result, dict) and "results" in result:
                         truncated = dict(result)
                         while len(
                             json.dumps(truncated, ensure_ascii=False)
-                        ) > 7500 and truncated.get("results"):
+                        ) > 5000 and truncated.get("results"):
                             if (
                                 isinstance(truncated["results"], list)
                                 and len(truncated["results"]) > 1
@@ -3381,7 +3381,7 @@ INSTRUÇÕES IMPORTANTES:
                         truncated["_truncated"] = True
                         result_str = json.dumps(truncated, ensure_ascii=False)
                     else:
-                        result_str = result_str[:7500]
+                        result_str = result_str[:5000]
 
                 messages.append(
                     {
