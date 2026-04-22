@@ -29,7 +29,7 @@ export function Dashboard() {
   const [selectedCategory, setSelectedCategory] = useState(() => localStorage.getItem(STORAGE_CATEGORY_KEY) || '');
   const [committeeFilter, setCommitteeFilter] = useState(() => localStorage.getItem(STORAGE_COMMITTEE_KEY) === 'true');
   const [showNewModal, setShowNewModal] = useState(false);
-  const [newProduct, setNewProduct] = useState({ name: '', ticker: '', categories: [] });
+  const [newProduct, setNewProduct] = useState({ name: '', ticker: '', categories: [], product_type: '' });
   const [creating, setCreating] = useState(false);
   const [productToDelete, setProductToDelete] = useState(null);
   const [deleting, setDeleting] = useState(false);
@@ -221,12 +221,16 @@ export function Dashboard() {
       addToast('Nome do produto é obrigatório', 'warning');
       return;
     }
+    if (!newProduct.product_type) {
+      addToast('Tipo do produto é obrigatório', 'warning');
+      return;
+    }
     setCreating(true);
     try {
       const created = await productsAPI.create(newProduct);
       addToast('Produto criado com sucesso!', 'success');
       setShowNewModal(false);
-      setNewProduct({ name: '', ticker: '', categories: [] });
+      setNewProduct({ name: '', ticker: '', categories: [], product_type: '' });
       navigate(`/product/${created.id}`);
     } catch (err) {
       addToast(`Erro: ${err.message}`, 'error');
@@ -733,6 +737,31 @@ export function Dashboard() {
               className="w-full px-3 py-2 bg-card border border-border rounded-input
                         text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
             />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-foreground mb-1">
+              Tipo do Produto *
+            </label>
+            <select
+              value={newProduct.product_type}
+              onChange={(e) => setNewProduct({ ...newProduct, product_type: e.target.value })}
+              required
+              className="w-full px-3 py-2 bg-card border border-border rounded-input
+                        text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
+            >
+              <option value="">— Selecione o tipo —</option>
+              <option value="fii">FII (Fundo de Investimento Imobiliário)</option>
+              <option value="acao">Ação</option>
+              <option value="etf">ETF</option>
+              <option value="fundo">Fundo de Investimento</option>
+              <option value="debenture">Debênture</option>
+              <option value="estruturada">Estruturada / Derivativo</option>
+              <option value="outro">Outro</option>
+            </select>
+            <p className="mt-1 text-xs text-muted">
+              Obrigatório — define como o agente diferencia o produto nas respostas.
+            </p>
           </div>
 
           <div>

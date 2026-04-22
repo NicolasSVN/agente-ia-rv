@@ -16,7 +16,13 @@ import asyncio
 import queue
 import threading
 from sqlalchemy import or_
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
+
+from services.product_type_inference import (
+    VALID_PRODUCT_TYPES,
+    coerce_product_type,
+    normalize_product_type,
+)
 
 from database.database import get_db
 from database.models import (
@@ -109,14 +115,20 @@ def find_or_create_product_from_name(db: Session, material_name: str, gestora: s
             auto_categories = [subcategory]
             print(f"[FIND_OR_CREATE] FII auto-classificado: ticker={ticker} → {subcategory}")
 
+    auto_description = f"Produto criado automaticamente a partir de upload de documento ({document_type or 'N/A'})"
+    inferred_type = coerce_product_type(
+        ticker=ticker, name=product_name, description=auto_description
+    )
+
     try:
         new_product = Product(
             name=product_name,
             ticker=ticker,
             manager=gestora,
             status="ativo",
-            description=f"Produto criado automaticamente a partir de upload de documento ({document_type or 'N/A'})",
+            description=auto_description,
             category=auto_category,
+            product_type=inferred_type,
         )
         if auto_categories:
             new_product.set_categories(auto_categories)
@@ -275,11 +287,28 @@ PREDEFINED_PRODUCT_CATEGORIES = [
 
 class ProductCreate(BaseModel):
     name: str
+    product_type: str  # OBRIGATÓRIO: acao | estruturada | fundo | fii | etf | debenture | outro
     ticker: Optional[str] = None
     manager: Optional[str] = None
     category: Optional[str] = None
     categories: Optional[List[str]] = None
     description: Optional[str] = None
+
+    @field_validator("product_type")
+    @classmethod
+    def _validate_product_type(cls, v: str) -> str:
+        if not v or not str(v).strip():
+            raise ValueError(
+                "product_type é obrigatório. Valores válidos: "
+                + ", ".join(sorted(VALID_PRODUCT_TYPES))
+            )
+        v_norm = str(v).strip().lower()
+        if v_norm not in VALID_PRODUCT_TYPES:
+            raise ValueError(
+                f"product_type inválido: '{v}'. Valores válidos: "
+                + ", ".join(sorted(VALID_PRODUCT_TYPES))
+            )
+        return v_norm
 
 
 class ProductUpdate(BaseModel):
@@ -292,6 +321,24 @@ class ProductUpdate(BaseModel):
     description: Optional[str] = None
     product_type: Optional[str] = None  # acao | estruturada | fundo | fii | etf | debenture | outro
     key_info: Optional[str] = None      # JSON com campos extraídos relevantes
+
+    @field_validator("product_type")
+    @classmethod
+    def _validate_product_type(cls, v):
+        if v is None:
+            return v
+        if not str(v).strip():
+            raise ValueError(
+                "product_type não pode ficar vazio. Valores válidos: "
+                + ", ".join(sorted(VALID_PRODUCT_TYPES))
+            )
+        v_norm = str(v).strip().lower()
+        if v_norm not in VALID_PRODUCT_TYPES:
+            raise ValueError(
+                f"product_type inválido: '{v}'. Valores válidos: "
+                + ", ".join(sorted(VALID_PRODUCT_TYPES))
+            )
+        return v_norm
 
 
 class MaterialCreate(BaseModel):
@@ -616,6 +663,7 @@ async def create_product(
         manager=data.manager,
         category=category,
         description=data.description,
+        product_type=data.product_type,
         created_by=current_user.id
     )
     product.set_categories(categories)
@@ -2701,6 +2749,11 @@ async def resolve_product_match(
             manager=product_manager,
             category=product_category,
             status="ativo",
+            product_type=coerce_product_type(
+                raw=product_category,
+                ticker=product_ticker,
+                name=product_name,
+            ),
             created_by=current_user.id,
         )
         db.add(new_product)
@@ -3898,7 +3951,11 @@ async def smart_upload_stream(
                             ticker=metadata.ticker,
                             category=metadata.gestora or "FII",
                             manager=metadata.gestora,
-                            status="ativo"
+                            status="ativo",
+                            product_type=coerce_product_type(
+                                ticker=metadata.ticker,
+                                name=metadata.fund_name,
+                            ),
                         )
                         db_local.add(new_product)
                         db_local.commit()
@@ -6489,6 +6546,11 @@ async def link_products_and_queue(
                     "LCI": "outro", "LCA": "outro", "FIDC": "outro",
                 }
                 product_type_db = type_to_db_field.get(product_type, "outro") if product_type else None
+                product_type_db = coerce_product_type(
+                    raw=product_type_db,
+                    ticker=cp.get("ticker"),
+                    name=cp.get("name"),
+                )
 
                 cnpj = (cp.get("cnpj") or "").strip() or None
                 underlying_ticker = (cp.get("underlying_ticker") or "").strip().upper() or None
