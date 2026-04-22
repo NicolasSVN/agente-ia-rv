@@ -163,14 +163,18 @@ def test_remediation_script_imports_and_uses_correct_model_fields():
 
 def test_link_and_queue_force_estruturada_in_source():
     """Verifica via leitura do source que `link_products_and_queue` força
-    product_type_db='estruturada' quando cp_is_structure_flag é True."""
+    product_type_db='estruturada' quando cp_is_structure_flag é True e
+    deixa o sinal de auditoria estruturado no log."""
     src = (ROOT / "api" / "endpoints" / "products.py").read_text(encoding="utf-8")
     assert "if cp_is_structure_flag and product_type_db != \"estruturada\"" in src, (
         "link_and_queue precisa coercir product_type para 'estruturada' "
         "quando candidato é estrutura"
     )
-    assert "force_create_as_estruturada" in src, (
-        "deve logar a coerção para auditoria"
+    assert "product_type_db = \"estruturada\"" in src, (
+        "coerção para 'estruturada' precisa estar presente"
+    )
+    assert "[STRUCTURE_GUARD] layer=link_and_queue" in src, (
+        "deve logar guard estruturado para auditoria"
     )
     print("  OK link_and_queue_force_estruturada_in_source")
 
