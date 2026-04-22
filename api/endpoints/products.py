@@ -6750,9 +6750,10 @@ async def link_products_and_queue(
                     print(
                         f"[STRUCTURE_GUARD] layer=link_and_queue "
                         f"filename={_material_filename_str!r} "
-                        f"action=force_create_as_estruturada "
-                        f"original_type={product_type_db!r} "
-                        f"reason={cp_structure_reason!r}"
+                        f"matched_product=None "
+                        f"decision=force_create_as_estruturada "
+                        f"reason={cp_structure_reason!r} "
+                        f"original_type={product_type_db!r}"
                     )
                     product_type_db = "estruturada"
                     if not category:

@@ -764,10 +764,26 @@ class UploadQueue:
             # que é estrutura (POP/Collar/Fence...), zera o vínculo aqui para
             # que `_auto_create_product` (lógica abaixo) crie a estrutura nova.
             if mat.product_id:
+                # Inclui também extracted_metadata (fund_name/document_type) quando
+                # disponível — cobre casos em que o material foi pré-processado e o
+                # tipo de documento já tem o termo "POP" mas o filename não.
+                _meta_fund_name = None
+                _meta_doc_type = None
+                try:
+                    if mat.extracted_metadata:
+                        import json as _json
+                        _md = _json.loads(mat.extracted_metadata)
+                        _meta_fund_name = _md.get("fund_name") if isinstance(_md, dict) else None
+                        _meta_doc_type = _md.get("document_type") if isinstance(_md, dict) else None
+                except Exception:
+                    pass
+
                 preexisting_struct_kw = self._detect_structure_in_name(
                     item.filename,
                     mat.name,
                     getattr(mat, "source_filename", None),
+                    _meta_fund_name,
+                    _meta_doc_type,
                 )
                 if preexisting_struct_kw:
                     linked = db.query(Product).filter(Product.id == mat.product_id).first()
