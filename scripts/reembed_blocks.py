@@ -27,24 +27,39 @@ from sqlalchemy import and_, or_
 TARGET_VERSION = 2
 
 
-def _iter_blocks(db, product_id: Optional[int], batch: int):
+def _iter_blocks(db, product_id: Optional[int], batch: int, force: bool = False):
     """
     Itera blocos elegíveis usando cursor por id (estável mesmo quando
     `embedding_version` é atualizado durante o processamento). NUNCA usa OFFSET,
     que pularia registros conforme o conjunto encolhe.
+
+    Quando `force=True` (Task #153), ignora o filtro por `embedding_version` e
+    reembeda TODOS os blocos aprovados, garantindo que o novo metadata
+    (`product_type`, `product_id`) chegue até embeddings que já estavam em v2
+    mas foram gerados antes da Task #153.
     """
-    from database.models import ContentBlock, Material
+    from database.models import ContentBlock, ContentBlockStatus, Material
 
     last_id = 0
     while True:
         q = db.query(ContentBlock).join(Material, ContentBlock.material_id == Material.id)
-        q = q.filter(
-            ContentBlock.id > last_id,
-            or_(
-                ContentBlock.embedding_version.is_(None),
-                ContentBlock.embedding_version < TARGET_VERSION,
-            ),
-        )
+        q = q.filter(ContentBlock.id > last_id)
+        if not force:
+            q = q.filter(
+                or_(
+                    ContentBlock.embedding_version.is_(None),
+                    ContentBlock.embedding_version < TARGET_VERSION,
+                )
+            )
+        else:
+            # Em modo force, só faz sentido reembedar blocos aprovados (os
+            # únicos que `index_approved_blocks` indexa de fato).
+            q = q.filter(
+                ContentBlock.status.in_([
+                    ContentBlockStatus.APPROVED.value,
+                    ContentBlockStatus.AUTO_APPROVED.value,
+                ])
+            )
         if product_id is not None:
             q = q.filter(Material.product_id == product_id)
         rows = q.order_by(ContentBlock.id.asc()).limit(batch).all()
@@ -78,7 +93,7 @@ def _markdown_for_block(ingestor, block, product_name: str, product_ticker: Opti
         return None
 
 
-def run(batch: int, sleep: float, product_id: Optional[int], dry_run: bool) -> dict:
+def run(batch: int, sleep: float, product_id: Optional[int], dry_run: bool, force: bool = False) -> dict:
     """
     Estratégia segura (Task #152):
     1. Coleta IDs elegíveis de blocos (cursor por id, sem offset).
@@ -104,7 +119,7 @@ def run(batch: int, sleep: float, product_id: Optional[int], dry_run: bool) -> d
 
     materials_to_blocks: dict = {}
     try:
-        for block in _iter_blocks(db, product_id, batch):
+        for block in _iter_blocks(db, product_id, batch, force=force):
             processed_blocks += 1
             materials_to_blocks.setdefault(block.material_id, []).append(block)
 
@@ -176,6 +191,15 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--sleep", type=float, default=1.5, help="Segundos entre lotes (proteção rate-limit)")
     parser.add_argument("--product-id", type=int, default=None)
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help=(
+            "Reembeda TODOS os blocos aprovados, ignorando o filtro por "
+            "embedding_version. Útil quando o pipeline de indexação ganhou "
+            "novos campos de metadata e precisamos repropagar (Task #153)."
+        ),
+    )
     args = parser.parse_args(argv)
 
     summary = run(
@@ -183,6 +207,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         sleep=args.sleep,
         product_id=args.product_id,
         dry_run=args.dry_run,
+        force=args.force,
     )
     print("[REEMBED] Resumo:")
     print(json.dumps(summary, indent=2, ensure_ascii=False))

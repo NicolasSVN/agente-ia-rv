@@ -313,23 +313,28 @@ async def _execute_search_knowledge_base(args: dict, db=None, conversation_id=No
     # Task #153 — fallback de product_type por product_id, para embeddings antigos
     # que ainda não foram reindexados com o novo metadata. Sem isso, blocos
     # legados teriam tag genérica [COMITÊ] em vez de [COMITÊ-ESTRUTURADA] etc.
+    #
+    # Após o reembedding em massa (Task #153), o caminho quente NÃO precisa mais
+    # exercitar este fallback: pulamos a consulta extra quando todos os resultados
+    # já carregam `product_type` no metadata. A consulta JOIN permanece como safety
+    # net para resultados de embeddings legados (ex.: doc_ids antigos sem product_id
+    # ou sem product_type) que possam reaparecer no futuro.
     _product_type_by_id: dict = {}
+    _needs_ptype_lookup_ids = set()
     try:
-        if db:
+        for r in raw_results:
+            _meta_pt = (r.metadata.get("product_type") or "").strip()
+            _meta_pid = r.metadata.get("product_id")
+            if not _meta_pt and _meta_pid and str(_meta_pid).isdigit():
+                _needs_ptype_lookup_ids.add(int(_meta_pid))
+        if db and _needs_ptype_lookup_ids:
             from database.models import Product as _Prod
-            _ids_in_results = {
-                int(r.metadata.get("product_id"))
-                for r in raw_results
-                if r.metadata.get("product_id")
-                and str(r.metadata.get("product_id")).isdigit()
+            _rows = db.query(_Prod.id, _Prod.product_type).filter(
+                _Prod.id.in_(_needs_ptype_lookup_ids)
+            ).all()
+            _product_type_by_id = {
+                int(rid): (pt or "").lower() for rid, pt in _rows
             }
-            if _ids_in_results:
-                _rows = db.query(_Prod.id, _Prod.product_type).filter(
-                    _Prod.id.in_(_ids_in_results)
-                ).all()
-                _product_type_by_id = {
-                    int(rid): (pt or "").lower() for rid, pt in _rows
-                }
     except Exception as _e_pt:
         pass
 
