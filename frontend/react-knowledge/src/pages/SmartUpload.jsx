@@ -1463,6 +1463,36 @@ export function SmartUpload() {
         </button>
       </div>
 
+      {/*
+        Aviso explicando que a IA vai extrair automaticamente o que antes era
+        preenchido aqui. O usuário pode então ir direto para "Analisar e Processar".
+        Se quiser, todos os campos antigos seguem disponíveis no <details> abaixo
+        (e também são editáveis depois na tela do produto).
+      */}
+      <div className="flex items-start gap-3 p-4 bg-blue-50 rounded-xl border border-blue-200">
+        <Sparkles className="w-5 h-5 text-blue-500 mt-0.5 flex-shrink-0" />
+        <div className="text-sm text-blue-800">
+          <p className="font-medium mb-1">A IA cuida da categorização para você</p>
+          <p className="text-xs text-blue-700 leading-relaxed">
+            Vamos identificar automaticamente os produtos, tipo de material e principais
+            metadados do documento. Você poderá revisar e ajustar tudo isso depois,
+            direto na tela do produto criado. Basta clicar em <strong>Analisar e Processar</strong>.
+          </p>
+        </div>
+      </div>
+
+      <details className="border border-border rounded-xl group">
+        <summary className="cursor-pointer px-4 py-3 text-sm font-medium text-foreground
+                            flex items-center justify-between hover:bg-gray-50 rounded-xl
+                            list-none [&::-webkit-details-marker]:hidden">
+          <span className="flex items-center gap-2">
+            <Info className="w-4 h-4 text-muted" />
+            Opções avançadas (opcional)
+          </span>
+          <ChevronDown className="w-4 h-4 text-muted group-open:rotate-180 transition-transform" />
+        </summary>
+        <div className="px-4 pb-4 pt-2 space-y-5 border-t border-border">
+
       <div className="space-y-2">
         <label className="block text-sm font-medium text-foreground">
           Tipo do Material
@@ -1473,7 +1503,7 @@ export function SmartUpload() {
           className="w-full px-3 py-2 bg-card border border-border rounded-lg text-foreground
                      focus:outline-none focus:ring-2 focus:ring-primary/20 text-sm"
         >
-          <option value="">Selecione o tipo...</option>
+          <option value="">Detectar automaticamente</option>
           <option value="research">Research</option>
           <option value="one_page">One-Page</option>
           <option value="apresentacao">Apresentação</option>
@@ -1484,6 +1514,9 @@ export function SmartUpload() {
           <option value="regulatorio">Regulatório</option>
           <option value="script">Script</option>
         </select>
+        <p className="text-xs text-muted">
+          Você poderá alterar isso depois na tela do produto.
+        </p>
       </div>
 
       {materialType === 'campanha' && (
@@ -1669,6 +1702,9 @@ export function SmartUpload() {
         value={tags} 
         onChange={setTags} 
       />
+
+        </div>
+      </details>
 
       <div className="flex gap-3 pt-4">
         <Button variant="secondary" onClick={() => setStep(1)} className="flex-1">
