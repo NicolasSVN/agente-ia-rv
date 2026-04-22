@@ -140,6 +140,27 @@ def test_auto_create_product_accepts_filename_hint():
 
 # ---------- Camada link-and-queue: força product_type=estruturada ---------- #
 
+def test_remediation_script_imports_and_uses_correct_model_fields():
+    """Smoke test contra drift de campos do model: o script de remediação
+    referencia ProductStatus.ACTIVE e Product.manager (não .gestora). Se o
+    model mudar, o script quebraria — este teste pega isso cedo."""
+    import importlib
+    from database.models import Product, ProductStatus
+
+    mod = importlib.import_module("scripts.fix_misrouted_structure_material")
+    assert hasattr(mod, "_find_or_create_structure_product")
+    assert hasattr(mod, "_process_material")
+    assert hasattr(mod, "_scan_all")
+    # O enum tem que existir com .ACTIVE.
+    assert hasattr(ProductStatus, "ACTIVE")
+    # O model tem que ter .manager (não .gestora).
+    assert hasattr(Product, "manager"), "Product.manager removido — atualize o script"
+    assert not hasattr(Product, "gestora"), (
+        "Product.gestora reapareceu — script ainda usa .manager"
+    )
+    print("  OK remediation_script_imports_and_uses_correct_model_fields")
+
+
 def test_link_and_queue_force_estruturada_in_source():
     """Verifica via leitura do source que `link_products_and_queue` força
     product_type_db='estruturada' quando cp_is_structure_flag é True."""
@@ -164,6 +185,7 @@ def main() -> int:
         test_detect_structure_via_fund_name_and_doc_type,
         test_detect_structure_negative_cases,
         test_auto_create_product_accepts_filename_hint,
+        test_remediation_script_imports_and_uses_correct_model_fields,
         test_link_and_queue_force_estruturada_in_source,
     ]
     failed = 0

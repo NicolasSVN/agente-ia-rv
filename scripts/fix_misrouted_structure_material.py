@@ -40,11 +40,11 @@ STRUCTURE_TYPES = {"estruturada", "estrutura", "estruturado"}
 
 
 def _find_or_create_structure_product(db, struct_kw: str, underlying_ticker: str | None,
-                                      gestora: str | None, apply: bool) -> Product | None:
+                                      manager: str | None, apply: bool) -> Product | None:
     """Procura produto-estrutura compatível (mesmo underlying + mesma keyword
     no nome). Se não achar, cria um novo do tipo `estruturada`."""
     query = db.query(Product).filter(
-        Product.status == ProductStatus.ATIVO,
+        Product.status == ProductStatus.ACTIVE.value,
         Product.product_type == "estruturada",
     )
     name_filters = [Product.name.ilike(f"%{struct_kw}%")]
@@ -68,8 +68,8 @@ def _find_or_create_structure_product(db, struct_kw: str, underlying_ticker: str
         ticker=None,
         product_type="estruturada",
         category="estruturada",
-        gestora=gestora,
-        status=ProductStatus.ATIVO,
+        manager=manager,
+        status=ProductStatus.ACTIVE.value,
     )
     db.add(new)
     db.flush()
@@ -112,7 +112,7 @@ def _process_material(db, mat: Material, apply: bool) -> bool:
         db,
         struct_kw=struct_kw,
         underlying_ticker=(linked.ticker if linked else None),
-        gestora=(linked.gestora if linked else None),
+        manager=(getattr(linked, "manager", None) if linked else None),
         apply=apply,
     )
 
