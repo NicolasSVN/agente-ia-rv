@@ -80,6 +80,11 @@ Exemplos:
         action='store_true',
         help='Saída em formato JSON'
     )
+    parser.add_argument(
+        '--no-save',
+        action='store_true',
+        help='Não pergunta interativamente se quer salvar o relatório (útil em CI/scripts)'
+    )
     
     args = parser.parse_args()
     
@@ -130,7 +135,7 @@ Exemplos:
             if args.save:
                 filepath = evaluator.save_report(result, args.save)
                 print(f"Relatório salvo em: {filepath}")
-            elif not args.json:
+            elif not args.json and not args.no_save and sys.stdin.isatty():
                 save_prompt = input("Salvar relatório? [s/N]: ").strip().lower()
                 if save_prompt == 's':
                     filepath = evaluator.save_report(result)

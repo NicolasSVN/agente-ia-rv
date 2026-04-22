@@ -73,6 +73,31 @@ class RAGEvaluator:
         with open(filepath, 'r', encoding='utf-8') as f:
             return json.load(f)
     
+    @staticmethod
+    def _extract_chunk_id(doc: Dict[str, Any]) -> Optional[str]:
+        """
+        Normaliza o ID de um chunk para o formato usado nos golden sets
+        (ex: ``product_block_47``).
+
+        Ordem de preferência:
+        1. ``doc_id`` (formato canônico armazenado em ``document_embeddings``).
+        2. ``chroma_id`` (legado, mantido por compatibilidade).
+        3. ``metadata.block_id`` — neste caso prefixamos com ``product_block_``
+           para casar com o formato esperado pelos golden sets.
+        """
+        doc_id = doc.get('doc_id') or doc.get('chroma_id')
+        if doc_id:
+            return doc_id
+
+        block_id = doc.get('metadata', {}).get('block_id')
+        if block_id is not None:
+            block_id_str = str(block_id)
+            if block_id_str.startswith('product_block_'):
+                return block_id_str
+            return f"product_block_{block_id_str}"
+
+        return None
+
     def discover_chunks(self, product_ticker: str, limit: int = 100) -> List[Dict[str, Any]]:
         """
         Descobre todos os chunks indexados para um produto.
@@ -95,7 +120,7 @@ class RAGEvaluator:
             
             chunks.append({
                 "index": i + 1,
-                "chroma_id": doc.get('chroma_id', f'unknown_{i}'),
+                "chroma_id": self._extract_chunk_id(doc) or f'unknown_{i}',
                 "content_preview": content[:200].strip(),
                 "metadata": {
                     k: v for k, v in doc.get('metadata', {}).items() 
@@ -120,7 +145,7 @@ class RAGEvaluator:
         
         chunk_ids = []
         for doc in results:
-            chunk_id = doc.get('chroma_id') or doc.get('metadata', {}).get('block_id')
+            chunk_id = self._extract_chunk_id(doc)
             if chunk_id:
                 chunk_ids.append(chunk_id)
         
