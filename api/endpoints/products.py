@@ -30,7 +30,8 @@ from database.models import (
     WhatsAppScript, PendingReviewItem, DocumentProcessingJob,
     DocumentPageResult, ProductStatus, MaterialType, ContentBlockType, 
     ContentBlockStatus, ContentSourceType, PersistentQueueItem,
-    IngestionLog, MaterialFile, DocumentEmbedding, MaterialProductLink
+    IngestionLog, MaterialFile, DocumentEmbedding, MaterialProductLink,
+    VisualCache, CampaignStructure,
 )
 from api.endpoints.auth import get_current_user
 from services.vector_store import VectorStore
@@ -1853,12 +1854,27 @@ async def delete_product(
     print(f"[DELETE PRODUCT] Iniciando exclusão de '{product_name}' (id={product_id}) por {current_user.username} — {len(material_ids)} materiais, {len(block_ids)} blocos")
 
     if block_ids:
+        # VisualCache referencia content_blocks.id sem ON DELETE CASCADE —
+        # precisa ser removido explicitamente antes dos blocos.
+        n = db.query(VisualCache).filter(
+            VisualCache.content_block_id.in_(block_ids)
+        ).delete(synchronize_session=False)
+        print(f"[DELETE PRODUCT] {n} visual_cache removidos")
+
         n = db.query(PendingReviewItem).filter(
             PendingReviewItem.block_id.in_(block_ids)
         ).delete(synchronize_session=False)
         print(f"[DELETE PRODUCT] {n} pending_reviews removidos")
 
     if material_ids:
+        # CampaignStructure.material_id é nullable=True sem ON DELETE —
+        # desvincula a campanha em vez de bloquear a exclusão do produto.
+        n = db.query(CampaignStructure).filter(
+            CampaignStructure.material_id.in_(material_ids)
+        ).update({"material_id": None}, synchronize_session=False)
+        if n:
+            print(f"[DELETE PRODUCT] {n} campaign_structures desvinculadas")
+
         n = db.query(PersistentQueueItem).filter(
             PersistentQueueItem.material_id.in_(material_ids)
         ).delete(synchronize_session=False)
@@ -2148,6 +2164,13 @@ async def _delete_material_impl(db: Session, material_id: int, username: str) ->
     # FK sem CASCADE — limpeza manual de blocos filhos
     block_ids = [b.id for b in material.blocks]
     if block_ids:
+        # VisualCache referencia content_blocks.id sem ON DELETE CASCADE —
+        # precisa ser removido explicitamente antes dos blocos.
+        n = db.query(VisualCache).filter(
+            VisualCache.content_block_id.in_(block_ids)
+        ).delete(synchronize_session=False)
+        print(f"[DELETE MATERIAL] {n} visual_cache removidos")
+
         n = db.query(PendingReviewItem).filter(
             PendingReviewItem.block_id.in_(block_ids)
         ).delete(synchronize_session=False)
@@ -2156,6 +2179,14 @@ async def _delete_material_impl(db: Session, material_id: int, username: str) ->
             BlockVersion.block_id.in_(block_ids)
         ).delete(synchronize_session=False)
         print(f"[DELETE MATERIAL] {n} block_versions removidos")
+
+    # CampaignStructure.material_id é nullable=True sem ON DELETE —
+    # desvincula a campanha em vez de bloquear a exclusão do material.
+    n = db.query(CampaignStructure).filter(
+        CampaignStructure.material_id == material_id
+    ).update({"material_id": None}, synchronize_session=False)
+    if n:
+        print(f"[DELETE MATERIAL] {n} campaign_structures desvinculadas do material")
 
     # Logs de ingestão
     n = db.query(IngestionLog).filter(
@@ -5574,7 +5605,6 @@ def _match_products_to_db(db: Session, ai_products: list, filename: str | None =
     produto research RAPT4 (ação) e o usuário só perceberia depois de
     processar o material no produto errado.
     """
-    import re as _re_struct
     import os as _os_struct
     from services.product_type_inference import coerce_product_type
 
@@ -5582,39 +5612,38 @@ def _match_products_to_db(db: Session, ai_products: list, filename: str | None =
     # "POP/Collar/Fence" (porque o termo só aparece na página 6+ do PDF),
     # o nome do arquivo costuma carregá-lo no formato "POP RAPT4 dez28.pdf".
     filename_basename = _os_struct.path.basename(filename or "") if filename else ""
-    filename_lower = filename_basename.lower()
 
-    # Lista canônica de palavras-chave de estruturas (Renda Variável estruturada).
-    # Procuramos por palavra-inteira no `product_type` e no `name` que a IA devolveu.
-    # Fonte única da verdade compartilhada com o worker (services/upload_queue.py).
-    from services.structure_keywords import STRUCTURE_KEYWORDS as _STRUCTURE_KEYWORDS_AI
-    # Lista canônica de palavras-chave de TROCA/SWAP (recomendação tática de
-    # substituir A por B). Compartilhada com worker e link_products_and_queue.
-    from services.swap_keywords import (
-        SWAP_KEYWORDS as _SWAP_KEYWORDS_AI,
-        find_swap_keyword as _find_swap_keyword,
-    )
+    # Usamos os helpers canônicos que normalizam `_` → ` ` antes do regex,
+    # evitando falsos-negativos quando o filename tem underscores no lugar de
+    # espaços (ex.: "POP_de_MYPK3.pdf" → sem normalização `\bpop\b` falha
+    # porque `_` é caractere de palavra em regex).
+    from services.structure_keywords import find_structure_keyword as _find_structure_kw
+    from services.swap_keywords import find_swap_keyword as _find_swap_keyword
 
     # Detecção de SWAP via filename (sinal de primeira classe). Quando o
     # filename diz "Troca PETR4 por VALE3.pdf" e a IA mesmo assim devolveu
     # 2 produtos separados (PETR4, VALE3), faremos um MERGE pós-processamento
     # para criar UM ÚNICO produto-swap em vez de 2 vínculos fragmentados.
-    filename_swap_kw = _find_swap_keyword(filename_lower)
+    filename_swap_kw = _find_swap_keyword(filename_basename)
 
     def _candidate_is_structure(product_type_raw: str | None, name_raw: str | None,
                                 underlying_ticker_raw: str | None) -> tuple[bool, str | None]:
-        """Retorna (é_estrutura, motivo). Inclui filename como sinal de primeira classe."""
+        """Retorna (é_estrutura, motivo). Inclui filename como sinal de primeira classe.
+
+        Delega para `find_structure_keyword` que normaliza `_` → ` ` antes do
+        regex, garantindo que "pop_de_mypk3.pdf" e "POP de MYPK3.pdf" sejam
+        tratados de forma idêntica.
+        """
         if underlying_ticker_raw:
             return True, f"underlying_ticker preenchido ({underlying_ticker_raw})"
-        joined = " ".join(
-            (s or "").lower() for s in (product_type_raw, name_raw)
-        ).strip()
-        for kw in _STRUCTURE_KEYWORDS_AI:
-            kw_re = rf"\b{_re_struct.escape(kw)}\b"
-            if joined and _re_struct.search(kw_re, joined):
-                return True, f"AI sinalizou '{kw}' em product_type/name"
-            if filename_lower and _re_struct.search(kw_re, filename_lower):
-                return True, f"filename '{filename_basename}' contém '{kw}'"
+        # Busca em AI product_type + name (sinal direto da leitura do PDF)
+        kw_ai = _find_structure_kw(product_type_raw, name_raw)
+        if kw_ai:
+            return True, f"AI sinalizou '{kw_ai}' em product_type/name"
+        # Busca no filename (rede de segurança quando IA não captou o termo)
+        kw_fn = _find_structure_kw(filename_basename)
+        if kw_fn:
+            return True, f"filename '{filename_basename}' contém '{kw_fn}'"
         return False, None
 
     def _candidate_is_swap(product_type_raw: str | None, name_raw: str | None,
@@ -6862,18 +6891,15 @@ async def link_products_and_queue(
             "message": "Material conceitual adicionado à fila (sem produtos vinculados)",
         }
 
-    import re as _re_cp
-    # Fonte única da verdade compartilhada com o worker (services/upload_queue.py)
-    # e com _candidate_is_structure (mesmo arquivo, função pre-analyze).
-    from services.structure_keywords import STRUCTURE_KEYWORDS as _STRUCTURE_KEYWORDS_CONFIRM
-    from services.swap_keywords import (
-        SWAP_KEYWORDS as _SWAP_KEYWORDS_CONFIRM,
-        find_swap_keyword as _find_swap_keyword_cp,
-    )
+    # Helpers canônicos com normalização `_` → ` ` antes do regex.
+    # Compartilhados com worker (services/upload_queue.py) e pre-analyze.
+    from services.structure_keywords import find_structure_keyword as _find_structure_kw_cp
+    from services.swap_keywords import find_swap_keyword as _find_swap_keyword_cp
 
     # Sinais derivados do MATERIAL (filename + nome) — se o usuário enviou
-    # "POP RAPT4.pdf" e a IA não captou "POP" no texto, ainda queremos
-    # rejeitar match com a ação subjacente.
+    # "POP_RAPT4.pdf" e a IA não captou "POP" no texto, ainda queremos
+    # rejeitar match com a ação subjacente. Usamos source_filename (nome
+    # original) com fallback para o basename do source_file_path sanitizado.
     _material_filename_basename = ""
     try:
         if material and getattr(material, "source_file_path", None):
@@ -6884,24 +6910,29 @@ async def link_products_and_queue(
     _material_filename_str = (
         getattr(material, "source_filename", "") or _material_filename_basename or ""
     )
-    _material_signal_lower = " ".join(
-        s for s in (_material_filename_str.lower(), _material_name_str.lower()) if s
-    ).strip()
 
     def _cp_is_structure(cp_dict) -> tuple[bool, str | None]:
-        """Retorna (é_estrutura, motivo). Inclui filename/material.name."""
+        """Retorna (é_estrutura, motivo). Inclui filename/material.name.
+
+        Delega para `find_structure_keyword` que normaliza `_` → ` ` antes do
+        regex, cobrindo filenames como "POP_de_MYPK3.pdf" que falhariam com
+        `\\bpop\\b` sem normalização (pois `_` é caractere de palavra em regex).
+        """
         if (cp_dict.get("underlying_ticker") or "").strip():
             return True, f"underlying_ticker={cp_dict.get('underlying_ticker')}"
-        joined = " ".join(
-            ((cp_dict.get(k) or "")).lower()
-            for k in ("product_type", "ai_product_type", "name")
-        ).strip()
-        for kw in _STRUCTURE_KEYWORDS_CONFIRM:
-            kw_re = rf"\b{_re_cp.escape(kw)}\b"
-            if joined and _re_cp.search(kw_re, joined):
-                return True, f"AI sinalizou '{kw}'"
-            if _material_signal_lower and _re_cp.search(kw_re, _material_signal_lower):
-                return True, f"filename/material '{_material_filename_str or _material_name_str}' contém '{kw}'"
+        # Sinal da IA (product_type, ai_product_type, name do produto identificado)
+        kw_ai = _find_structure_kw_cp(
+            cp_dict.get("product_type"),
+            cp_dict.get("ai_product_type"),
+            cp_dict.get("name"),
+        )
+        if kw_ai:
+            return True, f"AI sinalizou '{kw_ai}'"
+        # Sinal do material (filename original + nome do material no banco)
+        kw_mat = _find_structure_kw_cp(_material_filename_str, _material_name_str)
+        if kw_mat:
+            label = _material_filename_str or _material_name_str
+            return True, f"filename/material '{label}' contém '{kw_mat}'"
         return False, None
 
     def _cp_is_swap(cp_dict) -> tuple[bool, str | None]:
@@ -6919,13 +6950,12 @@ async def link_products_and_queue(
         )
         if kw:
             return True, f"AI sinalizou '{kw}'"
-        if _material_signal_lower:
-            mkw = _find_swap_keyword_cp(_material_signal_lower)
-            if mkw:
-                return (
-                    True,
-                    f"filename/material '{_material_filename_str or _material_name_str}' contém '{mkw}'",
-                )
+        mkw = _find_swap_keyword_cp(_material_filename_str, _material_name_str)
+        if mkw:
+            return (
+                True,
+                f"filename/material '{_material_filename_str or _material_name_str}' contém '{mkw}'",
+            )
         return False, None
 
     created_products = []
