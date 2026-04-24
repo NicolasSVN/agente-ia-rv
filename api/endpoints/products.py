@@ -3357,13 +3357,20 @@ async def process_pdf_background(
         db.close()
 
 
-@router.get("/materials/{material_id}/pdf")
+@router.api_route("/materials/{material_id}/pdf", methods=["GET", "HEAD"])
 async def get_material_pdf(
     material_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """Retorna o arquivo PDF de um material.
+
+    Aceita tanto ``GET`` (download/visualização real) quanto ``HEAD``
+    (probe de existência usado pelas UIs para detectar 404 estruturado
+    com ``code=FILE_MISSING`` antes de abrir o iframe / nova aba sem
+    baixar o blob completo). O Starlette descarta automaticamente o
+    corpo da resposta em requisições ``HEAD``, então a mesma função
+    serve aos dois métodos sem branching extra.
 
     Quando o arquivo NÃO existe nem no disco nem no BYTEA do banco
     (cenário comum no Railway, onde o filesystem é efêmero entre deploys
