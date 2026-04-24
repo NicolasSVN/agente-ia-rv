@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ClipboardCheck, Check, X, Edit, AlertTriangle, RefreshCw, Table2, Search, FileText, Maximize2, CheckSquare, Square, Package, Link, Plus } from 'lucide-react';
+import { ClipboardCheck, Check, X, Edit, AlertTriangle, RefreshCw, Table2, Search, FileText, Maximize2, CheckSquare, Square, Package, Link, Plus, Upload } from 'lucide-react';
 import { reviewAPI, blocksAPI } from '../services/api';
 import { Button } from '../components/Button';
 import { Modal } from '../components/Modal';
@@ -93,26 +93,140 @@ function ContentPreview({ content, blockType }) {
 }
 
 function PDFViewer({ materialId, page = 1 }) {
+  const { addToast } = useToast();
   const containerRef = useRef(null);
+  const fileInputRef = useRef(null);
   const [showMagnifier, setShowMagnifier] = useState(false);
   const [magnifierPos, setMagnifierPos] = useState({ x: 0, y: 0 });
   const [error, setError] = useState(false);
-  
-  const pdfUrl = materialId ? `${API_BASE}/materials/${materialId}/pdf#page=${page}` : null;
+  // Espelha o tratamento usado em Documentos/Upload: detectar
+  // FILE_MISSING (PDF sumiu do disco do Railway) e oferecer reupload
+  // imediato em vez de mostrar 404 cru no iframe.
+  const [pdfStatus, setPdfStatus] = useState('loading'); // 'loading' | 'ok' | 'missing' | 'error'
+  const [missingMessage, setMissingMessage] = useState('');
+  const [reuploading, setReuploading] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
+
   const magnifierSize = 150;
   const zoomLevel = 2.5;
-  
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!materialId) {
+      setPdfStatus('loading');
+      return () => { cancelled = true; };
+    }
+
+    setPdfStatus('loading');
+    setError(false);
+
+    (async () => {
+      const url = `${API_BASE}/materials/${materialId}/pdf`;
+      try {
+        // HEAD evita baixar o PDF inteiro só para checar disponibilidade.
+        const probe = await fetch(url, { method: 'HEAD' });
+        if (cancelled) return;
+        if (probe.ok) {
+          setPdfStatus('ok');
+          return;
+        }
+        if (probe.status === 404) {
+          // HEAD não traz o JSON; faz GET pequeno só para inspecionar
+          // o `code` (FILE_MISSING vs MATERIAL_NOT_FOUND).
+          let body = {};
+          try {
+            const detailResp = await fetch(url, {
+              method: 'GET',
+              headers: { 'Accept': 'application/json' },
+            });
+            body = await detailResp.json();
+          } catch (_) {
+            body = {};
+          }
+          if (cancelled) return;
+          const detail = body && body.detail;
+          const code = detail && typeof detail === 'object' ? detail.code : null;
+          if (code === 'FILE_MISSING') {
+            setMissingMessage(
+              (detail && detail.message) ||
+              'Arquivo binário não disponível para este material.'
+            );
+            setPdfStatus('missing');
+            return;
+          }
+        }
+        setPdfStatus('error');
+      } catch (_) {
+        if (cancelled) return;
+        setPdfStatus('error');
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [materialId, reloadKey]);
+
+  const pdfUrl = materialId
+    ? `${API_BASE}/materials/${materialId}/pdf?v=${reloadKey}#page=${page}`
+    : null;
+
   const handleMouseMove = useCallback((e) => {
     const container = containerRef.current;
     if (!container) return;
-    
+
     const rect = container.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
-    
+
     setMagnifierPos({ x, y });
   }, []);
-  
+
+  const triggerReupload = () => {
+    if (fileInputRef.current) fileInputRef.current.click();
+  };
+
+  const handleReuploadFile = async (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (fileInputRef.current) fileInputRef.current.value = '';
+    if (!file || !materialId) return;
+    if (!file.name.toLowerCase().endsWith('.pdf')) {
+      addToast('Apenas arquivos PDF são aceitos', 'error');
+      return;
+    }
+    setReuploading(true);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const res = await fetch(`${API_BASE}/admin/reupload-pdf/${materialId}`, {
+        method: 'POST',
+        body: fd,
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` },
+      });
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => ({}));
+        const errDetail = errBody && errBody.detail;
+        const txt = (errDetail && typeof errDetail === 'object' ? errDetail.message : errDetail) || `HTTP ${res.status}`;
+        addToast(`Falha ao enviar PDF: ${txt}`, 'error');
+        return;
+      }
+      addToast('PDF reenviado com sucesso', 'success');
+      // Re-dispara o probe e o iframe para mostrar o PDF recém-enviado.
+      setReloadKey((k) => k + 1);
+    } catch (_) {
+      addToast('Erro de rede ao reenviar PDF', 'error');
+    } finally {
+      setReuploading(false);
+    }
+  };
+
+  const openInNewTab = () => {
+    if (!materialId) return;
+    if (pdfStatus === 'missing') {
+      triggerReupload();
+      return;
+    }
+    window.open(`${API_BASE}/materials/${materialId}/pdf?v=${reloadKey}`, '_blank', 'noopener');
+  };
+
   if (!materialId) {
     return (
       <div className="flex items-center justify-center h-full bg-muted/5 rounded-lg border border-border">
@@ -123,42 +237,79 @@ function PDFViewer({ materialId, page = 1 }) {
       </div>
     );
   }
-  
+
+  const showMagnifierUI = pdfStatus === 'ok';
+
   return (
     <div className="flex flex-col h-full">
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="application/pdf,.pdf"
+        style={{ display: 'none' }}
+        onChange={handleReuploadFile}
+      />
       <div className="flex items-center justify-between px-3 py-2 bg-muted/10 border-b border-border rounded-t-lg">
         <span className="text-xs font-medium text-muted">Documento Original</span>
         <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1 text-xs text-muted">
-            <Search className="w-3.5 h-3.5" />
-            <span>Lupa ativa</span>
-          </div>
-          <a
-            href={`${API_BASE}/materials/${materialId}/pdf`}
-            target="_blank"
-            rel="noopener noreferrer"
+          {showMagnifierUI && (
+            <div className="flex items-center gap-1 text-xs text-muted">
+              <Search className="w-3.5 h-3.5" />
+              <span>Lupa ativa</span>
+            </div>
+          )}
+          <button
+            type="button"
+            onClick={openInNewTab}
             className="p-1 hover:bg-muted/20 rounded transition-colors"
-            title="Abrir em nova aba"
+            title={pdfStatus === 'missing' ? 'Reenviar PDF' : 'Abrir em nova aba'}
           >
             <Maximize2 className="w-4 h-4 text-muted" />
-          </a>
+          </button>
         </div>
       </div>
-      <div 
+      <div
         ref={containerRef}
-        className="flex-1 overflow-auto bg-muted/5 rounded-b-lg relative cursor-crosshair"
-        onMouseEnter={() => setShowMagnifier(true)}
+        className={`flex-1 overflow-auto bg-muted/5 rounded-b-lg relative ${showMagnifierUI ? 'cursor-crosshair' : ''}`}
+        onMouseEnter={() => showMagnifierUI && setShowMagnifier(true)}
         onMouseLeave={() => setShowMagnifier(false)}
-        onMouseMove={handleMouseMove}
+        onMouseMove={showMagnifierUI ? handleMouseMove : undefined}
       >
-        {error ? (
+        {pdfStatus === 'loading' && (
+          <div className="flex items-center justify-center h-full">
+            <div className="text-center text-muted">
+              <RefreshCw className="w-6 h-6 mx-auto mb-2 animate-spin opacity-60" />
+              <p className="text-sm">Carregando PDF...</p>
+            </div>
+          </div>
+        )}
+        {pdfStatus === 'missing' && (
+          <div className="flex items-center justify-center h-full p-6">
+            <div className="text-center text-muted max-w-sm">
+              <AlertTriangle className="w-12 h-12 mx-auto mb-3 text-warning" />
+              <p className="text-sm font-medium text-foreground mb-2">PDF não disponível</p>
+              <p className="text-xs text-muted mb-4">{missingMessage}</p>
+              <Button
+                size="sm"
+                variant="primary"
+                onClick={triggerReupload}
+                loading={reuploading}
+              >
+                <Upload className="w-4 h-4" />
+                Reenviar PDF
+              </Button>
+            </div>
+          </div>
+        )}
+        {pdfStatus === 'error' && (
           <div className="flex items-center justify-center h-full">
             <div className="text-center text-muted">
               <FileText className="w-12 h-12 mx-auto mb-2 opacity-50" />
               <p className="text-sm">Não foi possível carregar o PDF</p>
             </div>
           </div>
-        ) : (
+        )}
+        {pdfStatus === 'ok' && !error && (
           <>
             <iframe
               src={pdfUrl}
