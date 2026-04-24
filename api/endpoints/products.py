@@ -288,7 +288,7 @@ PREDEFINED_PRODUCT_CATEGORIES = [
 
 class ProductCreate(BaseModel):
     name: str
-    product_type: str  # OBRIGATÓRIO: acao | estruturada | fundo | fii | etf | debenture | outro
+    product_type: str  # OBRIGATÓRIO: acao | estruturada | fundo | fii | etf | bdr | fidc | debenture | swap | long_short | mercado_futuro | mercado_a_termo | joint_venture | outro
     ticker: Optional[str] = None
     manager: Optional[str] = None
     category: Optional[str] = None
@@ -320,7 +320,7 @@ class ProductUpdate(BaseModel):
     categories: Optional[List[str]] = None
     status: Optional[str] = None
     description: Optional[str] = None
-    product_type: Optional[str] = None  # acao | estruturada | fundo | fii | etf | debenture | outro
+    product_type: Optional[str] = None  # acao | estruturada | fundo | fii | etf | bdr | fidc | debenture | swap | long_short | mercado_futuro | mercado_a_termo | joint_venture | outro
     key_info: Optional[str] = None      # JSON com campos extraídos relevantes
 
     @field_validator("product_type")
@@ -5538,7 +5538,8 @@ async def _identify_products_with_ai(text: str, filename: str) -> list:
             "TIPOS DE INSTRUMENTO VÁLIDOS (use exatamente um destes em product_type):\n"
             "FII, FIA, FIC-FIA, FIDC, CRI, CRA, Debênture, ETF, BDR, Ação, "
             "Fundo Multimercado, Fundo de Renda Fixa, POP, Collar, COE, LCI, LCA, "
-            "Estruturada, Swap\n\n"
+            "Estruturada, Swap, Long & Short, Mercado Futuro, Mercado a Termo, "
+            "Joint Venture\n\n"
             "REGRA FUNDAMENTAL — PRODUTOS ESTRUTURADOS (CRÍTICO):\n"
             "Quando o documento descreve uma OPERAÇÃO ESTRUTURADA (POP, Collar, COE, Fence, "
             "Reverse Convertible, Knock-out, etc.) sobre um ativo-base, o PRODUTO em si é a "
@@ -5570,21 +5571,31 @@ async def _identify_products_with_ai(text: str, filename: str) -> list:
             "   Trava/Borboleta/Reverse Convertible/Knock-out, considere DEFINITIVO que o documento\n"
             "   descreve uma ESTRUTURA sobre o ativo cujo ticker aparece no filename — mesmo quando\n"
             "   o texto extraído fala apenas da empresa subjacente. NUNCA emita só a ação.\n\n"
-            "REGRA FUNDAMENTAL — TROCA / SWAP / PAIR TRADE (CRÍTICO):\n"
+            "REGRA FUNDAMENTAL — TROCA / SWAP (CRÍTICO):\n"
             "Quando o documento recomenda TROCAR / SUBSTITUIR um ativo por outro (ex.: 'Trocar PETR4 por\n"
-            "VALE3', 'Rotação de carteira: sair de A, entrar em B', 'Pair trade long VALE3 / short PETR4',\n"
-            "'Substituição de ITUB4 por BBDC4'), o PRODUTO em si é a OPERAÇÃO DE TROCA, NÃO os ativos\n"
-            "individuais. Sinais inequívocos no filename ou texto: 'troca', 'trocar', 'rotação',\n"
-            "'rotacao', 'substituição', 'substituir', 'pair trade', 'pairs trading', 'long short',\n"
-            "'long-short', 'rebalanceamento', 'swap'.\n"
+            "VALE3', 'Rotação de carteira: sair de A, entrar em B', 'Substituição de ITUB4 por BBDC4'),\n"
+            "o PRODUTO em si é a OPERAÇÃO DE TROCA, NÃO os ativos individuais.\n"
+            "Sinais inequívocos de SWAP no filename ou texto: 'troca', 'trocar', 'rotação', 'rotacao',\n"
+            "'substituição', 'substituir', 'rebalanceamento', 'swap'.\n"
             "Quando QUALQUER um desses sinais estiver presente:\n"
             "  - product_type DEVE ser 'Swap' (NUNCA 'Ação' nem o tipo individual de A ou B)\n"
             "  - Emita UMA ÚNICA entrada com name = 'Troca: <A> → <B>' (ou 'Rotação: <A> → <B>')\n"
             "  - ticker = null (a operação não tem ticker próprio)\n"
             "  - underlying_tickers = ['<A>', '<B>', ...] (lista com TODOS os ativos envolvidos)\n"
-            "  - NUNCA emita uma entrada separada para A e outra para B — eles fazem parte da\n"
-            "    mesma operação tática; vincular separadamente fragmenta a recomendação no RAG\n"
+            "  - NUNCA emita uma entrada separada para A e outra para B\n"
             "  - Se houver MAIS de uma troca no mesmo documento, emita uma entrada por troca\n\n"
+            "REGRA FUNDAMENTAL — LONG & SHORT / PAIR TRADE (CRÍTICO):\n"
+            "Quando o documento descreve uma ESTRATÉGIA de posição simultânea comprada (long) em um\n"
+            "ativo e vendida (short) em outro ativo DIFERENTE, sem recomendar a troca de um pelo outro\n"
+            "(ex.: 'Long VALE3 / Short PETR4', 'Pair trade: long BBDC4, short ITUB4'), o PRODUTO é a\n"
+            "ESTRATÉGIA LONG & SHORT, NÃO os ativos individualmente.\n"
+            "Sinais no filename ou texto: 'long short', 'long & short', 'long-short', 'pair trade',\n"
+            "'pairs trading', 'long/short', 'L/S'.\n"
+            "Quando QUALQUER um desses sinais estiver presente:\n"
+            "  - product_type DEVE ser 'Long & Short' (NUNCA 'Ação' nem 'Swap')\n"
+            "  - Emita UMA ÚNICA entrada com name = 'Long & Short: <A> / <B>'\n"
+            "  - ticker = null\n"
+            "  - underlying_tickers = ['<LONG>', '<SHORT>'] (longo primeiro, curto depois)\n\n"
             "Responda APENAS com JSON válido, sem texto adicional.\n"
             'Formato: {"products": [{"ticker": "MXRF11", "name": "Maxi Renda FII", '
             '"product_type": "FII", "gestora": "XP Asset", "cnpj": null, "underlying_ticker": null}, '

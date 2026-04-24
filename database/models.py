@@ -803,7 +803,7 @@ class Product(Base):
     categories = Column(Text, default="[]")
     status = Column(String(20), default=ProductStatus.ACTIVE.value)
     description = Column(Text, nullable=True)
-    product_type = Column(String(50), nullable=True)  # acao | estruturada | fundo | fii | etf | debenture | outro
+    product_type = Column(String(50), nullable=True)  # acao | estruturada | fundo | fii | etf | bdr | fidc | debenture | swap | long_short | mercado_futuro | mercado_a_termo | joint_venture | outro
     key_info = Column(Text, nullable=True)  # JSON com campos extraídos: retorno esperado, risco, prazo, emissor, etc.
     name_aliases = Column(Text, default="[]")
     is_committee = Column(Boolean, default=False, index=True)  # Estrela = produto do Comitê SVN (recomendação formal)

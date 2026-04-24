@@ -67,14 +67,47 @@ Se perguntado sobre recomendações, informe que o comitê não tem recomendaç�
 
     # Task #153 — mapa de rótulos por product_type para diferenciação visual
     # explícita entre ação, estrutura sobre essa ação, FII, fundo, etc.
+    # Chave: product_type lowercased (como vem do banco/vector store).
     PRODUCT_TYPE_LABELS = {
+        # Renda Variável — ativos básicos
         "acao": "📈 AÇÃO",
+        "etf": "📊 ETF",
+        "bdr": "🌎 BDR",
+        "fii": "🏢 FII",
+        # Fundos
+        "fundo": "💼 FUNDO",
+        "fundo multimercado": "💼 FUNDO MULTIMERCADO",
+        "fundo de renda fixa": "💼 FUNDO DE RENDA FIXA",
+        "fia": "💼 FIA",
+        "fic-fia": "💼 FIC-FIA",
+        "fidc": "💼 FIDC",
+        # Renda Fixa / Crédito
+        "debenture": "📜 DEBÊNTURE",
+        "debênture": "📜 DEBÊNTURE",
+        "cri": "📜 CRI",
+        "cra": "📜 CRA",
+        "lci": "📜 LCI",
+        "lca": "📜 LCA",
+        # Estruturadas / derivativos de opções
         "estruturada": "🎯 ESTRUTURADA",
         "estrutura": "🎯 ESTRUTURADA",
-        "fundo": "💼 FUNDO",
-        "fii": "🏢 FII",
-        "etf": "📊 ETF",
-        "debenture": "📜 DEBÊNTURE",
+        "pop": "🎯 POP",
+        "collar": "🎯 COLLAR",
+        "coe": "🎯 COE",
+        # Operações táticas
+        "swap": "🔄 SWAP",
+        "long & short": "⚡ LONG & SHORT",
+        "long&short": "⚡ LONG & SHORT",
+        "long short": "⚡ LONG & SHORT",
+        # Derivativos de bolsa
+        "mercado futuro": "📅 MERCADO FUTURO",
+        "futuro": "📅 MERCADO FUTURO",
+        "mercado a termo": "📅 MERCADO A TERMO",
+        "a termo": "📅 MERCADO A TERMO",
+        "termo": "📅 MERCADO A TERMO",
+        # Outros veículos
+        "joint venture": "🤝 JOINT VENTURE",
+        "join venture": "🤝 JOINT VENTURE",
         "outro": "📦 OUTRO",
     }
 
@@ -89,7 +122,17 @@ Se perguntado sobre recomendações, informe que o comitê não tem recomendaç�
     ambiguous_underlyings = {t for t, c in underlying_count.items() if c >= 2}
 
     # Agrupa por tipo para ordenação previsível.
-    by_type_order = ["acao", "estruturada", "estrutura", "fii", "fundo", "etf", "debenture", "outro"]
+    by_type_order = [
+        "acao", "bdr", "etf",
+        "estruturada", "estrutura", "pop", "collar", "coe",
+        "swap", "long & short", "long&short", "long short",
+        "mercado futuro", "futuro", "mercado a termo", "a termo", "termo",
+        "fii",
+        "fundo", "fundo multimercado", "fundo de renda fixa", "fia", "fic-fia", "fidc",
+        "debenture", "debênture", "cri", "cra", "lci", "lca",
+        "joint venture", "join venture",
+        "outro",
+    ]
     committee_entries_sorted = sorted(
         committee_entries,
         key=lambda x: (

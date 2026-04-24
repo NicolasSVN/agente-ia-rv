@@ -8,6 +8,14 @@ Compartilhado entre:
 
 Mantém uma única fonte de verdade para a heurística, evitando que o conjunto
 canônico ou as regras divirjam entre o endpoint e os scripts.
+
+Valores canônicos (sempre em minúsculas, tal como saem do banco/vector store):
+  Renda Variável:  acao | etf | bdr | fii
+  Fundos:          fundo | fidc
+  Renda Fixa:      debenture  (CRI/CRA agrupados aqui para fins de exibição)
+  Estruturadas:    estruturada | swap | long & short
+  Bolsa/Balcão:    mercado futuro | mercado a termo
+  Outros:          joint venture | outro
 """
 
 from __future__ import annotations
@@ -16,37 +24,72 @@ import re
 from typing import Optional
 
 VALID_PRODUCT_TYPES: set[str] = {
+    # Renda Variável — ativos básicos
     "acao",
-    "estruturada",
-    "swap",
-    "fundo",
-    "fii",
     "etf",
+    "bdr",
+    "fii",
+    # Fundos
+    "fundo",
+    "fidc",
+    # Renda Fixa / Crédito
     "debenture",
+    # Derivativos de opções / estruturadas
+    "estruturada",
+    # Operações táticas
+    "swap",
+    "long & short",
+    # Derivativos de bolsa / balcão
+    "mercado futuro",
+    "mercado a termo",
+    # Outros veículos
+    "joint venture",
     "outro",
 }
 
 PRODUCT_TYPE_ALIASES: dict[str, str] = {
+    # Ação
     "ação": "acao",
     "acao": "acao",
     "ações": "acao",
     "acoes": "acao",
     "stock": "acao",
     "equity": "acao",
+    # ETF
+    "etf": "etf",
+    "index": "etf",
+    # BDR
+    "bdr": "bdr",
+    "bdrs": "bdr",
+    # FII
     "fii": "fii",
     "fundo imobiliário": "fii",
     "fundo imobiliario": "fii",
     "imobiliário": "fii",
     "imobiliario": "fii",
-    "etf": "etf",
-    "index": "etf",
+    # Fundos genéricos
+    "fundo": "fundo",
+    "fundo de investimento": "fundo",
+    "multimercado": "fundo",
+    "fundo multimercado": "fundo",
+    "fundo de renda fixa": "fundo",
+    "fia": "fundo",
+    "fic-fia": "fundo",
+    "fic fia": "fundo",
+    # FIDC
+    "fidc": "fidc",
+    "fundo de direitos creditórios": "fidc",
+    "fundo de direitos creditorios": "fidc",
+    "direitos creditórios": "fidc",
+    "direitos creditorios": "fidc",
+    # Renda Fixa / Crédito
     "debênture": "debenture",
     "debenture": "debenture",
     "cri": "debenture",
     "cra": "debenture",
-    "fundo": "fundo",
-    "fundo de investimento": "fundo",
-    "multimercado": "fundo",
+    "lci": "debenture",
+    "lca": "debenture",
+    # Estruturadas (derivativos de opções)
     "estruturada": "estruturada",
     "estrutura": "estruturada",
     "estruturado": "estruturada",
@@ -54,9 +97,7 @@ PRODUCT_TYPE_ALIASES: dict[str, str] = {
     "pop": "estruturada",
     "collar": "estruturada",
     "coe": "estruturada",
-    # Troca / swap / pair trade — categoria própria a partir da Task #170.
-    # Antes era mapeada para 'estruturada', mas semanticamente é uma
-    # recomendação tática (substituir A por B), não um derivativo.
+    # Swap / Troca / Rotação — operação de SUBSTITUIÇÃO de ativo (não estratégia simultânea)
     "swap": "swap",
     "troca": "swap",
     "trocar": "swap",
@@ -65,19 +106,37 @@ PRODUCT_TYPE_ALIASES: dict[str, str] = {
     "substituição": "swap",
     "substituicao": "swap",
     "substituir": "swap",
-    "pair trade": "swap",
-    "pairs trade": "swap",
-    "pairs trading": "swap",
-    "long short": "swap",
-    "long-short": "swap",
     "rebalanceamento": "swap",
+    # Long & Short — estratégia simultânea (comprado num ativo, vendido em outro)
+    "long & short": "long & short",
+    "long&short": "long & short",
+    "long short": "long & short",
+    "long-short": "long & short",
+    "pair trade": "long & short",
+    "pairs trade": "long & short",
+    "pairs trading": "long & short",
+    "pair trading": "long & short",
+    # Mercado Futuro
+    "mercado futuro": "mercado futuro",
+    "futuro": "mercado futuro",
+    "futuros": "mercado futuro",
+    # Mercado a Termo
+    "mercado a termo": "mercado a termo",
+    "a termo": "mercado a termo",
+    "termo": "mercado a termo",
+    # Joint Venture
+    "joint venture": "joint venture",
+    "join venture": "joint venture",
+    "joint ventures": "joint venture",
+    "join ventures": "joint venture",
+    # Genérico
     "outro": "outro",
     "outros": "outro",
 }
 
 _TICKER_FII_RE = re.compile(r"^[A-Z]{4}1[12]$")
 _TICKER_ACAO_RE = re.compile(r"^[A-Z]{4}[3-6]$")
-_TICKER_BDR_RE = re.compile(r"^[A-Z]{4}11B$")
+_TICKER_BDR_RE = re.compile(r"^[A-Z]{4}3[45]$")  # ex: AAPL34, MSFT35
 
 
 def normalize_product_type(value: Optional[str]) -> Optional[str]:
@@ -119,22 +178,42 @@ def infer_product_type(
         if _TICKER_FII_RE.match(t):
             return "fii"
         if _TICKER_BDR_RE.match(t):
-            return "acao"
+            return "bdr"
         if _TICKER_ACAO_RE.match(t):
             return "acao"
 
+    # FIDC antes de FII: "FIDC Imobiliário" contém "imobiliário" (FII) mas é FIDC.
+    if re.search(r"\b(fidc|fundo de direitos credit[oó]rios)\b", blob):
+        return "fidc"
     if re.search(r"\b(fii|fundo imobili[áa]rio|imobili[áa]rio)\b", blob):
         return "fii"
-    if re.search(r"\b(deb[êe]nture|cra|cri)\b", blob):
+    if re.search(r"\b(bdr|bdrs)\b", blob):
+        return "bdr"
+    if re.search(r"\b(deb[êe]nture|cra|cri|lci|lca)\b", blob):
         return "debenture"
-    # Swap / troca / pair trade — checar ANTES de estruturada porque o termo
-    # "swap" historicamente caía em estruturada e perdia a semântica de troca.
+
+    # Long & Short — checar ANTES de swap para diferenciar estratégia simultânea
+    # de recomendação de substituição.
+    if re.search(
+        r"\b(long[- ]?short|long\s*&\s*short|pair[- ]?trad\w*)\b",
+        blob,
+    ):
+        return "long & short"
+
+    # Swap / Troca / Rotação — operação de substituição de ativo
     if re.search(
         r"\b(swap|troca|trocar|rota[çc][ãa]o|substitui[çc][ãa]o|substituir|"
-        r"pair[- ]?trad\w*|long[- ]?short|rebalanceamento)\b",
+        r"rebalanceamento)\b",
         blob,
     ):
         return "swap"
+
+    if re.search(r"\b(mercado futuro|contratos? futuros?|dolar futuro|ibov futuro)\b", blob):
+        return "mercado futuro"
+    if re.search(r"\b(mercado a termo|contrato a termo|termo de ações)\b", blob):
+        return "mercado a termo"
+    if re.search(r"\b(joint venture|join venture)\b", blob):
+        return "joint venture"
     if re.search(r"\b(pop|collar|coe|estruturad\w*|derivativo)\b", blob):
         return "estruturada"
     if re.search(r"\b(fundo|multimercado)\b", blob):

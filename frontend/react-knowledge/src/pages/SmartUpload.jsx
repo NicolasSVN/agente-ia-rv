@@ -1877,24 +1877,56 @@ export function SmartUpload() {
                   {mat.identified_products && mat.identified_products.length > 0 ? (
                     <div className="space-y-2">
                       {mat.identified_products.map((p, pi) => {
-                        const typeColor = {
-                          FII: 'bg-blue-50 text-blue-700 border-blue-200',
+                        const _typeColorMap = {
+                          // Renda Variável — ativos básicos
                           'Ação': 'bg-green-50 text-green-700 border-green-200',
                           'Acao': 'bg-green-50 text-green-700 border-green-200',
-                          Estruturada: 'bg-orange-50 text-orange-700 border-orange-200',
-                          Swap: 'bg-rose-50 text-rose-700 border-rose-200',
-                          swap: 'bg-rose-50 text-rose-700 border-rose-200',
-                          Troca: 'bg-rose-50 text-rose-700 border-rose-200',
-                          Fundo: 'bg-purple-50 text-purple-700 border-purple-200',
+                          'acao': 'bg-green-50 text-green-700 border-green-200',
+                          'ETF': 'bg-cyan-50 text-cyan-700 border-cyan-200',
+                          'etf': 'bg-cyan-50 text-cyan-700 border-cyan-200',
+                          'BDR': 'bg-teal-50 text-teal-700 border-teal-200',
+                          'bdr': 'bg-teal-50 text-teal-700 border-teal-200',
+                          'FII': 'bg-blue-50 text-blue-700 border-blue-200',
+                          'fii': 'bg-blue-50 text-blue-700 border-blue-200',
+                          // Fundos
+                          'Fundo': 'bg-purple-50 text-purple-700 border-purple-200',
+                          'fundo': 'bg-purple-50 text-purple-700 border-purple-200',
                           'Fundo Multimercado': 'bg-purple-50 text-purple-700 border-purple-200',
                           'Fundo de Renda Fixa': 'bg-purple-50 text-purple-700 border-purple-200',
-                          ETF: 'bg-cyan-50 text-cyan-700 border-cyan-200',
+                          'FIA': 'bg-purple-50 text-purple-700 border-purple-200',
+                          'FIC-FIA': 'bg-purple-50 text-purple-700 border-purple-200',
+                          'FIDC': 'bg-purple-50 text-purple-700 border-purple-200',
+                          'fidc': 'bg-purple-50 text-purple-700 border-purple-200',
+                          // Renda Fixa / Crédito
                           'Debênture': 'bg-yellow-50 text-yellow-700 border-yellow-200',
-                          Debenture: 'bg-yellow-50 text-yellow-700 border-yellow-200',
-                          CRI: 'bg-yellow-50 text-yellow-700 border-yellow-200',
-                          CRA: 'bg-yellow-50 text-yellow-700 border-yellow-200',
-                          Outro: 'bg-gray-50 text-gray-600 border-gray-200',
-                        }[p.product_type] || 'bg-gray-50 text-gray-600 border-gray-200';
+                          'Debenture': 'bg-yellow-50 text-yellow-700 border-yellow-200',
+                          'debenture': 'bg-yellow-50 text-yellow-700 border-yellow-200',
+                          'CRI': 'bg-yellow-50 text-yellow-700 border-yellow-200',
+                          'CRA': 'bg-yellow-50 text-yellow-700 border-yellow-200',
+                          'LCI': 'bg-yellow-50 text-yellow-700 border-yellow-200',
+                          'LCA': 'bg-yellow-50 text-yellow-700 border-yellow-200',
+                          // Estruturadas / derivativos de opções
+                          'Estruturada': 'bg-orange-50 text-orange-700 border-orange-200',
+                          'estruturada': 'bg-orange-50 text-orange-700 border-orange-200',
+                          'POP': 'bg-orange-50 text-orange-700 border-orange-200',
+                          'Collar': 'bg-orange-50 text-orange-700 border-orange-200',
+                          'collar': 'bg-orange-50 text-orange-700 border-orange-200',
+                          'COE': 'bg-orange-50 text-orange-700 border-orange-200',
+                          // Operações táticas
+                          'Swap': 'bg-rose-50 text-rose-700 border-rose-200',
+                          'swap': 'bg-rose-50 text-rose-700 border-rose-200',
+                          'Troca': 'bg-rose-50 text-rose-700 border-rose-200',
+                          'Long & Short': 'bg-rose-50 text-rose-800 border-rose-300',
+                          'Long&Short': 'bg-rose-50 text-rose-800 border-rose-300',
+                          // Derivativos de bolsa
+                          'Mercado Futuro': 'bg-indigo-50 text-indigo-700 border-indigo-200',
+                          'Mercado a Termo': 'bg-indigo-50 text-indigo-700 border-indigo-200',
+                          // Outros veículos
+                          'Joint Venture': 'bg-gray-50 text-gray-700 border-gray-300',
+                          'Outro': 'bg-gray-50 text-gray-600 border-gray-200',
+                          'outro': 'bg-gray-50 text-gray-600 border-gray-200',
+                        };
+                        const typeColor = _typeColorMap[p.product_type] || 'bg-gray-50 text-gray-600 border-gray-200';
 
                         const confidenceLabel = {
                           exact: 'exato', ilike: 'ilike', prefix: 'prefixo',

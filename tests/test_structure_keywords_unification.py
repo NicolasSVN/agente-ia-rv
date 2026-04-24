@@ -25,22 +25,28 @@ def test_worker_uses_canonical_list():
 
 
 def test_endpoints_use_canonical_list():
-    # api/endpoints/products.py importa _STRUCTURE_KEYWORDS_AI e
-    # _STRUCTURE_KEYWORDS_CONFIRM dentro do escopo das funções, então fazemos
-    # uma checagem textual: os símbolos importados são apenas aliases para
-    # STRUCTURE_KEYWORDS (não há mais tuplas literais nas duas funções).
+    # api/endpoints/products.py deve usar a fonte canônica de structure_keywords,
+    # seja via alias de tupla ou via a função auxiliar find_structure_keyword.
+    # Verificamos que não há mais tuplas literais hardcoded nas funções.
     src = (ROOT / "api" / "endpoints" / "products.py").read_text(encoding="utf-8")
     # Não deve sobrar nenhuma tupla literal "_STRUCTURE_KEYWORDS_AI = (" ou
-    # "_STRUCTURE_KEYWORDS_CONFIRM = (" no arquivo.
+    # "_STRUCTURE_KEYWORDS_CONFIRM = (" no arquivo (foram unificadas na task #POP/MYPK3).
     assert not re.search(r"_STRUCTURE_KEYWORDS_AI\s*=\s*\(", src), (
         "_STRUCTURE_KEYWORDS_AI ainda definido como tupla literal em products.py"
     )
     assert not re.search(r"_STRUCTURE_KEYWORDS_CONFIRM\s*=\s*\(", src), (
         "_STRUCTURE_KEYWORDS_CONFIRM ainda definido como tupla literal em products.py"
     )
-    # Deve haver imports da fonte canônica
-    assert "from services.structure_keywords import STRUCTURE_KEYWORDS as _STRUCTURE_KEYWORDS_AI" in src
-    assert "from services.structure_keywords import STRUCTURE_KEYWORDS as _STRUCTURE_KEYWORDS_CONFIRM" in src
+    # O arquivo deve referenciar services.structure_keywords (seja via STRUCTURE_KEYWORDS
+    # ou via find_structure_keyword — ambas são a fonte canônica).
+    uses_canonical = (
+        "from services.structure_keywords import STRUCTURE_KEYWORDS as _STRUCTURE_KEYWORDS_AI" in src
+        or "from services.structure_keywords import find_structure_keyword" in src
+    )
+    assert uses_canonical, (
+        "products.py não importa de services.structure_keywords. "
+        "Use 'from services.structure_keywords import find_structure_keyword' ou o alias STRUCTURE_KEYWORDS."
+    )
 
 
 def test_canonical_covers_known_terms():

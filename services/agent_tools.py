@@ -394,14 +394,48 @@ async def _execute_search_knowledge_base(args: dict, db=None, conversation_id=No
                 product_type_meta = ""
         # Task #153 — whitelist ESTRITA: valores fora do dicionário conhecido
         # caem para "OUTRO" para evitar injeção via metadado adulterado no banco.
+        # Mapeamento: chave = product_type lowercased tal como sai do banco/vector
+        # store → rótulo de exibição para o agente.
         _PT_WHITELIST = {
+            # Renda Variável — ativos básicos
             "acao": "AÇÃO",
+            "etf": "ETF",
+            "bdr": "BDR",
+            "fii": "FII",
+            # Fundos
+            "fundo": "FUNDO",
+            "fundo multimercado": "FUNDO MULTIMERCADO",
+            "fundo de renda fixa": "FUNDO DE RENDA FIXA",
+            "fia": "FIA",
+            "fic-fia": "FIC-FIA",
+            "fidc": "FIDC",
+            # Renda Fixa / Crédito
+            "debenture": "DEBÊNTURE",
+            "debênture": "DEBÊNTURE",
+            "cri": "CRI",
+            "cra": "CRA",
+            "lci": "LCI",
+            "lca": "LCA",
+            # Estruturadas / derivativos
             "estruturada": "ESTRUTURADA",
             "estrutura": "ESTRUTURADA",
-            "fundo": "FUNDO",
-            "fii": "FII",
-            "etf": "ETF",
-            "debenture": "DEBÊNTURE",
+            "pop": "POP",
+            "collar": "COLLAR",
+            "coe": "COE",
+            # Operações táticas
+            "swap": "SWAP",
+            "long & short": "LONG & SHORT",
+            "long&short": "LONG & SHORT",
+            "long short": "LONG & SHORT",
+            # Derivativos de balcão / bolsa
+            "mercado futuro": "MERCADO FUTURO",
+            "futuro": "MERCADO FUTURO",
+            "mercado a termo": "MERCADO A TERMO",
+            "a termo": "MERCADO A TERMO",
+            "termo": "MERCADO A TERMO",
+            # Outros veículos
+            "joint venture": "JOINT VENTURE",
+            "join venture": "JOINT VENTURE",
         }
         _PT_TAG = _PT_WHITELIST.get(product_type_meta, "OUTRO")
         # Normaliza product_type_meta para downstream: só valores reconhecidos passam.
