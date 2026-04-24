@@ -966,6 +966,46 @@ class UploadQueue:
                     })
 
             if not processing_job:
+                # IDEMPOTÊNCIA: se este material já tem blocos/jobs de uma rodada
+                # anterior interrompida (worker morreu, reupload manual, etc.),
+                # limpa esses artefatos antes de iniciar do zero. Sem isso, a
+                # nova rodada cria blocos duplicados e pode falhar com erros de
+                # uniqueness ao reindexar embeddings. Preservamos `material_files`,
+                # `material_product_links` e `material.product_id` — só os artefatos
+                # derivados do processamento são removidos.
+                from database.models import ContentBlock as _CB
+                existing_blocks = db.query(_CB).filter(
+                    _CB.material_id == item.material_id
+                ).count()
+                existing_jobs = db.query(DocumentProcessingJob).filter(
+                    DocumentProcessingJob.material_id == item.material_id
+                ).count()
+                if existing_blocks or existing_jobs:
+                    logger.info(
+                        f"[UPLOAD_WORKER] Material {item.material_id} tem "
+                        f"{existing_blocks} blocos e {existing_jobs} jobs "
+                        f"de rodada anterior — limpando antes de reprocessar."
+                    )
+                    try:
+                        from services.material_cleanup import purge_processing_artifacts
+                        purge_processing_artifacts(db, item.material_id)
+                        # Reabre o material após o commit do purge.
+                        mat = db.query(Material).filter(
+                            Material.id == item.material_id
+                        ).first()
+                        if not mat:
+                            raise Exception(
+                                f"Material {item.material_id} desapareceu após "
+                                f"limpeza de artefatos órfãos."
+                            )
+                    except Exception as orphan_err:
+                        logger.error(
+                            f"[UPLOAD_WORKER] Falha ao limpar artefatos órfãos do "
+                            f"material {item.material_id}: "
+                            f"{type(orphan_err).__name__}: {orphan_err}"
+                        )
+                        raise
+
                 with open(item.file_path, 'rb') as f:
                     file_hash = hashlib.sha256(f.read()).hexdigest()
 
@@ -987,24 +1027,35 @@ class UploadQueue:
                         "existing_material_id": duplicate.id
                     })
                     logger.warning(f"[UPLOAD] Duplicata bloqueada: file_hash={file_hash[:12]}... material_id_existente={duplicate.id}")
+                    # Material fantasma: descarta TODAS as tabelas filhas via helper
+                    # central. O cleanup parcial anterior só limpava 3 das ~9 tabelas
+                    # e quebrava com ForeignKeyViolation em re-uploads de swap/estrutura
+                    # (porque a pré-análise já criou MaterialProductLink, blocos, etc.).
                     try:
-                        from database.models import MaterialFile
-                        db.query(DocumentPageResult).filter(
-                            DocumentPageResult.job_id.in_(
-                                db.query(DocumentProcessingJob.id).filter(DocumentProcessingJob.material_id == mat.id)
-                            )
-                        ).delete(synchronize_session=False)
-                        db.query(DocumentProcessingJob).filter(DocumentProcessingJob.material_id == mat.id).delete(synchronize_session=False)
-                        db.query(MaterialFile).filter(MaterialFile.material_id == mat.id).delete()
+                        from services.material_cleanup import purge_material_dependencies
+                        purge_material_dependencies(db, mat.id)
                         db.delete(mat)
                         db.commit()
-                        logger.info(f"[UPLOAD] Material fantasma {item.material_id} deletado (duplicata de {duplicate.id})")
+                        logger.info(
+                            f"[UPLOAD] Material fantasma {item.material_id} deletado "
+                            f"(duplicata de {duplicate.id})"
+                        )
                     except Exception as del_err:
                         db.rollback()
-                        logger.warning(f"[UPLOAD] Não foi possível deletar material fantasma: {del_err}")
-                        mat.processing_status = ProcessingStatus.FAILED.value if hasattr(ProcessingStatus, 'FAILED') else "failed"
-                        mat.processing_error = dup_msg
-                        db.commit()
+                        logger.warning(
+                            f"[UPLOAD] Não foi possível deletar material fantasma "
+                            f"{item.material_id}: {type(del_err).__name__}: {del_err}"
+                        )
+                        # Re-fetch porque o purge pode ter feito rollback e deixado
+                        # `mat` em estado detached/transient.
+                        mat = db.query(Material).filter(Material.id == item.material_id).first()
+                        if mat:
+                            mat.processing_status = (
+                                ProcessingStatus.FAILED.value
+                                if hasattr(ProcessingStatus, 'FAILED') else "failed"
+                            )
+                            mat.processing_error = dup_msg
+                            db.commit()
                     item.status = UploadStatus.FAILED
                     item.error = dup_msg
                     self._update_db_status(item)

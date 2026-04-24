@@ -2114,12 +2114,18 @@ async def get_material(
 
 
 async def _delete_material_impl(db: Session, material_id: int, username: str) -> dict:
-    """Lógica de exclusão de material reutilizável pelos dois endpoints de delete."""
-    from database.models import (
-        PersistentQueueItem, DocumentProcessingJob, DocumentPageResult,
-        PendingReviewItem, BlockVersion, IngestionLog, MaterialProductLink,
-        MaterialFile,
-    )
+    """Lógica de exclusão de material reutilizável pelos dois endpoints de delete.
+
+    Toda a remoção de tabelas filhas (com FK sem `ON DELETE CASCADE`) está
+    encapsulada em ``services.material_cleanup.purge_material_dependencies``,
+    o mesmo helper usado pelo worker quando precisa descartar um material
+    fantasma criado para um upload duplicado. Centralizar aqui evita o bug
+    em produção onde o worker deletava só 3 das ~9 tabelas filhas e o
+    `db.delete(mat)` final estourava ForeignKeyViolation.
+    """
+    from services.material_cleanup import purge_material_dependencies
+    from database.models import PersistentQueueItem
+
     material = db.query(Material).options(
         joinedload(Material.blocks)
     ).filter(Material.id == material_id).first()
@@ -2127,86 +2133,54 @@ async def _delete_material_impl(db: Session, material_id: int, username: str) ->
     if not material:
         raise HTTPException(status_code=404, detail="Material não encontrado")
 
+    name = material.name
     print(
-        f"[DELETE MATERIAL] Iniciando exclusão de '{material.name}' "
+        f"[DELETE MATERIAL] Iniciando exclusão de '{name}' "
         f"(id={material_id}, product_id={material.product_id}) por {username} "
         f"— {len(material.blocks)} blocos"
     )
 
-    vector_store = VectorStore()
-    for block in material.blocks:
-        vector_store.delete_document(f"product_block_{block.id}")
-    print(f"[DELETE MATERIAL] {len(material.blocks)} embeddings removidos do vector store")
-
-    # Remove itens de fila
-    n = db.query(PersistentQueueItem).filter(
-        PersistentQueueItem.material_id == material_id
-    ).delete()
-    print(f"[DELETE MATERIAL] {n} queue_items removidos")
-
-    # Remove jobs de processamento e seus resultados por página
-    job_ids = [
-        j.id for j in db.query(DocumentProcessingJob.id).filter(
-            DocumentProcessingJob.material_id == material_id
-        ).all()
-    ]
-    if job_ids:
-        n = db.query(DocumentPageResult).filter(
-            DocumentPageResult.job_id.in_(job_ids)
+    # Para deleção EXPLÍCITA de material (esta rota é chamada pelo usuário
+    # via UI), também removemos as linhas órfãs em `upload_queue_items`.
+    # Os helpers de cleanup intencionalmente NÃO mexem nessa tabela porque
+    # ela é gerenciada pelo ciclo de vida da fila e o worker depende da
+    # linha ativa para persistir status final em fluxos de duplicata
+    # bloqueada. Aqui (delete pelo usuário) é seguro removê-las.
+    try:
+        n_qi = db.query(PersistentQueueItem).filter(
+            PersistentQueueItem.material_id == material_id
         ).delete(synchronize_session=False)
-        print(f"[DELETE MATERIAL] {n} page_results removidos")
+        if n_qi:
+            print(f"[DELETE MATERIAL] {n_qi} upload_queue_items removidos")
+        db.commit()
+    except Exception as qi_err:
+        db.rollback()
+        print(
+            f"[DELETE MATERIAL] Aviso: falha limpando upload_queue_items "
+            f"para material {material_id}: {qi_err}"
+        )
 
-    n = db.query(DocumentProcessingJob).filter(
-        DocumentProcessingJob.material_id == material_id
-    ).delete()
-    print(f"[DELETE MATERIAL] {n} processing_jobs removidos")
+    try:
+        counts = purge_material_dependencies(db, material_id)
+    except Exception as cleanup_err:
+        # purge_material_dependencies já fez rollback e logou [CLEANUP_FAIL].
+        # Propagamos como 500 com a constraint nas mensagens para diagnose.
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                f"Erro ao limpar dependências do material: "
+                f"{type(cleanup_err).__name__}: {cleanup_err}"
+            ),
+        )
 
-    # FK sem CASCADE — limpeza manual de blocos filhos
-    block_ids = [b.id for b in material.blocks]
-    if block_ids:
-        # VisualCache referencia content_blocks.id sem ON DELETE CASCADE —
-        # precisa ser removido explicitamente antes dos blocos.
-        n = db.query(VisualCache).filter(
-            VisualCache.content_block_id.in_(block_ids)
-        ).delete(synchronize_session=False)
-        print(f"[DELETE MATERIAL] {n} visual_cache removidos")
+    print(f"[DELETE MATERIAL] cleanup counts={counts}")
 
-        n = db.query(PendingReviewItem).filter(
-            PendingReviewItem.block_id.in_(block_ids)
-        ).delete(synchronize_session=False)
-        print(f"[DELETE MATERIAL] {n} pending_review_items removidos")
-        n = db.query(BlockVersion).filter(
-            BlockVersion.block_id.in_(block_ids)
-        ).delete(synchronize_session=False)
-        print(f"[DELETE MATERIAL] {n} block_versions removidos")
+    # Reabre o objeto após o commit do cleanup para garantir um estado fresco.
+    material = db.query(Material).filter(Material.id == material_id).first()
+    if not material:
+        # Já não existe (caso raro de race com outro delete) — sucesso.
+        return {"success": True}
 
-    # CampaignStructure.material_id é nullable=True sem ON DELETE —
-    # desvincula a campanha em vez de bloquear a exclusão do material.
-    n = db.query(CampaignStructure).filter(
-        CampaignStructure.material_id == material_id
-    ).update({"material_id": None}, synchronize_session=False)
-    if n:
-        print(f"[DELETE MATERIAL] {n} campaign_structures desvinculadas do material")
-
-    # Logs de ingestão
-    n = db.query(IngestionLog).filter(
-        IngestionLog.material_id == material_id
-    ).delete(synchronize_session=False)
-    print(f"[DELETE MATERIAL] {n} ingestion_logs removidos")
-
-    # Vínculos multi-produto
-    n = db.query(MaterialProductLink).filter(
-        MaterialProductLink.material_id == material_id
-    ).delete(synchronize_session=False)
-    print(f"[DELETE MATERIAL] {n} material_product_links removidos")
-
-    # Arquivo binário salvo no banco
-    n = db.query(MaterialFile).filter(
-        MaterialFile.material_id == material_id
-    ).delete(synchronize_session=False)
-    print(f"[DELETE MATERIAL] {n} material_files (BYTEA) removidos")
-
-    name = material.name
     try:
         db.delete(material)
         db.commit()
@@ -2214,10 +2188,13 @@ async def _delete_material_impl(db: Session, material_id: int, username: str) ->
         db.rollback()
         import traceback
         tb = traceback.format_exc()
-        print(f"[DELETE MATERIAL] ERRO ao commitar deleção de '{name}' (id={material_id}): {commit_err}\n{tb}")
+        print(
+            f"[DELETE MATERIAL] ERRO ao commitar deleção de '{name}' "
+            f"(id={material_id}): {commit_err}\n{tb}"
+        )
         raise HTTPException(
             status_code=500,
-            detail=f"Erro ao deletar material: {type(commit_err).__name__}: {commit_err}"
+            detail=f"Erro ao deletar material: {type(commit_err).__name__}: {commit_err}",
         )
     print(f"[DELETE MATERIAL] Material '{name}' deletado do banco")
     return {"success": True}
@@ -3386,35 +3363,73 @@ async def get_material_pdf(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Retorna o arquivo PDF de um material."""
+    """Retorna o arquivo PDF de um material.
+
+    Quando o arquivo NÃO existe nem no disco nem no BYTEA do banco
+    (cenário comum no Railway, onde o filesystem é efêmero entre deploys
+    e materiais antigos podem não ter o backup em ``material_files``),
+    retornamos um 404 com payload estruturado:
+
+        {
+          "detail": "...",
+          "code": "FILE_MISSING",
+          "can_reupload": true,
+          "reupload_endpoint": "/api/products/admin/reupload-pdf/<id>"
+        }
+
+    O frontend reconhece ``code=FILE_MISSING`` e oferece reupload em vez
+    de mostrar a string crua "PDF não encontrado..." — o usuário consegue
+    destravar o material sem precisar contatar o admin.
+    """
     if current_user.role not in ["admin", "gestao_rv", "broker"]:
         raise HTTPException(status_code=403, detail="Acesso negado")
-    
+
     material = db.query(Material).filter(Material.id == material_id).first()
     if not material:
-        raise HTTPException(status_code=404, detail="Material não encontrado")
-    
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "message": "Material não encontrado",
+                "code": "MATERIAL_NOT_FOUND",
+            },
+        )
+
     import os
     from fastapi.responses import FileResponse
-    
+
     ALLOWED_UPLOAD_DIR = os.path.realpath("uploads/materials")
     file_path = None
-    
+
     if material.source_file_path:
         candidate = os.path.realpath(material.source_file_path)
         if os.path.commonpath([candidate, ALLOWED_UPLOAD_DIR]) == ALLOWED_UPLOAD_DIR and os.path.isfile(candidate):
             file_path = candidate
-    
+
     if not file_path:
         restored = _restore_pdf_from_db(db, material_id)
         if restored:
             candidate = os.path.realpath(restored)
             if os.path.commonpath([candidate, ALLOWED_UPLOAD_DIR]) == ALLOWED_UPLOAD_DIR and os.path.isfile(candidate):
                 file_path = candidate
-    
+
     if not file_path:
-        raise HTTPException(status_code=404, detail="PDF não encontrado no disco nem no banco de dados")
-    
+        # Payload estruturado para que a UI ofereça reupload em vez de
+        # mostrar 404 cru. Usamos `detail` como objeto (FastAPI serializa
+        # para JSON) e mantemos `message` separado para humanos.
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "message": (
+                    "Arquivo binário não disponível para este material. "
+                    "Refaça o upload do PDF para reativar a visualização."
+                ),
+                "code": "FILE_MISSING",
+                "can_reupload": True,
+                "material_id": material_id,
+                "reupload_endpoint": f"/api/products/admin/reupload-pdf/{material_id}",
+            },
+        )
+
     return FileResponse(
         file_path,
         media_type="application/pdf",

@@ -825,6 +825,107 @@
         document.getElementById('btn-cancel-modal').addEventListener('click', function() { closeConfirmModal(); });
         document.getElementById('confirmBtn').addEventListener('click', function() { confirmAction(); });
 
+        // Hidden input reusado pelo fluxo "Reenviar PDF" disparado quando o
+        // GET /materials/{id}/pdf devolve {code: FILE_MISSING} (filesystem
+        // efêmero do Railway + materiais antigos sem BYTEA backup).
+        const reuploadInput = document.createElement('input');
+        reuploadInput.type = 'file';
+        reuploadInput.accept = 'application/pdf,.pdf';
+        reuploadInput.style.display = 'none';
+        document.body.appendChild(reuploadInput);
+
+        async function openMaterialPdf(materialId) {
+            // Tenta abrir o PDF; se faltar (FILE_MISSING), oferece reupload em
+            // vez de mostrar o JSON cru "PDF não encontrado..." numa aba nova.
+            // Estratégia: HEAD primeiro p/ não baixar o blob inteiro só pra checar.
+            try {
+                const url = `/api/products/materials/${materialId}/pdf`;
+                const probe = await fetch(url, { method: 'GET', headers: { 'Accept': 'application/json' } });
+                if (probe.ok) {
+                    // Conteúdo disponível — abre numa nova aba (mesma URL,
+                    // o navegador faz o request e o servidor agora devolve PDF).
+                    window.open(url, '_blank');
+                    return;
+                }
+                if (probe.status === 404) {
+                    let body = {};
+                    try { body = await probe.json(); } catch (_) { body = {}; }
+                    const detail = body && body.detail;
+                    const code = detail && typeof detail === 'object' ? detail.code : null;
+                    if (code === 'FILE_MISSING') {
+                        promptReupload(materialId, detail.message || 'Arquivo binário não disponível');
+                        return;
+                    }
+                    const msg = (detail && typeof detail === 'object' ? detail.message : detail) || 'Material não encontrado';
+                    if (window.toast && window.toast.error) window.toast.error(msg);
+                    else alert(msg);
+                    return;
+                }
+                if (window.toast && window.toast.error) {
+                    window.toast.error(`Erro ao abrir PDF (HTTP ${probe.status})`);
+                } else {
+                    alert(`Erro ao abrir PDF (HTTP ${probe.status})`);
+                }
+            } catch (err) {
+                console.error('[openMaterialPdf]', err);
+                if (window.toast && window.toast.error) window.toast.error('Erro de rede ao abrir PDF');
+                else alert('Erro de rede ao abrir PDF');
+            }
+        }
+
+        function promptReupload(materialId, message) {
+            const proceed = window.toast && window.toast.confirm
+                ? null
+                : window.confirm(`${message}\n\nDeseja reenviar o PDF agora?`);
+            const startUpload = () => {
+                reuploadInput.onchange = async (ev) => {
+                    const file = ev.target.files && ev.target.files[0];
+                    reuploadInput.value = '';
+                    if (!file) return;
+                    if (!file.name.toLowerCase().endsWith('.pdf')) {
+                        if (window.toast && window.toast.error) window.toast.error('Apenas arquivos PDF são aceitos');
+                        else alert('Apenas arquivos PDF são aceitos');
+                        return;
+                    }
+                    try {
+                        const fd = new FormData();
+                        fd.append('file', file);
+                        const res = await fetch(`/api/products/admin/reupload-pdf/${materialId}`, {
+                            method: 'POST', body: fd
+                        });
+                        if (!res.ok) {
+                            const errBody = await res.json().catch(() => ({}));
+                            const errDetail = errBody && errBody.detail;
+                            const txt = (errDetail && typeof errDetail === 'object' ? errDetail.message : errDetail) || `HTTP ${res.status}`;
+                            if (window.toast && window.toast.error) window.toast.error(`Falha ao enviar PDF: ${txt}`);
+                            else alert(`Falha ao enviar PDF: ${txt}`);
+                            return;
+                        }
+                        if (window.toast && window.toast.success) window.toast.success('PDF reenviado com sucesso');
+                        else alert('PDF reenviado com sucesso');
+                        // Reabre o material agora que o BYTEA foi populado.
+                        window.open(`/api/products/materials/${materialId}/pdf`, '_blank');
+                    } catch (err) {
+                        console.error('[reupload]', err);
+                        if (window.toast && window.toast.error) window.toast.error('Erro de rede ao reenviar PDF');
+                        else alert('Erro de rede ao reenviar PDF');
+                    }
+                };
+                reuploadInput.click();
+            };
+
+            if (window.toast && window.toast.confirm) {
+                window.toast.confirm({
+                    title: 'PDF não disponível',
+                    message: `${message} Deseja reenviar o arquivo agora?`,
+                    confirmText: 'Reenviar PDF',
+                    cancelText: 'Cancelar',
+                }).then((ok) => { if (ok) startUpload(); });
+            } else if (proceed) {
+                startUpload();
+            }
+        }
+
         document.querySelector('#docGrid').addEventListener('click', function(e) {
             const target = e.target.closest('[data-action]');
             if (!target) return;
@@ -834,7 +935,7 @@
 
             if (action === 'process') processDocument(materialId);
             else if (action === 'delete') deleteDocument(materialId, productId);
-            else if (action === 'view') window.open(`/api/products/materials/${materialId}/pdf`, '_blank');
+            else if (action === 'view') openMaterialPdf(materialId);
             else if (action === 'toggle-all') toggleSelectAll();
             else if (action === 'toggle-select') {
                 const docId = parseInt(target.dataset.id);
