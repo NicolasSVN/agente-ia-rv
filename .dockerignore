@@ -1,0 +1,105 @@
+# =============================================================================
+# .dockerignore — segunda linha de defesa contra "build context inflado"
+#
+# Por quê: o Dockerfile faz `COPY . .` no fim, então TUDO que entrar no contexto
+# vira parte da imagem (mesmo que nunca seja usado). O .gitignore protege o
+# git, mas NÃO protege o Docker daemon — se algum agente esquecer e commitar
+# um node_modules/ ou .pythonlibs/ por engano, sem .dockerignore o build
+# Railway estoura tempo/memória sem mostrar erro útil.
+#
+# Tudo aqui é redundante com o .gitignore para git-tracked, mas crítico se
+# alguém testar `docker build .` localmente fora do GitHub (Railway clona o
+# repo, então no Railway só importa o que está no git — mas .dockerignore
+# AINDA acelera o upload do build context para o Docker daemon mesmo dentro
+# do Railway).
+# =============================================================================
+
+# --- Versionamento e ferramentas locais
+.git/
+.gitignore
+.gitattributes
+
+# --- Python build / cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+*.egg
+.eggs/
+build/
+develop-eggs/
+downloads/
+eggs/
+parts/
+sdist/
+var/
+wheels/
+
+# --- Virtualenvs e Replit Python local
+.venv/
+venv/
+env/
+ENV/
+.pythonlibs/
+
+# --- Caches diversos
+.cache/
+.config/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.tox/
+
+# --- IDE / editor
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# --- Banco local (NUNCA vai pra produção; produção usa PostgreSQL Railway)
+*.db
+*.sqlite3
+*.sqlite
+
+# --- ChromaDB local (legacy, agora usamos pgvector)
+chroma_db/
+
+# --- Logs
+*.log
+logs/
+
+# --- Frontend node_modules (todos os apps React)
+node_modules/
+frontend/*/node_modules/
+artifacts/*/node_modules/
+
+# --- Pasta de mockups/canvas (uso só local pelo agente Replit)
+artifacts/
+
+# --- Volume de uploads (populado em runtime no Railway, não na imagem)
+# O Dockerfile cria os subdirs vazios depois do COPY, então não precisamos
+# trazer arquivos antigos do dev.
+uploads/
+
+# --- Arquivos de mídia anexados via chat do Replit (nunca servidos em prod)
+attached_assets/
+
+# --- Documentação e meta-arquivos do agente Replit
+*.md
+.local/
+.replit
+replit.nix
+.upm/
+
+# --- Testes (rodam em CI, não dentro do container de produção)
+tests/
+
+# --- Arquivos de ambiente
+.env
+.env.*
+!.env.example

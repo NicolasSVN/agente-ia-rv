@@ -990,10 +990,76 @@ app.mount("/derivatives-diagrams", StaticFiles(directory="static/derivatives_dia
 
 # ========== Health Check ==========
 
+_VERSION_CACHE: dict[str, str] | None = None
+
+
+def _read_version_info() -> dict[str, str]:
+    """Lê /app/VERSION e /app/BUILD_TIMESTAMP gravados pelo Dockerfile.
+
+    Em ordem de prioridade:
+      1. Arquivos /app/VERSION e /app/BUILD_TIMESTAMP (gravados no build).
+      2. Env vars RAILWAY_GIT_COMMIT_SHA / RAILWAY_DEPLOYMENT_ID (Railway runtime).
+      3. Strings 'unknown' como fallback inofensivo.
+
+    Resultado é cacheado em memória — esses valores não mudam dentro de um
+    mesmo container.
+    """
+    global _VERSION_CACHE
+    if _VERSION_CACHE is not None:
+        return _VERSION_CACHE
+
+    import os as _os
+
+    def _read(path: str) -> str:
+        """Lê arquivo e trata 'unknown' como ausência de informação.
+
+        O Dockerfile grava 'unknown' no /app/VERSION quando o build não
+        recebe nem ARG GIT_SHA nem env RAILWAY_GIT_COMMIT_SHA. Se tratássemos
+        'unknown' como valor válido, o fallback para env runtime nunca seria
+        usado mesmo quando o Railway tem RAILWAY_GIT_COMMIT_SHA disponível
+        no runtime — situação que o Architect (Task #179) pegou como bug.
+        """
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                value = f.read().strip()
+                return "" if value.lower() in ("", "unknown") else value
+        except (FileNotFoundError, PermissionError, OSError):
+            return ""
+
+    commit = (
+        _read("/app/VERSION")
+        or _os.environ.get("RAILWAY_GIT_COMMIT_SHA", "")
+        or "unknown"
+    )
+    built_at = (
+        _read("/app/BUILD_TIMESTAMP")
+        or _os.environ.get("RAILWAY_DEPLOYMENT_ID", "")
+        or "unknown"
+    )
+
+    # Apenas commit_short é exposto publicamente para reduzir a superfície
+    # de information disclosure (branch/environment ficam só nos logs internos).
+    info = {
+        "commit_short": (commit[:7] if commit and commit != "unknown" else "unknown"),
+        "built_at": built_at,
+    }
+
+    _VERSION_CACHE = info
+    return info
+
+
 @app.get("/health")
 async def health_check():
-    """Health check endpoint - responde 200 imediatamente sem dependência de banco."""
-    return {"status": "ok"}
+    """Health check endpoint — responde 200 imediatamente sem dependência de banco.
+
+    Inclui informação de versão (commit SHA e timestamp de build) para que seja
+    possível confirmar EM PRODUÇÃO qual revisão do código está rodando, sem
+    precisar acessar o dashboard do Railway. Isso elimina a ambiguidade
+    "deploy entrou ou não?" — bastando rodar `curl /health` e comparar o
+    `commit_short` com o `git rev-parse --short HEAD` local.
+    """
+    info = _read_version_info()
+    return {"status": "ok", **info}
 
 
 # ========== Rotas de Páginas HTML ==========
