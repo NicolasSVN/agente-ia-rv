@@ -1891,11 +1891,16 @@ async def dispatch_campaign_stream(
     
     async def generate_events():
         from services.whatsapp_client import zapi_client
-        from core.config import get_public_domain
+        from core.config import build_attachment_public_url
         import os
         
         zapi_configured = zapi_client.is_configured()
-        replit_domain = get_public_domain()
+        # Resolve a URL pública do anexo UMA VEZ por campanha. Se a campanha
+        # tem anexo mas o domínio público não está configurado, devolve None
+        # e cada disparo será marcado como FAILED com mensagem clara — em vez
+        # de mandar URL relativa ao Z-API e travar o disparo em "pendente".
+        full_attachment_url = build_attachment_public_url(attachment_url) if attachment_url else None
+        attachment_url_invalid = bool(attachment_url) and full_attachment_url is None
         sent_count = 0
         failed_count = 0
         current_index = 0
@@ -1946,11 +1951,27 @@ async def dispatch_campaign_stream(
                     error_msg = ""
                     attempt = 1
                     
-                    if phone and zapi_configured:
+                    if phone and zapi_configured and attachment_url_invalid:
+                        # Anexo configurado mas URL pública não pôde ser
+                        # construída (sem APP_BASE_URL/REPLIT_DOMAINS).
+                        # Mandar caminho relativo para o Z-API faz o disparo
+                        # travar em "pendente" eternamente. Falhar agora
+                        # com mensagem clara.
+                        dispatch.status = "failed"
+                        dispatch.error_message = "URL pública do anexo indisponível"
+                        dispatch.error_details = (
+                            "Não foi possível montar a URL pública do anexo "
+                            "para envio via WhatsApp. Configure a variável de "
+                            "ambiente APP_BASE_URL (ou REPLIT_DOMAINS) com o "
+                            "domínio público da aplicação e tente novamente."
+                        )
+                        failed_count += 1
+                        status = "failed"
+                        error_msg = "URL pública do anexo indisponível"
+                    elif phone and zapi_configured:
                         while attempt <= MAX_RETRY_ATTEMPTS:
                             try:
                                 if attachment_url and attachment_type:
-                                    full_attachment_url = f"https://{replit_domain}{attachment_url}" if replit_domain and attachment_url.startswith('/') else attachment_url
                                     if attachment_type == "image":
                                         result = await zapi_client.send_image(phone, full_attachment_url, message)
                                     elif attachment_type == "video":
@@ -2264,9 +2285,16 @@ async def dispatch_campaign_from_base(campaign, db: Session):
     attachment_filename = campaign.attachment_filename
     
     async def generate_events():
-        from core.config import get_public_domain
+        from core.config import build_attachment_public_url
         zapi_configured = zapi_client.is_configured()
-        replit_domain = get_public_domain()
+        # Resolve a URL pública absoluta do anexo UMA VEZ por campanha. Se a
+        # campanha tem anexo mas o domínio público não está configurado
+        # (APP_BASE_URL/REPLIT_DOMAINS ausentes), `full_attachment_url` fica
+        # None e cada disparo será marcado como FAILED com mensagem clara —
+        # em vez de mandar URL relativa ("/uploads/...") ao Z-API e ver o
+        # disparo travar permanentemente em "pendente".
+        full_attachment_url = build_attachment_public_url(attachment_url) if attachment_url else None
+        attachment_url_invalid = bool(attachment_url) and full_attachment_url is None
         sent_count = 0
         failed_count = 0
         current_index = 0
@@ -2341,11 +2369,27 @@ async def dispatch_campaign_from_base(campaign, db: Session):
                     error_msg = ""
                     attempt = 1
                     
-                    if phone and zapi_configured:
+                    if phone and zapi_configured and attachment_url_invalid:
+                        # Anexo configurado mas URL pública não pôde ser
+                        # construída (sem APP_BASE_URL/REPLIT_DOMAINS).
+                        # Mandar caminho relativo para o Z-API faz o disparo
+                        # travar em "pendente" eternamente. Falhar agora
+                        # com mensagem clara.
+                        dispatch.status = "failed"
+                        dispatch.error_message = "URL pública do anexo indisponível"
+                        dispatch.error_details = (
+                            "Não foi possível montar a URL pública do anexo "
+                            "para envio via WhatsApp. Configure a variável de "
+                            "ambiente APP_BASE_URL (ou REPLIT_DOMAINS) com o "
+                            "domínio público da aplicação e tente novamente."
+                        )
+                        failed_count += 1
+                        status = "failed"
+                        error_msg = "URL pública do anexo indisponível"
+                    elif phone and zapi_configured:
                         while attempt <= MAX_RETRY_ATTEMPTS:
                             try:
                                 if attachment_url and attachment_type:
-                                    full_attachment_url = f"https://{replit_domain}{attachment_url}" if replit_domain and attachment_url.startswith('/') else attachment_url
                                     if attachment_type == "image":
                                         result = await zapi_client.send_image(phone, full_attachment_url, message)
                                     elif attachment_type == "video":

@@ -284,9 +284,23 @@ async def run_cadence_tick():
                     attachment_filename = campaign.attachment_filename
 
                     if attachment_url and attachment_type:
-                        from core.config import get_public_domain
-                        replit_domain = get_public_domain()
-                        full_url = f"https://{replit_domain}{attachment_url}" if replit_domain and attachment_url.startswith('/') else attachment_url
+                        from core.config import build_attachment_public_url
+                        full_url = build_attachment_public_url(attachment_url)
+                        if not full_url:
+                            # Sem URL pública absoluta o Z-API não consegue
+                            # baixar o anexo e o disparo travaria em pendente.
+                            # Falhar imediatamente com mensagem clara — sem
+                            # consumir tentativas/retries do motor de cadência.
+                            next_dispatch.status = "failed"
+                            next_dispatch.error_message = "URL pública do anexo indisponível"
+                            db.commit()
+                            print(
+                                f"[CADENCE] Anexo da campanha '{campaign.name}' (id={campaign.id}) "
+                                f"sem URL pública absoluta. Configure APP_BASE_URL/REPLIT_DOMAINS. "
+                                f"Dispatch {next_dispatch.id} marcado como FAILED."
+                            )
+                            sent_this_tick = True
+                            continue
                         if attachment_type == "image":
                             result = await zapi.send_image(phone, full_url, message)
                         elif attachment_type == "video":

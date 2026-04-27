@@ -71,3 +71,41 @@ def get_public_base_url() -> str:
     if domain:
         return f"https://{domain}"
     return ""
+
+
+def build_attachment_public_url(attachment_url: str) -> str | None:
+    """
+    Constrói a URL pública absoluta de um anexo de campanha para que o
+    Z-API consiga baixá-lo.
+
+    - Se `attachment_url` já for absoluta (http/https), devolve como está.
+    - Se for relativa (ex.: "/uploads/attachments/xxx.pdf"), prefixa com a
+      base pública (`APP_BASE_URL` ou `REPLIT_DOMAINS`/`REPLIT_DEV_DOMAIN`).
+    - Se não houver `attachment_url` ou não for possível montar uma URL
+      absoluta (sem domínio público configurado), devolve `None` para que
+      o caller possa marcar o disparo como FALHADO em vez de tentar enviar
+      um caminho inválido para o Z-API (que faz o disparo travar
+      eternamente em "pendente").
+
+    Esta função é a fonte única da verdade para a URL de anexo enviada à
+    Z-API. Usada pelos 3 caminhos de disparo (SSE imediato, base de
+    assessores, motor de cadência).
+    """
+    if not attachment_url:
+        return None
+
+    url = attachment_url.strip()
+    if not url:
+        return None
+
+    if url.startswith(("http://", "https://", "data:")):
+        return url
+
+    if not url.startswith("/"):
+        url = "/" + url
+
+    base = get_public_base_url()
+    if not base:
+        return None
+
+    return f"{base.rstrip('/')}{url}"
