@@ -152,12 +152,25 @@ def resolve_attachment_for_send(attachment_url: str) -> str | None:
     if not url.startswith("/"):
         url = "/" + url
 
-    local_path = url.lstrip("/")
-    if os.path.isfile(local_path):
+    # Restringir leitura local APENAS ao diretório de uploads de campanhas.
+    # Proteção contra path traversal: normalizar o caminho absoluto e
+    # verificar que está dentro do prefixo seguro antes de abrir qualquer arquivo.
+    _UPLOADS_ROOT = os.path.realpath(
+        os.path.join(os.getcwd(), "uploads", "attachments")
+    )
+    raw_local = url.lstrip("/")
+    candidate = os.path.realpath(os.path.join(os.getcwd(), raw_local))
+
+    if not candidate.startswith(_UPLOADS_ROOT + os.sep) and candidate != _UPLOADS_ROOT:
+        _log.warning(
+            f"[ATTACHMENT] Caminho '{raw_local}' fora do diretório de uploads "
+            "permitido — acesso negado. Tentando URL pública como fallback."
+        )
+    elif os.path.isfile(candidate):
         try:
-            mime_type, _ = mimetypes.guess_type(local_path)
+            mime_type, _ = mimetypes.guess_type(candidate)
             if not mime_type:
-                ext = local_path.rsplit(".", 1)[-1].lower() if "." in local_path else ""
+                ext = candidate.rsplit(".", 1)[-1].lower() if "." in candidate else ""
                 mime_type = {
                     "pdf": "application/pdf",
                     "png": "image/png",
@@ -169,16 +182,16 @@ def resolve_attachment_for_send(attachment_url: str) -> str | None:
                     "mp3": "audio/mpeg",
                     "ogg": "audio/ogg",
                 }.get(ext, "application/octet-stream")
-            with open(local_path, "rb") as fh:
+            with open(candidate, "rb") as fh:
                 encoded = base64.b64encode(fh.read()).decode("ascii")
             _log.info(
-                f"[ATTACHMENT] Arquivo '{local_path}' codificado em base64 "
+                f"[ATTACHMENT] Arquivo '{raw_local}' codificado em base64 "
                 f"({mime_type}) para envio via Z-API."
             )
             return f"data:{mime_type};base64,{encoded}"
         except (OSError, IOError) as exc:
             _log.warning(
-                f"[ATTACHMENT] Não foi possível ler '{local_path}' para base64: {exc}. "
+                f"[ATTACHMENT] Não foi possível ler '{raw_local}' para base64: {exc}. "
                 "Tentando URL pública como fallback."
             )
 
