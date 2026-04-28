@@ -583,7 +583,7 @@ async def process_text_message(phone: str, message: str, db: Session, message_re
         normalize_message, extract_first_name, identify_contact,
         update_conversation_state,
         increment_stalled_counter, reset_stalled_counter, escalate_to_human_with_analysis,
-        is_positive_confirmation, mark_bot_resolved
+        is_positive_confirmation, is_negative_confirmation, mark_bot_resolved
     )
     from database.models import ConversationState
     
@@ -628,8 +628,12 @@ async def process_text_message(phone: str, message: str, db: Session, message_re
             return
         
         if conversation.ticket_status == TicketStatusV2.SOLVED.value:
-            if is_positive_confirmation(normalized_message) or _is_farewell_or_emoji(normalized_message):
-                print(f"[WEBHOOK] Ticket SOLVED + despedida/emoji/agradecimento — ignorando (sem loop): {phone}")
+            if (
+                is_positive_confirmation(normalized_message)
+                or is_negative_confirmation(normalized_message)
+                or _is_farewell_or_emoji(normalized_message)
+            ):
+                print(f"[WEBHOOK] Ticket SOLVED + encerramento/despedida/emoji — ignorando (sem loop): {phone}")
                 if message_record:
                     message_record.ai_response = None
                     message_record.ai_intent = "solved_farewell_ignored"
@@ -730,6 +734,7 @@ async def process_text_message(phone: str, message: str, db: Session, message_re
         history = get_history(phone, db)
         
         if conversation.awaiting_confirmation:
+            import random
             if is_positive_confirmation(normalized_message):
                 print(f"[WEBHOOK] Confirmação positiva detectada - marcando como resolvido pelo bot")
                 await mark_bot_resolved(db, conversation)
@@ -741,12 +746,41 @@ async def process_text_message(phone: str, message: str, db: Session, message_re
                     "Perfeito! Até mais!",
                     "Beleza! Qualquer dúvida, só chamar!",
                 ]
-                import random
                 response = random.choice(farewell_messages)
                 
                 if message_record:
                     message_record.ai_response = response
                     message_record.ai_intent = "bot_resolution_confirmed"
+                    db.commit()
+                
+                result = await zapi_client.send_text(phone, response, delay_typing=1)
+                if result.get("success"):
+                    response_sent_successfully = True
+                    save_message_zapi(
+                        db, message_id=result.get("message_id"), zaap_id=result.get("zaap_id"),
+                        phone=phone, direction=MessageDirection.OUTBOUND.value,
+                        message_type=MessageType.TEXT.value, from_me=True, body=response,
+                        sender_type=SenderType.BOT.value
+                    )
+                return
+            elif is_negative_confirmation(normalized_message):
+                # Usuário disse "não", "nada", etc. em resposta à pergunta de confirmação.
+                # Encerrar conversa como resolvida sem passar pelo pipeline de IA,
+                # evitando que o bot fique perguntando novamente.
+                print(f"[WEBHOOK] Confirmação negativa detectada - encerrando conversa como resolvida")
+                await mark_bot_resolved(db, conversation)
+                
+                closing_messages = [
+                    "Entendido! Fico por aqui se precisar.",
+                    "Ok! Qualquer coisa, é só chamar.",
+                    "Combinado! 👋",
+                    "Beleza! Fico à disposição.",
+                ]
+                response = random.choice(closing_messages)
+                
+                if message_record:
+                    message_record.ai_response = response
+                    message_record.ai_intent = "bot_resolution_negative_confirmed"
                     db.commit()
                 
                 result = await zapi_client.send_text(phone, response, delay_typing=1)
@@ -1565,15 +1599,32 @@ async def zapi_webhook(
     
     if conversation and conversation.ticket_status == TicketStatusV2.SOLVED.value:
         incoming_text = body or ""
-        from services.conversation_flow import is_positive_confirmation
-        if incoming_text and (is_positive_confirmation(incoming_text) or _is_farewell_or_emoji(incoming_text)):
-            print(f"[WEBHOOK] Ticket SOLVED + farewell/emoji/gratitude — ignorando (sem loop): {phone}")
+        from services.conversation_flow import is_positive_confirmation, is_negative_confirmation
+        # Texto de encerramento (positivo, negativo ou despedida) → não reabrir
+        if incoming_text and (
+            is_positive_confirmation(incoming_text)
+            or is_negative_confirmation(incoming_text)
+            or _is_farewell_or_emoji(incoming_text)
+        ):
+            print(f"[WEBHOOK] Ticket SOLVED + encerramento/despedida — ignorando (sem loop): {phone}")
             return {
                 "status": "received",
                 "message_type": message_type,
                 "message_id": message_record.id if message_record else None,
                 "auto_response": False,
                 "reason": "solved_farewell_ignored"
+            }
+        # Mídia (imagem/documento) sem legenda quando ticket está SOLVED:
+        # provavelmente uma mídia encaminhada ou reação — não reabrir a conversa.
+        # Áudio é processado normalmente (pode conter uma nova pergunta transcrita).
+        if not incoming_text and message_type in (MessageType.IMAGE.value, MessageType.DOCUMENT.value):
+            print(f"[WEBHOOK] Ticket SOLVED + {message_type} sem legenda — ignorando (sem loop): {phone}")
+            return {
+                "status": "received",
+                "message_type": message_type,
+                "message_id": message_record.id if message_record else None,
+                "auto_response": False,
+                "reason": "solved_media_no_caption_ignored"
             }
         conversation.ticket_status = None
         db.commit()

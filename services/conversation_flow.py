@@ -532,7 +532,38 @@ POSITIVE_CONFIRMATION_PATTERNS = [
     r'^(👍|👌|✅|🙏|😊|🎉)$',
     r'^(por enquanto é isso|por agora sim|agora sim)$',
     r'^(massa|dahora|boa|boua|nice|show de bola)$',
+    # "Só" como mensagem isolada = "só isso" / "era só isso"
+    r'^(s[oó]|era s[oó]|[eé] isso|por hora [eé] isso|por enquanto s[oó])$',
 ]
+
+
+NEGATIVE_CONFIRMATION_PATTERNS = [
+    r'^(n[aã]o|nao|naum)$',
+    r'^(n[aã]o preciso|nao preciso)$',
+    r'^(n[aã]o,?\s*obrigad[oa])$',
+    r'^(nada|nada mais|nada por enquanto|nada por agora)$',
+    r'^(n[aã]o por enquanto|n[aã]o por agora|por agora n[aã]o)$',
+    r'^(t[aá]\s*bom|t[oô]\s*bem|t[oô]\s*[oó]timo)$',
+    r'^(pode encerrar|encerrando|encerrado)$',
+    r'^(n[aã]o\s*mesmo)$',
+]
+
+
+def is_negative_confirmation(message: str) -> bool:
+    """
+    Detecta se a mensagem é uma resposta negativa/de encerramento após a
+    pergunta de confirmação do bot (ex: "não", "nada", "não preciso").
+    Quando o bot está aguardando confirmação, respostas negativas devem
+    encerrar a conversa — não passar pelo pipeline de IA novamente.
+    """
+    if not message:
+        return False
+    text = message.strip().lower()
+    text = re.sub(r'[!.,;:?]+$', '', text).strip()
+    for pattern in NEGATIVE_CONFIRMATION_PATTERNS:
+        if re.match(pattern, text, re.IGNORECASE | re.UNICODE):
+            return True
+    return False
 
 
 def is_positive_confirmation(message: str) -> bool:
