@@ -323,7 +323,10 @@ async def _execute_search_knowledge_base(args: dict, db=None, conversation_id=No
     from services.vector_store import get_vector_store, filter_expired_results
 
     query = args.get("query", "")
-    if not query:
+    # RAG V3.6 — `query` é dispensável quando o agente está apenas continuando
+    # a leitura de um bloco específico via `block_id`/`content_offset`. A
+    # validação só dispara se NÃO houver block_id (fluxo de busca semântica).
+    if not query and args.get("block_id") is None:
         return {"error": "Query vazia", "results": []}
 
     try:
@@ -926,9 +929,9 @@ async def _continue_block_content(
     material_name = "Documento"
     try:
         from database.models import Material as _Mat
-        mat = db.query(_Mat.title).filter(_Mat.id == row.material_id).first()
-        if mat and mat.title:
-            material_name = mat.title
+        mat = db.query(_Mat.name).filter(_Mat.id == row.material_id).first()
+        if mat and mat.name:
+            material_name = mat.name
     except Exception:
         pass
 

@@ -150,7 +150,9 @@ async def list_evasive_responses(
                 """
                 SELECT id, created_at, conversation_id, user_query,
                        ai_response, evasive_pattern, had_kb_results,
-                       kb_results_count, completeness_mode, tools_used
+                       kb_results_count, completeness_mode, tools_used,
+                       retrieved_material_ids, retrieved_material_names,
+                       top_k, intent_label
                 FROM rag_evasive_responses
                 ORDER BY created_at DESC
                 LIMIT :lim
@@ -164,6 +166,17 @@ async def list_evasive_responses(
             detail=f"Falha ao consultar telemetria evasiva: {e}",
         )
 
+    import json as _json
+
+    def _parse_json_list(v):
+        if not v:
+            return []
+        try:
+            parsed = _json.loads(v)
+            return parsed if isinstance(parsed, list) else []
+        except Exception:
+            return []
+
     items = [
         {
             "id": r[0],
@@ -176,6 +189,11 @@ async def list_evasive_responses(
             "kb_results_count": r[7],
             "completeness_mode": bool(r[8]) if r[8] is not None else None,
             "tools_used": r[9],
+            # RAG V3.6 — campos enriquecidos para diagnóstico segmentado.
+            "retrieved_material_ids": _parse_json_list(r[10]),
+            "retrieved_material_names": _parse_json_list(r[11]),
+            "top_k": r[12],
+            "intent_label": r[13],
         }
         for r in rows
     ]
