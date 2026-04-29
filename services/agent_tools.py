@@ -51,9 +51,20 @@ TOOL_SEARCH_KNOWLEDGE_BASE = {
                     "description": (
                         "Deslocamento de paginação (default 0). Use APENAS quando uma "
                         "chamada anterior retornou 'has_more: true' — informe o valor de "
-                        "'next_offset' para receber as linhas/blocos seguintes da MESMA "
-                        "tabela ou da mesma sequência de resultados. Útil para carteiras "
-                        "com muitas linhas (10+ FIIs, 20+ ações)."
+                        "'next_offset' para receber os blocos seguintes da mesma sequência "
+                        "de resultados. Útil para carteiras com muitas linhas (10+ FIIs, "
+                        "20+ ações). Se a janela atual contém 'content_truncated_in_window: "
+                        "true', paginar NÃO recupera mais conteúdo do mesmo bloco — refine "
+                        "a query (ex.: peça um ticker específico)."
+                    )
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": (
+                        "Tamanho da janela retornada (default 6, máximo 20). Aumente para "
+                        "10-20 quando o assessor pediu listagem exaustiva ('todos', "
+                        "'completa', 'liste os N') para receber mais blocos de uma vez "
+                        "em vez de paginar várias chamadas."
                     )
                 }
             },
@@ -300,6 +311,15 @@ async def _execute_search_knowledge_base(args: dict, db=None, conversation_id=No
     except (TypeError, ValueError):
         offset = 0
 
+    # RAG V3.6 — limit (tamanho da janela) define o page_size para a paginação
+    # monotônica. Default 6 (cobre o caso comum de 1-2 carteiras + alguns
+    # extras), máximo 20 (mesmo cap de n_results em modo completude).
+    try:
+        page_size = int(args.get("limit", 6) or 6)
+    except (TypeError, ValueError):
+        page_size = 6
+    page_size = max(1, min(page_size, 20))
+
     vector_store = get_vector_store()
     if not vector_store:
         return {"error": "Base de conhecimento indisponível", "results": []}
@@ -361,16 +381,28 @@ async def _execute_search_knowledge_base(args: dict, db=None, conversation_id=No
         for r in raw_results:
             mid = r.metadata.get("material_id") or r.metadata.get("doc_id") or "_no_material"
             material_buckets.setdefault(mid, []).append(r)
-        # Materiais ordenados pelo MAIOR score entre seus blocos (relevância
-        # semântica), não pela quantidade de blocos — material mais relevante
-        # vence material mais fragmentado. Empate mantém ordem original
-        # (estabilidade). Mantemos os 2 melhores materiais para evitar
-        # misturar carteiras distintas no mesmo retorno.
+        # Materiais ordenados pelo MAIOR `composite_score` entre seus blocos
+        # (relevância semântica do EnhancedSearch), não pela quantidade de
+        # blocos — material mais relevante vence material mais fragmentado.
+        # Fallback para `score` legado, depois 0. Empate mantém ordem
+        # original (estabilidade). Mantemos os 2 melhores materiais para
+        # evitar misturar carteiras distintas no mesmo retorno.
+        def _block_score(b):
+            cs = getattr(b, "composite_score", None)
+            if cs is not None:
+                try:
+                    return float(cs)
+                except (TypeError, ValueError):
+                    pass
+            try:
+                return float(getattr(b, "score", 0.0) or 0.0)
+            except (TypeError, ValueError):
+                return 0.0
         def _bucket_score(kv):
             blocks = kv[1]
             if not blocks:
                 return 0.0
-            return max((float(getattr(b, "score", 0.0) or 0.0)) for b in blocks)
+            return max(_block_score(b) for b in blocks)
         ranked_materials = sorted(
             material_buckets.items(),
             key=lambda kv: -_bucket_score(kv),
@@ -698,24 +730,21 @@ async def _execute_search_knowledge_base(args: dict, db=None, conversation_id=No
         except Exception as ve:
             print(f"[VISUAL_ENRICH] Error enriching visual candidates: {ve}")
 
-    # RAG V3.6 — paginação por offset. Aplicamos o offset depois de tudo
-    # construído para que a contagem original (`total_results`) reflita o
-    # tamanho real do conjunto antes da janela.
+    # RAG V3.6 — paginação monotônica por offset+page_size. `total_results`
+    # reflete o tamanho real do conjunto antes da janela. A janela é
+    # `results[offset:offset+page_size]` e `has_more` é true quando ainda há
+    # blocos não enviados (`offset + page_size < total_results`) — cursor
+    # progride sempre, sem risco de loop.
     #
-    # IMPORTANTE: `has_more` é EXCLUSIVAMENTE sobre paginação de blocos
-    # restantes (cursor monotônico). Truncamento intra-bloco é exposto via
-    # `content_truncated` por resultado e via `content_truncated_in_window`
-    # agregado — não via `has_more`, pois chamar de novo com o mesmo offset
-    # NÃO recuperaria mais conteúdo do mesmo bloco truncado (causaria loop).
-    # Quando a janela contém truncamento, o agente deve refinar a query
-    # (ex.: pedir um ticker específico) ou aceitar que aquele bloco é o cap.
+    # Truncamento intra-bloco (uma única tabela cujo conteúdo passou do cap
+    # de 4000 chars) é exposto separadamente em `content_truncated_in_window`
+    # — neste caso, paginar não recuperaria mais conteúdo do mesmo bloco;
+    # o agente deve refinar a query (ex.: pedir um ticker específico).
     total_results = len(results)
     has_truncated_block = any(r.get("content_truncated") for r in results)
 
-    if offset and offset > 0:
-        results_window = results[offset:]
-    else:
-        results_window = results
+    window_end = offset + page_size
+    results_window = results[offset:window_end]
 
     next_offset = offset + len(results_window)
     has_more = next_offset < total_results
@@ -725,6 +754,7 @@ async def _execute_search_knowledge_base(args: dict, db=None, conversation_id=No
         "count": len(results_window),
         "total_results": total_results,
         "offset": offset,
+        "page_size": page_size,
         "completeness_mode": is_completeness,
         "content_truncated_in_window": has_truncated_block,
     }

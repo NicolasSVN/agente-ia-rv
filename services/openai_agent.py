@@ -3036,12 +3036,17 @@ INSTRUÇÕES IMPORTANTES:
             try:
                 _evasive = _detect_evasive_response(ai_response)
                 if _evasive:
+                    try:
+                        _completeness = TokenExtractor.detect_completeness_intent(user_message or "")
+                    except Exception:
+                        _completeness = False
                     _log_evasive_response(
                         user_query=user_message,
                         response_text=ai_response,
                         matched_pattern=_evasive,
                         tools_used=[t["name"] for t in tool_calls_data],
                         conversation_id=conversation_id_for_context,
+                        completeness_mode=_completeness,
                     )
             except Exception:
                 pass
@@ -3371,6 +3376,10 @@ INSTRUÇÕES IMPORTANTES:
                             if isinstance(t, dict) and t.get("name") == "search_knowledge_base"
                         ]
                         _had_kb = len(_kb_calls) > 0
+                        try:
+                            _completeness = TokenExtractor.detect_completeness_intent(user_message or "")
+                        except Exception:
+                            _completeness = False
                         _log_evasive_response(
                             user_query=user_message,
                             response_text=ai_response,
@@ -3379,6 +3388,7 @@ INSTRUÇÕES IMPORTANTES:
                             conversation_id=conversation_id,
                             had_kb_results=_had_kb,
                             kb_results_count=len(_kb_calls),
+                            completeness_mode=_completeness,
                         )
                 except Exception:
                     pass
