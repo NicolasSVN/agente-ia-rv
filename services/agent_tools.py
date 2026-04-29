@@ -4,6 +4,7 @@ As tools são expostas ao GPT via OpenAI function calling.
 Os executores reutilizam os serviços existentes (EnhancedSearch, web_search, fii_lookup).
 """
 import json
+import os
 import time
 import asyncio
 from typing import Dict, Any, List, Optional
@@ -463,8 +464,13 @@ async def _execute_search_knowledge_base(args: dict, db=None, conversation_id=No
     # não está na base, e o RAG devolveu blocos pouco relacionados). Tratar
     # como no_results para evitar que o agente tente "preencher" com
     # conteúdo de outra carteira/produto. Threshold conservador (0.30)
-    # ajustável via env var em iteração futura.
-    LOW_CONFIDENCE_THRESHOLD = 0.30
+    # ajustável via env var `RAG_LOW_CONFIDENCE_THRESHOLD`.
+    try:
+        LOW_CONFIDENCE_THRESHOLD = float(
+            os.environ.get("RAG_LOW_CONFIDENCE_THRESHOLD", "0.30")
+        )
+    except (TypeError, ValueError):
+        LOW_CONFIDENCE_THRESHOLD = 0.30
     try:
         max_score = max(
             (getattr(r, "composite_score", 0.0) or 0.0) for r in raw_results
