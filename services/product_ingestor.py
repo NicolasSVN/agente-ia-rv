@@ -85,9 +85,13 @@ _PORTFOLIO_ROW_BLOCK_TYPE = "portfolio_row"
 _PORTFOLIO_ID_HEADER_PATTERNS = (
     "ticker", "ativo", "papel", "fundo", "papeis", "papéis",
     "código", "codigo", "asset",
+    "devedor", "emissor", "companhia", "empresa", "issuer",
+    "núcleo", "nucleo", "gestor", "gestora", "manager",
+    "fii", "cri", "cra",
 )
 _PORTFOLIO_WEIGHT_HEADER_PATTERNS = (
-    "peso", "%pl", "% pl", "alocação", "alocacao", "alocacao(%)",
+    "peso", "%pl", "% pl", "% do pl", "alocação", "alocacao", "alocacao(%)",
+    "alocação-alvo", "alocacao-alvo", "alocação alvo", "alocacao alvo",
     "participação", "participacao", "percentual", "%", "weight",
 )
 
