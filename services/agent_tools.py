@@ -349,9 +349,20 @@ async def _execute_search_knowledge_base(args: dict, db=None, conversation_id=No
                     from database.models import ContentBlock as CB
                     from services.content_formatter import get_rich_content
                     int_bid = int(str(block_id_raw).split("_")[-1]) if "_" in str(block_id_raw) else int(block_id_raw)
-                    block = db.query(CB.content).filter(CB.id == int_bid).first()
+                    # RAG V3.5 — Recuperação rica de tabelas: também buscamos
+                    # o block_type para que o formatter possa decidir entre o
+                    # path de texto (cap 600) ou o path de tabela (cap 4000 +
+                    # markdown + Fatos por linha + truncamento por linha).
+                    # Sem isso, tabelas com 12+ linhas (ex.: carteira "Seven
+                    # FIIs") eram cortadas pela metade antes de chegar no agente.
+                    block = db.query(CB.content, CB.block_type).filter(CB.id == int_bid).first()
                     if block:
-                        content = get_rich_content(block.content, r.content, max_chars=600)
+                        content = get_rich_content(
+                            block.content,
+                            r.content,
+                            max_chars=600,
+                            block_type=block.block_type,
+                        )
             except Exception:
                 pass
 
