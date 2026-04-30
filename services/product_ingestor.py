@@ -6,6 +6,7 @@ Implementa sistema de Lanes: Fast Lane (auto-aprovação) e High-Risk Lane (revi
 import json
 import hashlib
 import os
+import re
 import uuid
 from typing import Dict, Any, List, Optional, Tuple
 from datetime import datetime
@@ -77,6 +78,89 @@ FINANCIAL_TABLE_HEADERS = {
 
 
 _PORTFOLIO_ROW_BLOCK_TYPE = "portfolio_row"
+
+
+# Task #200 — palavras-chave que indicam que o documento é uma CARTEIRA
+# (e não um material individual de FII/ação). Quando o nome do material,
+# do produto principal ou do título do documento contém uma destas
+# substrings, o pipeline NÃO deve redistribuir blocos para os tickers
+# da composição: tudo permanece atrelado ao material-carteira original
+# e os tickers da composição viram apenas links (M:N) quando os produtos
+# já existem. Comparação é case-insensitive e tolerante a acentos.
+#
+# IMPORTANTE: as keywords devem ser específicas o bastante para NÃO
+# casar com uploads de "Recomendações de Estruturas" (POPs/Collars), que
+# são listas de derivativos sobre vários ativos — esses devem CONTINUAR
+# criando produtos por ticker. Por isso usamos regex com word boundaries
+# e exigimos termos compostos (ex.: "recomendação de carteira") em vez
+# de só "recomendação".
+# `\bcarteira\b` é amplo. Excluímos via lookahead os usos onde "carteira"
+# é seguido por palavras que indicam carteira INDIVIDUAL DE CLIENTE (que
+# não devem disparar o guard de redistribuição).
+_PORTFOLIO_KEYWORD_PATTERNS = (
+    r"\bcarteira(?:s)?(?!\s+(?:individual|pessoal|do\s+cliente|do\s+investidor))\b",
+    r"\bportf[oó]lio(?:s)?(?!\s+(?:individual|pessoal|do\s+cliente|do\s+investidor))\b",
+    r"\brebalanceamento\b",
+    r"\baloca[çc][ãa]o\s+sugerid[ao]\b",
+    r"\baloca[çc][ãa]o\s+recomendad[ao]\b",
+    r"\brecomenda(?:c|ç)(?:[ãa]o|[oõ]es)\s+de\s+(?:carteira|portf[oó]lio)\b",
+    r"\bsugest[ãa]o\s+de\s+(?:carteira|portf[oó]lio)\b",
+)
+# Mantido por compatibilidade: alguns scripts/testes podem importar.
+_PORTFOLIO_DOC_KEYWORDS = (
+    "carteira", "portfólio", "portfolio", "rebalanceamento",
+    "alocação sugerida", "alocacao sugerida",
+)
+
+
+def _normalize_for_keyword_match(text: Optional[str]) -> str:
+    """Normaliza texto para matching case/acento-insensível das keywords de carteira."""
+    if not text:
+        return ""
+    import unicodedata
+    nfkd = unicodedata.normalize("NFKD", text)
+    return "".join(c for c in nfkd if not unicodedata.combining(c)).lower()
+
+
+# Regex compilada uma vez (case-insensitive sobre o texto cru — os patterns
+# já cobrem variantes com/sem acento via classes [ãa]/[oõ]).
+_PORTFOLIO_REGEX = re.compile(
+    "|".join(_PORTFOLIO_KEYWORD_PATTERNS),
+    flags=re.IGNORECASE,
+)
+
+
+def _text_has_portfolio_keyword(*texts: Optional[str]) -> bool:
+    """Retorna True se qualquer texto casa o regex de carteira (word boundaries)."""
+    for t in texts:
+        if not t:
+            continue
+        if _PORTFOLIO_REGEX.search(str(t)):
+            return True
+    return False
+
+
+def _is_portfolio_material(material, product=None, document_title: Optional[str] = None) -> bool:
+    """Task #200 — Detecta se um material é uma CARTEIRA/RECOMENDAÇÃO/PORTFÓLIO.
+
+    Critérios (qualquer um basta):
+      - Nome do material contém keyword de carteira
+      - Nome do produto principal contém keyword de carteira
+      - Título do documento contém keyword de carteira
+      - product_type do produto principal é exatamente "carteira" / "portfolio"
+
+    Quando True, o ingestor pula a redistribuição de blocos por ticker:
+    todo o conteúdo permanece no material original (a composição da
+    carteira é parte intrínseca do produto-carteira, não conteúdo dos
+    ativos individuais).
+    """
+    name = getattr(material, "name", None) if material is not None else None
+    prod_name = getattr(product, "name", None) if product is not None else None
+    prod_type = (getattr(product, "product_type", None) or "").strip().lower() if product is not None else ""
+    if prod_type in ("carteira", "portfolio", "portfólio"):
+        return True
+    return _text_has_portfolio_keyword(name, prod_name, document_title)
+
 
 # RAG V3.6 — heurística para detectar tabelas de "portfólio/carteira".
 # Critério: presença simultânea de uma coluna identificadora de ativo
@@ -552,7 +636,28 @@ class ProductIngestor:
         
         block_order = 0
         redistributed_material_ids = set()
-        
+
+        # Task #200 — PORTFOLIO GUARD: quando o material é uma CARTEIRA
+        # (e.g. "Carteira Seven FII's"), os tickers da composição NÃO
+        # devem virar materiais derivados. A composição é parte intrínseca
+        # do produto-carteira; redistribuir blocos cria "materiais fantasma"
+        # vazios sem PDF e poluí o produto principal com gestora/tipo errados.
+        _is_portfolio_mat = False
+        try:
+            _mat_obj_pf = db.query(Material).filter(Material.id == material_id).first()
+            _primary_prod_pf = None
+            if _mat_obj_pf and _mat_obj_pf.product_id:
+                from database.models import Product
+                _primary_prod_pf = db.query(Product).filter(Product.id == _mat_obj_pf.product_id).first()
+            if _is_portfolio_material(_mat_obj_pf, _primary_prod_pf, document_title):
+                _is_portfolio_mat = True
+                print(
+                    f"[PORTFOLIO_GUARD] Material {material_id} detectado como carteira — "
+                    f"desabilitando redistribuição multi-produto (todos os blocos ficam no material original)."
+                )
+        except Exception as _pg_err:
+            print(f"[PORTFOLIO_GUARD] Erro ao verificar tipo de material (ignorado): {_pg_err}")
+
         for page in processed.get("pages", []):
             page_num = page.get("page_number", 0)
             content_type = page.get("content_type", "text")
@@ -589,13 +694,25 @@ class ProductIngestor:
                             break
             
             target_material_id = material_id
-            
-            if matched_product:
+
+            if _is_portfolio_mat:
+                # Carteira: tickers detectados são parte da composição.
+                # Não criar material derivado — todo o conteúdo permanece
+                # no material-carteira original. Os tickers continuam podendo
+                # virar links via _create_product_links no upload_queue
+                # (apenas para produtos pré-existentes, sem auto-criação).
+                if matched_product:
+                    print(
+                        f"[PORTFOLIO_GUARD] Página {page_num}: ticker "
+                        f"'{matched_product.ticker or matched_product.name}' detectado "
+                        f"mas redistribuição ignorada (material carteira)."
+                    )
+            elif matched_product:
                 existing_material = db.query(Material).filter(
                     Material.product_id == matched_product.id,
                     Material.name == document_title
                 ).first()
-                
+
                 if existing_material:
                     target_material_id = existing_material.id
                     redistributed_material_ids.add(existing_material.id)
@@ -826,7 +943,13 @@ class ProductIngestor:
         # PersistentQueueItem.material_id (sem CASCADE).
         # Quando `_is_swap_material` é True, `target_material_id` fica sempre
         # igual a `material_id` — sem criação de materiais derivados.
+        #
+        # Task #200 — PORTFOLIO GUARD (mesma motivação): materiais que são
+        # carteiras/recomendações/portfólios também NÃO devem ter sua composição
+        # redistribuída; cada FII da carteira é parte intrínseca do produto-carteira.
         _is_swap_material = False
+        _is_portfolio_mat = False
+        _primary_prod = None
         try:
             _mat_obj = db.query(Material).filter(Material.id == material_id).first()
             if _mat_obj and _mat_obj.product_id:
@@ -851,6 +974,21 @@ class ProductIngestor:
                     )
         except Exception as _sg_err:
             log(f"[SWAP_GUARD] Erro ao verificar tipo de material (ignorado): {_sg_err}", "warning")
+
+        try:
+            if _is_portfolio_material(_mat_obj, _primary_prod, document_title):
+                _is_portfolio_mat = True
+                log(
+                    f"[PORTFOLIO_GUARD] Material {material_id} detectado como carteira — "
+                    f"desabilitando redistribuição multi-produto (composição fica no material-carteira).",
+                    "info"
+                )
+        except NameError:
+            # _mat_obj não foi atribuído porque a query do swap-guard falhou cedo;
+            # nada a fazer aqui — sem material no DB significa pipeline já abortou.
+            pass
+        except Exception as _pg_err:
+            log(f"[PORTFOLIO_GUARD] Erro ao verificar tipo de material (ignorado): {_pg_err}", "warning")
 
         existing_blocks = db.query(ContentBlock).filter(
             ContentBlock.material_id == material_id
@@ -908,18 +1046,22 @@ class ProductIngestor:
             
             target_material_id = material_id
 
-            if _is_swap_material:
-                # Material de swap: nunca redireciona blocos para ativos individuais.
-                # Registra o produto detectado na página para fins de log, mas não
-                # redistribui — todo o conteúdo fica no produto swap original.
+            if _is_swap_material or _is_portfolio_mat:
+                # Material de swap OU carteira: nunca redireciona blocos para
+                # ativos individuais. Registra o produto detectado na página
+                # para fins de log, mas não redistribui — todo o conteúdo fica
+                # no material original. Os tickers da composição/operação ainda
+                # podem virar links via _create_product_links no upload_queue
+                # (apenas para produtos pré-existentes, sem auto-criação).
+                _kind = "carteira" if _is_portfolio_mat else "swap"
                 if matched_product:
                     log(
                         f"Página {page_num}: ticker '{matched_product.ticker or matched_product.name}' "
-                        f"detectado mas redistribuição ignorada (material swap).",
+                        f"detectado mas redistribuição ignorada (material {_kind}).",
                         "info"
                     )
                 else:
-                    log(f"Página {page_num}: sem produto identificado (material swap)", "info")
+                    log(f"Página {page_num}: sem produto identificado (material {_kind})", "info")
             elif matched_product:
                 log(f"Página {page_num}: Produto identificado - {matched_product.ticker or matched_product.name}", "success")
                 existing_material = db.query(Material).filter(

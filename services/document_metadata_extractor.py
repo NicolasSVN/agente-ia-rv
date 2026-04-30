@@ -88,7 +88,30 @@ DOCUMENT_TYPE_KEYWORDS = {
     "regulamento": ["regulamento", "regulation"],
     "fato_relevante": ["fato relevante", "comunicado"],
     "apresentacao": ["apresentação institucional", "apresentação do fundo", "investor presentation"],
+    # Task #200 — carteiras/recomendações/portfólios são produtos por si só
+    # (ex.: "Carteira Seven FII's"). NÃO devem ser confundidos com material
+    # individual de um FII; o nome da carteira vai como fund_name e o ticker
+    # principal fica vazio (a "composição" é tratada pelo pipeline).
+    "carteira_recomendada": [
+        "carteira recomendada", "carteira sugerida", "carteira top",
+        "carteira fii", "carteira de fii", "carteira de fundos",
+        "recomendada de fundos", "recomendação de carteira",
+        "portfólio recomendado", "portfolio recomendado",
+        "rebalanceamento da carteira", "alocação sugerida",
+    ],
 }
+
+
+# Task #200 — keywords curtas usadas no título do PDF que indicam carteira.
+# Usadas pelo post-process para zerar ticker/gestora quando o título sugere
+# carteira mesmo que a Vision tenha errado o tipo.
+PORTFOLIO_TITLE_KEYWORDS = (
+    "carteira", "carteiras",
+    "recomendação", "recomendacao", "recomendações", "recomendacoes",
+    "portfólio", "portfolio",
+    "sugestão", "sugestao", "sugeridas",
+    "rebalanceamento",
+)
 
 
 def normalize_text(text: str) -> str:
@@ -127,6 +150,34 @@ def tokenize_product_name(text: str) -> set:
     """Extrai tokens únicos do nome normalizado do produto."""
     normalized = normalize_product_name(text)
     return set(normalized.split())
+
+
+def is_portfolio_document(
+    document_type: Optional[str] = None,
+    fund_name: Optional[str] = None,
+    pdf_filename: Optional[str] = None,
+) -> bool:
+    """Task #200 — Detecta se a extração indica um documento de CARTEIRA.
+
+    Critérios (qualquer um basta):
+      - document_type contém "carteira" / "recomendacao" / "portfolio"
+      - fund_name começa com / contém uma keyword de carteira
+      - nome do arquivo PDF contém uma keyword de carteira
+
+    Quando True, o post-process da extração:
+      - Zera `result.ticker` (carteira não tem ticker próprio)
+      - Move ticker primário detectado para `additional_tickers`
+      - Zera `result.gestora` (carteira não tem gestora própria)
+      - Marca `document_type='carteira_recomendada'`
+    """
+    candidates = [document_type, fund_name, pdf_filename]
+    norm_candidates = [normalize_text(c) for c in candidates if c]
+    for txt in norm_candidates:
+        for kw in PORTFOLIO_TITLE_KEYWORDS:
+            kw_norm = normalize_text(kw)
+            if kw_norm and kw_norm in txt:
+                return True
+    return False
 
 
 def calculate_similarity_score(name1: str, name2: str) -> dict:
@@ -349,15 +400,60 @@ class DocumentMetadataExtractor:
             except Exception as e:
                 print(f"[MetadataExtractor] Erro no fallback de texto: {e}")
             
+            # Task #200 — POST-PROCESS DE CARTEIRA: se a Vision detectou
+            # carteira (ou se o título do PDF / fund_name / document_type
+            # indica carteira), zerar ticker primário e gestora — são uma
+            # carteira de FIIs, não um FII individual. O ticker primário
+            # detectado vai para `additional_tickers` (composição).
+            try:
+                _pdf_basename = os.path.basename(pdf_path) if pdf_path else None
+            except Exception:
+                _pdf_basename = None
+            if is_portfolio_document(
+                document_type=result.document_type,
+                fund_name=result.fund_name,
+                pdf_filename=_pdf_basename,
+            ):
+                if result.ticker:
+                    if result.ticker not in result.additional_tickers:
+                        result.additional_tickers.insert(0, result.ticker)
+                    print(
+                        f"[MetadataExtractor] Documento detectado como CARTEIRA — "
+                        f"ticker primário '{result.ticker}' movido para composição "
+                        f"(carteira não tem ticker próprio)."
+                    )
+                    result.ticker = None
+                if result.gestora:
+                    print(
+                        f"[MetadataExtractor] Documento detectado como CARTEIRA — "
+                        f"gestora '{result.gestora}' descartada (carteira é recomendação da casa)."
+                    )
+                    result.gestora = None
+                if result.document_type != "carteira_recomendada":
+                    result.document_type = "carteira_recomendada"
+                # Marca explicitamente o flag para downstream (upload_queue,
+                # ingestor, UI). Útil também para auditoria via raw_extraction.
+                result.raw_extraction["is_portfolio_document"] = True
+
             if existing_products and result.fund_name:
                 matched = self._match_to_existing_product(result, existing_products)
                 if matched:
                     result.fund_name = matched.get("name", result.fund_name)
                     if not result.ticker and matched.get("ticker"):
-                        result.ticker = matched["ticker"]
+                        # Em carteira, NÃO sobrescrever ticker com o do produto
+                        # matched (que pode ser um FII da composição que casou
+                        # por nome parcial).
+                        if not result.raw_extraction.get("is_portfolio_document"):
+                            result.ticker = matched["ticker"]
                     result.confidence = min(result.confidence + 0.1, 1.0)
-            
-            if not result.ticker and result.fund_name and result.confidence >= 0.5:
+
+            # Em carteira, NÃO buscar ticker na web — não existe ticker próprio.
+            if (
+                not result.ticker
+                and result.fund_name
+                and result.confidence >= 0.5
+                and not result.raw_extraction.get("is_portfolio_document")
+            ):
                 print(f"[MetadataExtractor] Ticker não encontrado no documento. Tentando busca web...")
                 web_ticker = self._search_ticker_on_web(result.fund_name, result.gestora)
                 if web_ticker:
@@ -392,6 +488,7 @@ class DocumentMetadataExtractor:
    - fato_relevante (comunicado)
    - apresentacao (institucional, investor presentation)
    - operacoes_rv (operações estruturadas, recomendações de RV, POP, Collar, BM&F)
+   - carteira_recomendada (carteira sugerida/recomendada de FIIs ou ações — ex.: "Carteira Seven FII's", "Carteira Top FIIs", "Portfólio Recomendado")
    - outro
 
 Procure por:
@@ -400,6 +497,18 @@ Procure por:
 - TODOS os códigos de ticker mencionados (ex: BEEF3, WEGE3, SMAL11, PETR4, etc.)
 - Seções com múltiplos ativos / carteira recomendada
 - Cabeçalhos como "MATERIAL PUBLICITÁRIO", "OPERAÇÕES RV", "RELATÓRIO GERENCIAL"
+
+REGRA ESPECIAL — CARTEIRAS RECOMENDADAS:
+Se o documento for uma CARTEIRA RECOMENDADA / SUGERIDA / PORTFÓLIO de FIIs ou ações
+(títulos como "Carteira Seven FII's", "Carteira Top FIIs", "Portfólio Recomendado",
+"Carteira Sugerida de FIIs"):
+  - "fund_name" = nome COMPLETO da carteira (ex.: "Carteira Seven FII's"),
+    NUNCA o nome de um FII individual da composição.
+  - "ticker" = null (carteira não tem ticker próprio; o ticker primário NUNCA é
+    um dos FIIs da composição).
+  - "gestora" = null (a carteira é uma recomendação da casa, não tem gestora própria).
+  - "tickers" = lista de TODOS os tickers que aparecem na composição.
+  - "document_type" = "carteira_recomendada".
 
 Responda APENAS em JSON válido com este formato:
 {
@@ -412,7 +521,7 @@ Responda APENAS em JSON válido com este formato:
   "reasoning": "explicação breve de como identificou"
 }
 
-IMPORTANTE: O campo "tickers" deve conter TODOS os tickers encontrados, incluindo o ticker principal."""
+IMPORTANTE: O campo "tickers" deve conter TODOS os tickers encontrados, incluindo o ticker principal (exceto em carteiras recomendadas, onde "ticker" é null mas "tickers" tem todos)."""
             }
         ]
         

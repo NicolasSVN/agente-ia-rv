@@ -15,6 +15,7 @@ Valores canônicos (sempre em minúsculas, tal como saem do banco/vector store):
   Renda Fixa:      debenture  (CRI/CRA agrupados aqui para fins de exibição)
   Estruturadas:    estruturada | swap | long & short
   Bolsa/Balcão:    mercado futuro | mercado a termo
+  Carteiras:       carteira (recomendações de carteira / portfólios sugeridos)
   Outros:          joint venture | outro
 """
 
@@ -42,6 +43,8 @@ VALID_PRODUCT_TYPES: set[str] = {
     # Derivativos de bolsa / balcão
     "mercado futuro",
     "mercado a termo",
+    # Carteira recomendada / portfólio sugerido (Task #200)
+    "carteira",
     # Outros veículos
     "joint venture",
     "outro",
@@ -107,6 +110,21 @@ PRODUCT_TYPE_ALIASES: dict[str, str] = {
     "substituicao": "swap",
     "substituir": "swap",
     "rebalanceamento": "swap",
+    # Carteira recomendada / portfólio sugerido (Task #200)
+    # Quando o nome contém "Carteira X" e o documento principal é uma
+    # composição de FIIs/ações, este é o tipo certo (em vez de "estruturada"
+    # ou "fii", que distorcem a apresentação no admin e a navegação do RAG).
+    "carteira": "carteira",
+    "carteiras": "carteira",
+    "carteira recomendada": "carteira",
+    "carteira sugerida": "carteira",
+    "recomendação de carteira": "carteira",
+    "recomendacao de carteira": "carteira",
+    "portfólio recomendado": "carteira",
+    "portfolio recomendado": "carteira",
+    "portfólio sugerido": "carteira",
+    "portfolio sugerido": "carteira",
+    "carteira_recomendada": "carteira",
     # Long & Short — estratégia simultânea (comprado num ativo, vendido em outro)
     "long & short": "long & short",
     "long&short": "long & short",
@@ -173,6 +191,19 @@ def infer_product_type(
     # indicação explícita de ETF/Index.
     if re.search(r"\b(etf|index)\b", blob):
         return "etf"
+
+    # Task #200 — Carteira recomendada DEVE ser detectada antes de fii/swap.
+    # Caso contrário "Carteira Seven FII's" cai em "fii" (por causa do "FII"
+    # no nome) e "Rebalanceamento da Carteira X" cai em "swap" (rebalanceamento
+    # mapeia para swap). Quando o nome traz "carteira/recomenda*/portf[óo]lio
+    # recomendad*/portf[óo]lio sugerid*" — esse é um produto-carteira.
+    if re.search(
+        r"\b(carteira(?!s? individual)|"
+        r"recomenda(?:d[ao]|c[ãa]o)\s+(?:de\s+)?carteira|"
+        r"portf[oó]lio\s+(?:recomendad[ao]|sugerid[ao]))\b",
+        blob,
+    ):
+        return "carteira"
 
     if t:
         if _TICKER_FII_RE.match(t):

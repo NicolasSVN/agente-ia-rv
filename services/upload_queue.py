@@ -821,9 +821,35 @@ class UploadQueue:
                 getattr(mat, "name", None),
             )
         )
+        # Task #200 — Quando o material é uma CARTEIRA (e.g. "Carteira Seven
+        # FII's"), os tickers da composição são FIIs INDIVIDUAIS já cadastrados
+        # ou que serão cadastrados separadamente. NÃO devemos auto-criar
+        # produtos-ação para eles — isso pollui o catálogo. Mantemos só o
+        # link M:N quando o produto-FII já existe (útil para o RAG saber que
+        # a carteira mencionou aquele FII).
+        try:
+            from services.product_ingestor import _is_portfolio_material
+            primary_is_portfolio = _is_portfolio_material(
+                mat,
+                primary_product,
+                getattr(metadata, "fund_name", None),
+            )
+        except Exception:
+            primary_is_portfolio = False
+        # Fallback redundante baseado só em metadata flag (caso o helper acima
+        # falhe por import / shape inesperado).
+        if not primary_is_portfolio:
+            try:
+                raw_extr = getattr(metadata, "raw_extraction", {}) or {}
+                if isinstance(raw_extr, dict) and raw_extr.get("is_portfolio_document"):
+                    primary_is_portfolio = True
+            except Exception:
+                pass
+
         skip_auto_create = (
             primary_is_structure or material_looks_like_structure
             or primary_is_swap or material_looks_like_swap
+            or primary_is_portfolio
         )
 
         created_count = 0
