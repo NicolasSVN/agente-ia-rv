@@ -102,15 +102,28 @@ DOCUMENT_TYPE_KEYWORDS = {
 }
 
 
-# Task #200 — keywords curtas usadas no título do PDF que indicam carteira.
+# Task #200 — keywords usadas no título do PDF que indicam carteira.
 # Usadas pelo post-process para zerar ticker/gestora quando o título sugere
 # carteira mesmo que a Vision tenha errado o tipo.
+#
+# IMPORTANTE: aceitamos APENAS termos específicos de carteira ("carteira",
+# "portfólio", "rebalanceamento") OU compostos do tipo "recomendação de
+# carteira", "carteira recomendada", "portfólio sugerido". Termos
+# isolados como "recomendação" ou "sugestão" PODEM aparecer em PDFs de
+# estruturas (ex.: "Recomendações de Estruturas Abril.pdf") e NÃO devem
+# disparar o fluxo de carteira (segue o mesmo critério do regex em
+# `services/product_ingestor._PORTFOLIO_REGEX`).
 PORTFOLIO_TITLE_KEYWORDS = (
     "carteira", "carteiras",
-    "recomendação", "recomendacao", "recomendações", "recomendacoes",
     "portfólio", "portfolio",
-    "sugestão", "sugestao", "sugeridas",
     "rebalanceamento",
+    "recomendação de carteira", "recomendacao de carteira",
+    "recomendações de carteira", "recomendacoes de carteira",
+    "carteira recomendada", "carteiras recomendadas",
+    "carteira sugerida", "carteiras sugeridas",
+    "portfólio recomendado", "portfolio recomendado",
+    "portfólio sugerido", "portfolio sugerido",
+    "alocação sugerida", "alocacao sugerida",
 )
 
 
@@ -178,6 +191,75 @@ def is_portfolio_document(
             if kw_norm and kw_norm in txt:
                 return True
     return False
+
+
+# Task #200 — Vision às vezes preenche `fund_name` com o ticker da PRIMEIRA
+# linha da tabela de composição (ex.: "TVRI11" para "Carteira Seven FII's").
+# Quando isso acontece, o resolver casa fund_name com o produto-FII existente
+# e o material da carteira fica vinculado ao produto errado. Este helper
+# deriva um nome canônico da carteira a partir do filename do PDF.
+_TICKER_ONLY_RE = re.compile(r"^[A-Z]{4}\d{1,2}$")
+_FILENAME_NUMERIC_SUFFIX_RE = re.compile(r"[_\-\s]+\d{6,}\s*$")
+_PURELY_NUMERIC_RE = re.compile(r"^\d+$")
+# Stems genéricos que NUNCA podem virar nome de carteira (uploads anônimos,
+# nomes default de scanner, etc.). Lista intencionalmente curta — adicionar
+# itens só quando vistos no banco em produção.
+_GENERIC_FILENAME_STEMS = frozenset({
+    "upload", "uploads", "documento", "document", "doc", "pdf",
+    "arquivo", "file", "scan", "scanned", "untitled", "sem nome",
+    "sem título", "sem titulo",
+})
+
+
+def derive_portfolio_name_from_filename(pdf_filename: Optional[str]) -> Optional[str]:
+    """Extrai um nome amigável de carteira a partir do filename do PDF.
+
+    Aceita o stem APENAS quando ele contém uma palavra-chave forte de
+    carteira (carteira/portfólio/rebalanceamento). Caso contrário retorna
+    None — evita criar produtos com nomes inúteis tipo "1776376769029" ou
+    "upload" quando a Vision já errou o fund_name.
+
+    Exemplos:
+      'Carteira Seven FII\\'s_1776376769029.pdf' -> "Carteira Seven FII's"
+      'carteira-recomendada-abril.pdf'          -> 'carteira-recomendada-abril'
+      'TVRI11.pdf'                              -> None (parece ticker)
+      '1776376769029.pdf'                       -> None (timestamp puro)
+      'upload.pdf'                              -> None (genérico)
+      'relatorio-mensal.pdf'                    -> None (sem keyword carteira)
+      None                                      -> None
+    """
+    if not pdf_filename:
+        return None
+    base = os.path.basename(pdf_filename)
+    stem, _ = os.path.splitext(base)
+    if not stem:
+        return None
+    # Remove sufixos numéricos longos (timestamps de upload do front).
+    stem = _FILENAME_NUMERIC_SUFFIX_RE.sub("", stem).strip()
+    if not stem:
+        return None
+    # Stem puramente numérico → era só timestamp, descarta.
+    if _PURELY_NUMERIC_RE.match(stem):
+        return None
+    # Stem é só um ticker → carteira nenhuma, descarta.
+    if _TICKER_ONLY_RE.match(stem.upper()):
+        return None
+    # Stem genérico (upload, scan, documento…) → não vira nome de produto.
+    stem_norm = normalize_text(stem)
+    if stem_norm in _GENERIC_FILENAME_STEMS:
+        return None
+    # ÚNICA porta de aceitação: stem contém marcador forte de carteira.
+    portfolio_markers = ("carteira", "portfolio", "rebalanceamento")
+    if not any(marker in stem_norm for marker in portfolio_markers):
+        return None
+    return stem
+
+
+def looks_like_ticker(value: Optional[str]) -> bool:
+    """True quando `value` é um ticker B3 puro (4 letras + 1-2 dígitos)."""
+    if not value:
+        return False
+    return bool(_TICKER_ONLY_RE.match(value.strip().upper()))
 
 
 def calculate_similarity_score(name1: str, name2: str) -> dict:
@@ -405,10 +487,7 @@ class DocumentMetadataExtractor:
             # indica carteira), zerar ticker primário e gestora — são uma
             # carteira de FIIs, não um FII individual. O ticker primário
             # detectado vai para `additional_tickers` (composição).
-            try:
-                _pdf_basename = os.path.basename(pdf_path) if pdf_path else None
-            except Exception:
-                _pdf_basename = None
+            _pdf_basename = os.path.basename(pdf_path) if pdf_path else None
             if is_portfolio_document(
                 document_type=result.document_type,
                 fund_name=result.fund_name,
@@ -434,6 +513,34 @@ class DocumentMetadataExtractor:
                 # Marca explicitamente o flag para downstream (upload_queue,
                 # ingestor, UI). Útil também para auditoria via raw_extraction.
                 result.raw_extraction["is_portfolio_document"] = True
+
+                # CRÍTICO (Task #200, code-review): Vision às vezes preenche
+                # `fund_name` com o TICKER da primeira linha da composição
+                # (ex.: "TVRI11" no PDF "Carteira Seven FII's"). Se deixarmos
+                # passar, o resolver casa fund_name="TVRI11" com o produto
+                # TVRI11 existente, e o material da carteira fica vinculado
+                # ao FII errado. Quando isso acontece, derivamos o nome da
+                # carteira do FILENAME — se o filename traz a palavra
+                # "carteira"/"portfólio" no stem, ele é a fonte mais
+                # confiável.
+                fname_is_ticker = looks_like_ticker(result.fund_name)
+                derived = derive_portfolio_name_from_filename(_pdf_basename)
+                if fname_is_ticker and derived:
+                    print(
+                        f"[MetadataExtractor] Carteira: fund_name "
+                        f"{result.fund_name!r} é ticker puro — "
+                        f"sobrescrevendo com nome derivado do filename: "
+                        f"{derived!r}."
+                    )
+                    if result.fund_name and result.fund_name not in result.additional_tickers:
+                        result.additional_tickers.insert(0, result.fund_name)
+                    result.fund_name = derived
+                elif not result.fund_name and derived:
+                    print(
+                        f"[MetadataExtractor] Carteira sem fund_name — "
+                        f"usando nome derivado do filename: {derived!r}."
+                    )
+                    result.fund_name = derived
 
             if existing_products and result.fund_name:
                 matched = self._match_to_existing_product(result, existing_products)

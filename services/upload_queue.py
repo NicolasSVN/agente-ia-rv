@@ -572,6 +572,26 @@ class UploadQueue:
         from services.swap_keywords import find_swap_keyword
         return find_swap_keyword(*texts)
 
+    @classmethod
+    def _detect_portfolio_in_name(cls, *texts) -> Optional[str]:
+        """Task #200 — Retorna a primeira palavra-chave de carteira encontrada
+        nos textos (ex.: 'carteira', 'portfólio', 'rebalanceamento'), ou None.
+
+        Usa o mesmo regex de `services.product_ingestor._is_portfolio_material`
+        para garantir critério ÚNICO em todo o pipeline (extractor, ingestor,
+        upload_queue). Isso evita que o `_auto_create_product` reuse um produto
+        FII/ação existente quando o material é uma CARTEIRA — caso em que o
+        material precisa de produto novo do tipo `carteira`, sem ticker.
+        """
+        from services.product_ingestor import _PORTFOLIO_REGEX
+        for txt in texts:
+            if not txt:
+                continue
+            match = _PORTFOLIO_REGEX.search(str(txt))
+            if match:
+                return match.group(0).lower()
+        return None
+
     def _auto_create_product(self, db, fund_name, ticker, gestora, document_type=None,
                              filename_hint=None, material_name=None):
         from database.models import Product, ProductStatus
@@ -601,6 +621,16 @@ class UploadQueue:
             fund_name, document_type, filename_hint, material_name,
         )
 
+        # Task #200 — Detecta CARTEIRA. Quando o material é uma carteira de
+        # FIIs/ações, o resolver tende a casar com o ticker da primeira linha
+        # da composição (ex.: TVRI11) e devolveria o produto-FII errado.
+        # Aqui aplicamos a mesma estratégia de structure_kw/swap_kw: só reusa
+        # match se ele for `carteira` E sem ticker; caso contrário cria
+        # produto-carteira novo com ticker=None.
+        portfolio_kw = self._detect_portfolio_in_name(
+            fund_name, document_type, filename_hint, material_name,
+        )
+
         resolver = ProductResolver(db)
         result = resolver.resolve(
             fund_name=fund_name,
@@ -608,11 +638,31 @@ class UploadQueue:
             gestora=gestora,
         )
 
-        if result.matched_product_id and not structure_kw and not swap_kw:
+        if result.matched_product_id and not structure_kw and not swap_kw and not portfolio_kw:
             matched = db.query(Product).filter(Product.id == result.matched_product_id).first()
             if matched:
                 logger.info(f"[AutoCreate] ProductResolver encontrou match: {matched.name} (id={matched.id}, tipo={result.match_type})")
                 return matched
+
+        # Task #200 — guarda de CARTEIRA, gêmea da de structure_kw/swap_kw.
+        # Só reusa um produto existente se ele for `carteira` SEM ticker.
+        if result.matched_product_id and portfolio_kw:
+            matched = db.query(Product).filter(Product.id == result.matched_product_id).first()
+            matched_type = (matched.product_type or "").lower() if matched else ""
+            matched_ticker = (matched.ticker or "").strip() if matched else ""
+            if matched and matched_type == "carteira" and not matched_ticker:
+                logger.info(
+                    f"[AutoCreate] Match em produto-carteira existente: "
+                    f"{matched.name} (id={matched.id})"
+                )
+                return matched
+            if matched:
+                logger.info(
+                    f"[AutoCreate] Material parece carteira ({portfolio_kw!r}) mas "
+                    f"resolver matched {matched.name} "
+                    f"(type={matched_type!r}, ticker={matched_ticker!r}). "
+                    f"Criando produto-carteira novo em vez de reusar."
+                )
 
         # Quando é SWAP/troca, evitamos cair na ação subjacente (mesmo padrão
         # da guarda de estrutura): só reusa match se ele também for `swap`.
@@ -643,7 +693,7 @@ class UploadQueue:
                     f"Criando produto estruturado novo em vez de reusar."
                 )
 
-        if ticker and not structure_kw and not swap_kw:
+        if ticker and not structure_kw and not swap_kw and not portfolio_kw:
             existing = db.query(Product).filter(Product.ticker == ticker).first()
             if existing:
                 logger.info(f"[AutoCreate] Produto já existe com ticker {ticker}: {existing.name} (id={existing.id})")
@@ -652,6 +702,8 @@ class UploadQueue:
         # Monta o nome do produto.
         # SWAP: nome humano é a operação inteira ("Troca: PETR4 → VALE3").
         # Estrutura: "POP sobre BEEF3" é mais útil que apenas "BEEF3".
+        # CARTEIRA: usa fund_name/material_name/filename — NUNCA o ticker isolado
+        # (carteira não tem ticker próprio).
         if swap_kw:
             product_name = (
                 fund_name
@@ -663,18 +715,28 @@ class UploadQueue:
             # e o nome já carrega a semântica (ex.: "Troca: PETR4 → VALE3").
         elif structure_kw and ticker:
             product_name = fund_name or f"{structure_kw.upper()} sobre {ticker}"
+        elif portfolio_kw:
+            product_name = (
+                fund_name
+                or material_name
+                or filename_hint
+                or "Carteira recomendada"
+            )
         else:
             product_name = fund_name or ticker
             if ticker and ticker not in (product_name or ""):
                 product_name = f"{product_name} ({ticker})"
 
-        # Infere `product_type` canônico via helper compartilhado. Para estruturas
-        # e swaps, forçamos o tipo (a heurística por ticker confundiria os ativos
-        # subjacentes — BEEF3 viraria ação, PETR4/VALE3 também).
+        # Infere `product_type` canônico via helper compartilhado. Para estruturas,
+        # swaps e carteiras forçamos o tipo (a heurística por ticker confundiria
+        # os ativos subjacentes — BEEF3 viraria ação, PETR4/VALE3 também,
+        # TVRI11 viraria FII).
         if swap_kw:
             product_type = "swap"
         elif structure_kw:
             product_type = "estruturada"
+        elif portfolio_kw:
+            product_type = "carteira"
         else:
             product_type = coerce_product_type(
                 ticker=ticker,
@@ -682,14 +744,19 @@ class UploadQueue:
                 description=fund_name or document_type,
             )
 
-        # Para swap, NÃO persistimos o ticker do underlying no produto-swap —
-        # isso reintroduziria o bug de captura em buscas por ticker. O nome
-        # carrega a semântica ("Troca: PETR4 → VALE3"); os tickers individuais
-        # devem ser referenciados em key_info/aliases, não no campo ticker.
-        if swap_kw:
+        # Para swap E carteira, NÃO persistimos o ticker do underlying no
+        # produto — isso reintroduziria o bug de captura em buscas por ticker.
+        # O nome carrega a semântica e os tickers da composição entram via
+        # MaterialProductLink/aliases.
+        if swap_kw or portfolio_kw:
             ticker_to_persist = None
         else:
             ticker_to_persist = ticker
+
+        # Para carteira a "gestora" extraída pela Vision normalmente é a
+        # gestora do PRIMEIRO FII da composição (ruído). Carteira é
+        # recomendação da casa, sem gestora própria.
+        gestora_to_persist = None if portfolio_kw else gestora
 
         category = product_type if product_type and product_type != "outro" else "fii"
 
@@ -703,7 +770,7 @@ class UploadQueue:
             new_product = Product(
                 name=product_name,
                 ticker=ticker_to_persist,
-                manager=gestora,
+                manager=gestora_to_persist,
                 category=category,
                 product_type=product_type,
                 name_aliases=json.dumps(aliases, ensure_ascii=False) if aliases else "[]",
@@ -717,6 +784,7 @@ class UploadQueue:
                         + (f" (ativo subjacente referenciado: {ticker})." if ticker else ".")
                         if swap_kw else ""
                     )
+                    + (f" Carteira detectada ({portfolio_kw})." if portfolio_kw else "")
                 ),
             )
             db.add(new_product)
@@ -725,7 +793,8 @@ class UploadQueue:
             logger.info(
                 f"[AutoCreate] Produto criado: {new_product.name} "
                 f"(ticker={ticker_to_persist}, id={new_product.id}, type={product_type}, "
-                f"aliases={aliases}, swap_kw={swap_kw!r}, structure_kw={structure_kw!r})"
+                f"aliases={aliases}, swap_kw={swap_kw!r}, structure_kw={structure_kw!r}, "
+                f"portfolio_kw={portfolio_kw!r})"
             )
             return new_product
         except Exception as e:
@@ -1371,6 +1440,58 @@ class UploadQueue:
                                     matched_product_name=None,
                                     matched_product_ticker=None,
                                     match_type="rejected_structure_mismatch",
+                                    match_confidence=0.0,
+                                )
+
+                        # GUARDA-CHUVA ANTI-CAPTURA POR FII DA COMPOSIÇÃO
+                        # (Task #200, code-review):
+                        # Quando o material é uma CARTEIRA (`is_portfolio_document`
+                        # marcado pelo extractor) e o resolver casou com um
+                        # produto que tem ticker (= é um FII/ação individual)
+                        # ou cujo product_type não é "carteira", REJEITAMOS o
+                        # match. Sem isso, "Carteira Seven FII's" cuja Vision
+                        # devolveu fund_name="TVRI11" (ou que casou por nome
+                        # parcial com um FII existente) ficaria vinculada ao
+                        # produto FII errado — exatamente o bug que a Task #200
+                        # corrige no pipeline.
+                        is_portfolio_meta = bool(
+                            (metadata.raw_extraction or {}).get("is_portfolio_document")
+                        )
+                        if is_portfolio_meta and resolve_result.matched_product_id:
+                            matched_existing = db.query(Product).filter(
+                                Product.id == resolve_result.matched_product_id
+                            ).first()
+                            matched_type = (
+                                (matched_existing.product_type or "").lower()
+                                if matched_existing else ""
+                            )
+                            matched_ticker = (
+                                (matched_existing.ticker or "").strip()
+                                if matched_existing else ""
+                            )
+                            if matched_ticker or matched_type != "carteira":
+                                item.add_log(
+                                    f"Match descartado: material é CARTEIRA mas "
+                                    f"o produto encontrado "
+                                    f"({matched_existing.name if matched_existing else '?'}) "
+                                    f"tem ticker={matched_ticker or 'NULL'} / "
+                                    f"type={matched_type or 'sem tipo'} — "
+                                    f"criando produto-carteira novo.",
+                                    "info"
+                                )
+                                logger.info(
+                                    f"[UploadQueue] Carteira: rejeitando match com "
+                                    f"produto não-carteira id="
+                                    f"{resolve_result.matched_product_id} "
+                                    f"(ticker={matched_ticker!r}, type={matched_type!r}) — "
+                                    f"vai criar produto-carteira novo."
+                                )
+                                from services.product_resolver import ResolverResult
+                                resolve_result = ResolverResult(
+                                    matched_product_id=None,
+                                    matched_product_name=None,
+                                    matched_product_ticker=None,
+                                    match_type="rejected_portfolio_mismatch",
                                     match_confidence=0.0,
                                 )
 
